@@ -54,7 +54,7 @@
 
 - [x] RUN-001.1 — Python project: `pyproject.toml`, `classifier/` packages, CLI stub, `.dockerignore`, `Dockerfile`
 - [x] RUN-001.2 — Runtime: `docker-compose.yml`, egress and purge overrides, SearXNG settings, `config.yaml`, `sanitize.example.yaml`, `.env.example`
-- [ ] RUN-001.3 — `Makefile` and `scripts/fetch_models.py`
+- [x] RUN-001.3 — `Makefile` and `scripts/fetch_models.py`
 - [ ] RUN-001.4 — Test tiers by path (`tests/conftest.py`), a smoke test and a db-reachability test
 - [ ] RUN-001.5 — Verify `make up` and `make test` in Docker
 - [ ] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes
