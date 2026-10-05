@@ -1,0 +1,18 @@
+# Secrets and local config (public repo)
+.env
+sanitize.yaml
+# Image data never leaves the box
+fixtures/images/
+fixtures/labels.csv
+# Runtime artifacts
+.work/
+reports/
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+# Claude Code: per-machine settings and per-worktree acceptance marker (RUN-002)
+.claude/settings.local.json
+.acceptance

@@ -1,0 +1,14 @@
+# LF everywhere (DOC-003.D7): CRLF breaks shell hooks and container entrypoints.
+* text=auto eol=lf
+
+# Binary formats: never normalized, never diffed as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.bmp  binary
+*.heic binary
+*.tiff binary
+*.ico  binary
+*.pdf  binary
