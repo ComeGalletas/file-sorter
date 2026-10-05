@@ -1,0 +1,23 @@
+# Sanitization rules (DESIGN.md §4.2, R-CFG-1). This committed file holds PLACEHOLDERS only.
+# `make init` copies it to sanitize.yaml (git-ignored); put your real values there.
+exif:
+  mode: strip_all
+  keep: [Orientation, DateTimeOriginal]
+
+rules:
+  - id: my-name
+    type: literal
+    values: ["<your name>", "<your handle>"]
+    replace: "[PERSON]"
+  - id: email
+    type: regex
+    pattern: "[\\w.+-]+@[\\w-]+\\.[\\w.]+"
+    replace: "[EMAIL]"
+  - id: phone
+    type: regex
+    pattern: "\\+?\\d[\\d\\s().-]{7,}\\d"
+    replace: "[PHONE]"
+  - id: entities
+    type: entity
+    labels: [PERSON, ORG]
+    replace: "[{label}]"

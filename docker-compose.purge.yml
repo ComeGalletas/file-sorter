@@ -1,0 +1,13 @@
+# DANGER: remounts the source folder READ-WRITE (R-FOP-4, R-RUN-4).
+# Exists only for `classifier purge-sources`, which additionally refuses to run unless
+# config.yaml has `deletion.enabled: true` (R-FOP-0). Never use it for anything else.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.purge.yml run --rm app classifier purge-sources --dry-run
+services:
+  app:
+    volumes:
+      - type: bind
+        source: ${SOURCE_ROOT:?set SOURCE_ROOT in .env}
+        target: /source
+        read_only: false
+        bind:
+          create_host_path: false

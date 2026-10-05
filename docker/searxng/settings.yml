@@ -1,0 +1,18 @@
+# Local SearXNG for the RAG web branch (R-RAG-4). Reached only from the internal
+# network; it forwards query TEXT to public engines (C-14), never images.
+# server.secret_key is set from the SEARXNG_SECRET environment variable (make init).
+use_default_settings: true
+
+general:
+  instance_name: file-sorter-local
+
+server:
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json

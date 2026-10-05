@@ -1,0 +1,142 @@
+# file-sorter runtime (RUN-001, DESIGN.md §9).
+# Networks (RUN-001.D4): `internal` has no internet route; only ollama (model pulls)
+# and searxng (it forwards queries) also join `egress`. Nothing publishes a port yet
+# (RUN-001.D5); when it does, it binds to 127.0.0.1 only (R-RUN-1).
+name: file-sorter
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+x-env: &env
+  DB_DSN: postgresql://classifier:${DB_PASSWORD:?run make init}@db:5432/classifier
+  OLLAMA_HOST: http://ollama:11434
+  SEARXNG_URL: http://searxng:8080
+  CLASSIFIER_CONFIG: /app/config.yaml
+  HF_HOME: /models/hf
+  HF_HUB_OFFLINE: "1"
+
+x-app: &app
+  build: .
+  image: file-sorter-app:dev
+  <<: *gpu
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_USER: classifier
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?run make init}
+      POSTGRES_DB: classifier
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U classifier -d classifier"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  ollama:
+    image: ollama/ollama:0.35.1
+    <<: *gpu
+    volumes:
+      - ollama:/root/.ollama
+    networks: [internal, egress]
+
+  searxng:
+    image: searxng/searxng:2026.10.4-d48c4b555
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?run make init}
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks: [internal, egress]
+
+  app:
+    <<: *app
+    environment: *env
+    # RUN-001.D11: idle until M1 adds real commands; use `docker compose exec app classifier ...`.
+    command: ["sleep", "infinity"]
+    volumes:
+      - .:/app
+      - hf:/models/hf
+      # R-FOP-8: the human's source folder is read-only. Never change this mount
+      # (docker-compose.purge.yml is the only, opt-in exception).
+      - type: bind
+        source: ${SOURCE_ROOT:?set SOURCE_ROOT in .env}
+        target: /source
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RESULTS_ROOT:?set RESULTS_ROOT in .env}
+        target: /results
+        bind:
+          create_host_path: true
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [internal]
+
+  # RUN-001.D6: no /source or /results mounts. Tests only ever see the repo and fixtures/.
+  test:
+    <<: *app
+    profiles: [test]
+    environment:
+      <<: *env
+      DB_DSN: postgresql://classifier:test@db-test:5432/classifier
+    command: ["pytest"]
+    volumes:
+      - .:/app
+      - hf:/models/hf
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks: [internal]
+
+  db-test:
+    image: pgvector/pgvector:0.8.7-pg16
+    profiles: [test]
+    environment:
+      POSTGRES_USER: classifier
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: classifier
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U classifier -d classifier"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  # R-MOD-2: the only app-image container with internet; fetches HF weights once.
+  fetch:
+    <<: *app
+    profiles: [tools]
+    environment:
+      <<: *env
+      HF_HUB_OFFLINE: "0"
+    command: ["python", "scripts/fetch_models.py"]
+    volumes:
+      - .:/app
+      - hf:/models/hf
+    networks: [egress]
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  pgdata:
+  # RUN-002.D2: fixed names so every worktree's compose project shares the downloaded models.
+  ollama:
+    name: file-sorter_ollama
+  hf:
+    name: file-sorter_hf

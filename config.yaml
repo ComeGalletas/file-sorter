@@ -1,0 +1,68 @@
+# file-sorter configuration (DESIGN.md §6). Committed: container paths only, no personal values.
+# Host paths live in the git-ignored .env (SOURCE_ROOT, RESULTS_ROOT), mounted at /source and /results.
+paths:
+  source_root: /source               # READ-ONLY bind mount; watched; never written to (P-1, R-FOP-8)
+  results_root: /results             # <Topic>/<Format>/ tree, Adult/, Unsorted/, .work/, reports/
+
+folders:
+  auto_create: true
+  layout: "{topic}/{format}"         # CLS-001.D2
+  no_topic: General                  # folder when no topic clears its threshold (R-CLS-3a)
+  animated_subfolder: false          # true -> .../<Format>/Animated/ (R-ING-9)
+
+models:
+  classifier: google/siglip-so400m-patch14-384
+  nsfw: Falconsai/nsfw_image_detection
+  vlm_safe: qwen3-vl:8b
+  vlm_nsfw: null                     # Q-1: kept open until M5 planning; never picked by an agent
+  text_llm: qwen3-vl:8b              # MVP: one model for caption, judge and local sanitizer (C-1)
+  text_embed: bge-m3
+
+classify:
+  score: sigmoid                     # sigmoid | cosine (C-5)
+  format:                            # required axis (R-CLS-3)
+    default_min_score: null          # calibrated in M3 (R-CLS-8)
+    margin: 0.05
+  topic:                             # optional axis (R-CLS-3a)
+    default_min_score: null          # calibrated in M3 (R-CLS-8)
+    margin: 0.05
+
+nsfw:
+  threshold: 0.70                    # adult = explicit sexual imagery (CLS-001.D12)
+  mode: mirror                       # mirror | separate
+  root: Adult
+
+naming:
+  default_template: descriptive
+  nsfw_template: null                # optional override; null = the category's own template (R-NAME-4)
+  nsfw_prefix: "nsfw_"               # prepended to every adult name; "" disables (R-NAME-8)
+  max_len: 120
+
+rag:
+  top_k: 5
+  min_similarity: { image: 0.80, text: 0.75 }
+  max_exemplars: 10
+  web_backend: searxng               # searxng | brave | claude (brave/claude need docker-compose.egress.yml)
+  web_for_nsfw: text_only            # text_only | false
+
+sanitizer:
+  backend: local                     # local | claude (claude needs docker-compose.egress.yml)
+  rules_file: sanitize.yaml          # git-ignored; created from sanitize.example.yaml by make init
+  ocr: false
+
+watch:
+  debounce_s: 2
+  polling: auto                      # auto = poll on Windows bind mounts (always on this host)
+
+thumbs:
+  size: 256
+
+deletion:
+  enabled: false                     # purge-sources / delete refuse unless true (R-FOP-0)
+
+api:
+  host: 127.0.0.1
+  port: 8000
+
+db:
+  dsn: null                          # from the DB_DSN environment variable (docker-compose.yml)

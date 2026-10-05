@@ -1,0 +1,7 @@
+# Opt-in egress for `app` (R-RUN-2, C-14). Needed ONLY for the remote backends:
+#   sanitizer.backend: claude   or   rag.web_backend: brave | claude
+# Usage: docker compose -f docker-compose.yml -f docker-compose.egress.yml up -d app
+# Without this file those backends must fail fast with a clear error.
+services:
+  app:
+    networks: [internal, egress]
