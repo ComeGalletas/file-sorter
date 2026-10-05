@@ -1,0 +1,6 @@
+# RUN-001.D7: whitelist. Only what the image needs enters the build context, so
+# images, labels, .env and agent files can never land in an image layer.
+*
+!pyproject.toml
+!README.md
+!classifier/
