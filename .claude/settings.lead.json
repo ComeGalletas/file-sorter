@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(gh pr merge * --merge*)",
+      "Bash(gh issue create*)",
+      "Bash(gh issue edit*)",
+      "Bash(gh issue close*)",
+      "Bash(gh label *)",
+      "Bash(git tag -l*)",
+      "Bash(git describe*)",
+      "Bash(git pull --ff-only*)"
+    ],
+    "deny": [
+      "Edit(./classifier/**)",
+      "Edit(./tests/**)",
+      "Edit(./scripts/**)",
+      "Edit(./prompts/**)",
+      "Edit(./eval/**)",
+      "Edit(./fixtures/**)",
+      "Edit(./.claude/**)",
+      "Edit(./.githooks/**)",
+      "Edit(./docker-compose*.yml)",
+      "Edit(./Dockerfile)",
+      "Edit(./Makefile)",
+      "Edit(./config.yaml)",
+      "Edit(./DESIGN.md)",
+      "Edit(./CLAUDE.md)",
+      "Bash(git tag m*)",
+      "Bash(git push*--tags*)",
+      "Bash(gh pr merge * --squash*)",
+      "Bash(gh pr merge * --rebase*)",
+      "Bash(gh pr merge * --admin*)"
+    ]
+  }
+}

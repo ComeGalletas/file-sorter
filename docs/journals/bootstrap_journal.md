@@ -99,7 +99,7 @@
 ## RUN-002 — Tasks
 
 - [x] RUN-002.1 — Hook scripts (`.claude/hooks/`) and the pre-push gate (`.githooks/pre-push`)
-- [ ] RUN-002.2 — Settings layers (D6) and worktree-aware Makefile and compose (D2, D3)
+- [x] RUN-002.2 — Settings layers (D6) and worktree-aware Makefile and compose (D2, D3)
 - [ ] RUN-002.3 — Subagents (`.claude/agents/`) and desk role briefs (`.claude/roles/`)
 - [ ] RUN-002.4 — GitHub issue and PR templates; `scripts/gate_1.py`–`gate_8.py` stubs that fail
 - [ ] RUN-002.5 — Verify: a lint finding comes back from an edit; a failing test blocks a push; logs land per role

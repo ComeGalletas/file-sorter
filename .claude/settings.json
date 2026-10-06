@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(make init)",
+      "Bash(make test)",
+      "Bash(make test-gpu)",
+      "Bash(make lint)",
+      "Bash(make format)",
+      "Bash(make ps)",
+      "Bash(make gate-*)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker compose --profile test run --rm*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch*)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch*)",
+      "Bash(git rebase *)",
+      "Bash(git switch *)",
+      "Bash(git worktree list*)",
+      "Bash(gh issue view*)",
+      "Bash(gh issue list*)",
+      "Bash(gh issue comment*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr diff*)",
+      "Bash(gh pr checks*)",
+      "Bash(gh pr create*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./sanitize.yaml)",
+      "Read(./fixtures/labels.csv)",
+      "Read(./fixtures/images/**)",
+      "Edit(./.env)",
+      "Edit(./sanitize.yaml)",
+      "Edit(./fixtures/labels.csv)",
+      "Edit(./fixtures/images/**)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git push --no-verify*)",
+      "Bash(git commit --no-verify*)",
+      "Bash(git commit -n *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(rm -rf*)",
+      "Bash(*docker-compose.purge.yml*)",
+      "Bash(*docker-compose.egress.yml*)",
+      "Bash(git config core.hooksPath*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" SessionStart" } ] }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/post_edit_lint.sh\"", "timeout": 120 } ]
+      },
+      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" PostToolUse" } ] }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" Stop" },
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_tests.sh\"", "timeout": 900 }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" SubagentStop" } ] }
+    ]
+  }
+}

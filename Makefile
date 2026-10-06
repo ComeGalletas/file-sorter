@@ -8,7 +8,7 @@ COMPOSE := docker compose
 # RUN-002.D2: a linked worktree tests in its own compose project, so parallel runs never share db-test.
 WT_NAME := $(shell git rev-parse --git-dir 2>/dev/null | grep -q '/worktrees/' && basename "$$(git rev-parse --show-toplevel)" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-')
 TEST := $(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) --profile test run --rm test
-RUFF := docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
+RUFF := MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
 OLLAMA_MODELS := qwen3-vl:8b bge-m3   # the adult VLM is not pulled until Q-1 is decided (M5)
 
 .PHONY: help init up down ps logs build models test test-gpu lint format
