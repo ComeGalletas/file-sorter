@@ -46,6 +46,8 @@ references or host paths here. Use hashes.
   - Logs, console and test output, issues, PRs and journals carry hashes only. Host paths are never stored.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
   - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
+- **ING-001.D3** — **`animated` is an allow-list** (decided by the human, 2026-10-06; it replaces the earlier default). `animated` is true only when Pillow's `format` is in {GIF, WEBP, PNG} (PNG covers APNG) **and** `is_animated` is true. Every other format is false, including TIFF, MPO and HEIC. Classification reads frame or page 0.
+- **ING-001.1.2 alias:** `tif` is accepted as an alias of `tiff`, beside the MVP types in DESIGN.md §1. Extensions are matched case-insensitively, and `discover` filters by extension only: `probe_image` is the sole judge of decodability (R-ING-3).
 
 ## ING-001 — Plan
 
@@ -54,19 +56,23 @@ references or host paths here. Use hashes.
 
 ## ING-001 — Tasks
 
-- [ ] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
+- [x] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
+  - [x] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: d096c44
+  - [x] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped · commit: fa0d4b1
+  - [x] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime` · commit: 000f57c
+  - [x] ING-001.1.4 — `animated` as an allow-list (ING-001.D3 decided) · commit: (next commit)
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
 
 ## ING-001 — Results
 
 ### ING-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
-- **Deferred:**
+- **Status:** DONE. ING-001.D3 was decided by the human (allow-list) and is implemented in ING-001.1.4.
+- **Triage:** medium, solo. New behavior inside `classifier/graph/`, pure functions, no schema or contract change.
+- **Tests:** unit tier. The acceptance test `tests/unit/ingest/test_discovery.py` has 28 tests (4 for `hash_file`, 8 for `discover`, 16 for `probe_image`), all passing. `make test` (unit + db + integration) shows 155 passed. `make lint` is clean. Images are synthetic and generated in code: GIF, WebP and APNG with 2 frames, a 3-page TIFF, a 2-image MPO, a HEIC, a truncated PNG, a text file named `.png`, an empty file and a missing file.
+- **Self-rating:** 10/10, proud: yes (second pass). Since the first pass (9/10, gap: ING-001.D3 unconfirmed), the human decided D3 and `probe_image` now follows the allow-list, with a test per case. No gap is left against the acceptance test or R-ING-1, 3, 4, 6, 8, 9.
+- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Deferred:** the ledger node (ING-001.2, #16). Thumbnails (R-ING-5) wait for M2 (ING-001.D1). A HEIC with several images is read as a still, the first image only; that has no test, since no requirement covers it.
 
 ### ING-001.2 (worker: pipeline)
 
