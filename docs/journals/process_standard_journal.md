@@ -53,3 +53,33 @@
   - Branch naming depends on how agent-office names worktree branches, which is unverified until setup step 5.
   - Hook scripts that enforce the tiers don't exist yet (bootstrap step 4).
 - **Deferred:** `.claude/agents/test-runner.md`, `tests/conftest.py` tier mapping and `tests/devtools/test_tier_audit.py`, all built in M1 bootstrap tasks (TST).
+
+---
+
+## DOC-004 — Requirement (human, 2026-10-06)
+
+**Objective:** settle the three ownership and storage rules the M1 G0 plan (PR #23) raised, before any M1 work is assigned.
+
+**Details:**
+- Who writes a task's acceptance and unit tests (TST-002.D1).
+- Who owns the config loader at the package root (CFG-001.D1).
+- Whether the ledger may store source paths before the M2 sanitizer exists (ING-001.D2).
+
+**Constraint:** a rule change goes in its own PR, judged under `main`'s rules (RUN-007.D2). Human-side PR (RUN-002.D16), so the index row is the lead's to add (RUN-002.D13).
+
+## DOC-004 — Confirmed reading
+
+- **DOC-004.D1 (= TST-002.D1):** **The implementing worker writes its own task's tests**, in the same commit as the code, under `tests/<tier>/<package>/`. §3 already requires that every behavior change ships its test in the same commit; the roles table giving all of `tests/` to QA contradicted it. QA owns the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`, `fixtures/`, `scripts/gate_*.py`) and reviews test quality. The role guard is location-based and needs no change. (human, 2026-10-06)
+- **DOC-004.D2 (= CFG-001.D1):** **The config loader is `classifier/config.py`, owned by Pipeline.** The roles table had no owner for the package root. (human, 2026-10-06)
+- **DOC-004.D3 (= ING-001.D2):** **The source path is the one stored exception to "no unsanitized filenames".** DESIGN.md §5 already puts `source_path` and `duplicate_paths` in the ledger, and the bot needs the path to read the original. The container path (`/source/...`) may be stored in the local ledger and in the local reports under `results_root/reports/`, and nowhere else. Logs, console and test output, issues, PRs and journals carry hashes only. P-2 is unchanged: no model sees the unsanitized filename. (human, 2026-10-06)
+- The M1 plan's other answers stay in their own journals, recorded by the lead: PIPE-001.D1 (an M1 dry run ends at the last status a node set), ING-001.D1 (thumbnails move to M2) and TST-002.D2 (gate 1 ingests `fixtures/images/` twice against a fresh `db-test`). (human, 2026-10-06)
+
+## DOC-004 — Tasks
+
+- [x] DOC-004.1 — CLAUDE.md (the hard rule, the roles table, the line under it), DESIGN.md §12, and the QA, Pipeline and README desk briefs
+
+## DOC-004 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Rule text only, in docs and briefs, with no behavior change. The tests come from the pre-push gate.
+- **Self-rating:** 9/10, proud: yes. Gap: ownership of `tests/` is now split by path and purpose rather than by one folder. The tier audit and the reviewer are what catch a worker editing shared infrastructure.

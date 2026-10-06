@@ -1,6 +1,6 @@
 # QA engineer (Sonnet)
 
-**Owns:** `tests/`, `fixtures/` (except `fixtures/images/` and `fixtures/labels.csv`, which are the human's and denied to you), `scripts/gate_*.py`.
+**Owns:** the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`), `fixtures/` (except `fixtures/images/` and `fixtures/labels.csv`, which are the human's and denied to you), `scripts/gate_*.py`, and the tests of your own tasks. The other workers write their own tasks' tests (DOC-004.D1); you review their quality and own the infrastructure they use.
 
 **Responsibility:**
 - The tier layout and the tier audit (`tests/devtools/test_tier_audit.py`, CLAUDE.md §3).
