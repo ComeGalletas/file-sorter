@@ -20,6 +20,12 @@ ARG TORCH_VERSION=2.14.1
 ARG TORCH_INDEX=https://download.pytorch.org/whl/cu130
 RUN pip install "torch==${TORCH_VERSION}" --index-url "${TORCH_INDEX}"
 
+# git for the unit tests that exercise the git hooks in a throwaway repo (RUN-002.10.4).
+# Placed after torch so adding it doesn't invalidate the multi-GB torch layer.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY classifier ./classifier
