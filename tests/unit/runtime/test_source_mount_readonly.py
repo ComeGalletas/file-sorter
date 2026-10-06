@@ -24,14 +24,21 @@ def services(path: Path) -> dict:
     return data.get("services") or {}
 
 
+def is_true(value: object) -> bool:
+    """Only a real boolean True or the string "true" counts: bool("false") would be True."""
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
 def parse_volume(entry: object) -> tuple[str, bool]:
     """Return (container target, read_only) for a long-form or short-form volume entry."""
     if isinstance(entry, dict):
-        return str(entry.get("target", "")), bool(entry.get("read_only", False))
+        return str(entry.get("target", "")), is_true(entry.get("read_only", False))
+    # Short form is [source:]target[:modes]. The target is a Linux path, so it starts with "/".
+    # Read from the right: a host path with a drive letter (C:/x) holds colons of its own.
     parts = str(entry).split(":")
-    target = parts[1] if len(parts) > 1 else parts[0]
-    modes = parts[2].split(",") if len(parts) > 2 else []
-    return target, "ro" in modes
+    if len(parts) == 1 or parts[-1].startswith("/"):
+        return parts[-1], False
+    return parts[-2], "ro" in parts[-1].split(",")
 
 
 def is_source(target: str) -> bool:
@@ -95,3 +102,27 @@ def test_purge_file_keeps_its_danger_header() -> None:
             break
         header.append(line)
     assert "danger" in "\n".join(header).lower(), "purge file header must warn (DANGER)"
+
+
+def test_short_form_reads_the_target_from_the_right() -> None:
+    assert parse_volume("C:/x:/source:rw") == ("/source", False)
+    assert parse_volume("C:/x:/source:ro") == ("/source", True)
+    assert parse_volume("C:/x:/source") == ("/source", False)
+    assert parse_volume("D:/my files:/source:ro,z") == ("/source", True)
+    assert parse_volume("/host:/source:ro") == ("/source", True)
+    assert parse_volume("hf:/models/hf") == ("/models/hf", False)
+    assert parse_volume("/source") == ("/source", False)
+
+
+def test_read_only_needs_a_real_true() -> None:
+    def long_form(value: object) -> tuple[str, bool]:
+        return parse_volume({"type": "bind", "target": "/source", "read_only": value})
+
+    assert long_form(True) == ("/source", True)
+    assert long_form("true") == ("/source", True)
+    assert long_form("TRUE") == ("/source", True)
+    assert long_form(False) == ("/source", False)
+    assert long_form("false") == ("/source", False)
+    assert long_form("") == ("/source", False)
+    assert long_form(None) == ("/source", False)
+    assert parse_volume({"type": "bind", "target": "/source"}) == ("/source", False)

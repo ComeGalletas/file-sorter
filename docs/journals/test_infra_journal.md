@@ -56,6 +56,7 @@ references or host paths here. Use hashes.
   - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it
   - [x] TST-002.3.3 — the purge file is the only read-write remount, for `app` only, with its DANGER header
   - [x] TST-002.3.4 — Results, self-rating and the local regression check
+  - [x] TST-002.3.5 — hardening from the round-1 review: short-form target read from the right; `read_only` true only for a real `True` or `"true"`
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
 
 ## TST-002 — Results
