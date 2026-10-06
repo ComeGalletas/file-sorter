@@ -403,11 +403,12 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
   - Test tiers: `unit`, `db`, `integration`, `gpu`, `gate`.
 - **Roles and file ownership.**
   - Lead (Opus): `docs/` only, no code.
-  - Pipeline: `graph/ naming/ fileops/ db/ cli/ sanitize/`.
+  - Pipeline: `graph/ naming/ fileops/ db/ cli/ sanitize/` and `config.py`.
   - ML: `models/ prompts/ eval/`.
   - Data/RAG: `rag/` plus `references*` migrations.
   - API/UI: `api/ ui/`.
-  - QA: `tests/ fixtures/ scripts/`.
+  - QA: the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`), `fixtures/`, `scripts/`.
+  - Every worker writes its own task's tests, in the same commit as the code (DOC-004.D1).
   - Reviewer (Sonnet), quick Reviewer (Haiku, small docs-only PRs, RUN-006), Privacy auditor (Haiku) and Test runner (Sonnet) are read-only subagents in `.claude/agents/`. The six desk roles are briefs in `.claude/roles/`, never subagents (RUN-002.D1).
 - **Human gates.**
   - G0: you set `status: approved` in `docs/plans/mN.md`.

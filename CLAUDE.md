@@ -20,7 +20,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 - Add a network route, outbound HTTP call or open port **in the app runtime** beyond the localhost services (`db`, `ollama`, `searxng`). All ports bind to `127.0.0.1`. The runtime means the Compose services, the code under `classifier/`, and anything that runs inside the containers. The designed runtime exceptions, each in its own container, are: the `fetch` service's Hugging Face download (R-MOD-2), the `ollama` service's model pulls (`make models`), SearXNG's forwarding of query text (C-14), and the opt-in egress backends (R-RUN-2). Model weights arrive only through the first two. **Host-side process tooling (`.claude/hooks/`, `.githooks/`, scripts run on the host such as the review router, Makefile recipes that don't run in a container, and the desks' own `gh` use)** may reach **only** (a) GitHub, through `gh`, for PR and issue metadata, and (b) these registries, **download only and at build or setup time**, never from app runtime code: Docker Hub, the GitHub Container Registry (`ghcr.io`), the Debian package archive, PyPI and the PyTorch index (`download.pytorch.org`), as pinned in the Dockerfile, `docker-compose.yml`, the Makefile and the lint hook. Adding a registry takes its own rule-change PR (RUN-007.D2). No other host, no uploading file contents anywhere, and never image data, `fixtures/`, `.env` or any other git-ignored file (RUN-007.D1, D4, D5).
 - Call a model except through the clients in `classifier/models/` (SigLIP, NSFW, Ollama) and `classifier/sanitize/` (Anthropic, text-only, opt-in). Never send pixels to any remote service.
 - Delete or overwrite files outside `classifier/fileops/delete.py`. No sorting step (`sort`, `watch`, `dry-run`, `reclassify`) ever deletes or modifies an original. `purge-sources` and `delete` are CLI-only, never appear in the UI, and refuse to run unless `deletion.enabled: true` (default `false`). Never change that default.
-- Log or store original sensitive values, EXIF values or unsanitized filenames. Log hashes instead.
+- Log or store original sensitive values, EXIF values or unsanitized filenames. Log hashes instead. **The one exception is the source path itself** (DOC-004.D3): its container path (`/source/...`) may be stored in the local ledger (`files.source_path`, `files.duplicate_paths`) and in the local reports under `results_root/reports/`, because the bot needs it to read the original. Logs, console and test output, issues, PRs and journals still carry hashes only.
 - Install packages on the host or touch the host GPU directly. Every build, test and run goes through `docker compose`.
 - Start milestone N before `docs/plans/mN.md` has `status: approved`. Plan milestone N+1 before the git tag `mN-approved` exists.
 - Skip a hook (`--no-verify`), skip a test to make it green, or commit a red task as done.
@@ -256,17 +256,17 @@ Edit only the folders your role owns. Need a change elsewhere? Open an issue for
 | Role | Model | Owns |
 | --- | --- | --- |
 | Lead | Opus | `docs/` (plans, journals, index); no code. Plans, opens issues, assigns, approves plans, merges, writes reports |
-| Pipeline engineer | Sonnet | `classifier/{graph,naming,fileops,db,cli,sanitize}/` |
+| Pipeline engineer | Sonnet | `classifier/{graph,naming,fileops,db,cli,sanitize}/`, `classifier/config.py` (DOC-004.D2) |
 | ML engineer | Sonnet | `classifier/models/`, `prompts/`, `eval/` |
 | Data/RAG engineer | Sonnet | `classifier/rag/`, `references*` migrations |
 | API/UI engineer | Sonnet | `classifier/api/`, `classifier/ui/` |
-| QA engineer | Sonnet | `tests/`, `fixtures/` (except `fixtures/images/`), `scripts/gate_*.py` |
+| QA engineer | Sonnet | the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`), `fixtures/` (except `fixtures/images/`), `scripts/gate_*.py`, and its own tasks' tests |
 | Reviewer | Sonnet subagent, read-only | — (full review; reproductions only to confirm a suspected blocker) |
 | Reviewer, quick | Haiku subagent, read-only | — (small, docs-only PRs, picked by `scripts/review_route.sh`) |
 | Privacy auditor | Haiku subagent, read-only | — |
 | Test runner | Sonnet subagent | writes only `$AGENT_LOG_ROOT/qa/test-history.md` |
 
-Every worker also edits its own task lines and Results subsection in the journal (§1.3). The repo bootstrap (runbook steps 3–4) was the one exception to ownership.
+Every worker also edits its own task lines and Results subsection in the journal (§1.3), and **writes the tests for its own task**, in the same commit as the code they cover, under `tests/<tier>/<package>/` (§3; DOC-004.D1). QA owns the shared test infrastructure and reviews test quality: a change to it is QA's task, so open an issue. The repo bootstrap (runbook steps 3–4) was the one exception to ownership.
 
 **Where the roles live (RUN-002.D1):**
 - **Desk briefs** are in `.claude/roles/`, one per desk, with launch commands in `README.md`.
