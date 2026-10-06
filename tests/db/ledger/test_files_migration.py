@@ -154,3 +154,16 @@ def test_models_match_the_migration(alembic_cfg: Config, schema: str) -> None:
     finally:
         engine.dispose()
     assert diff == []
+
+
+def test_env_loads_the_dsn_through_load_config(
+    schema: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without an explicit URL, env.py takes the DSN from load_config (`DB_DSN` wins)."""
+    dsn = make_url(os.environ["DB_DSN"]).update_query_dict(
+        {"options": f"-c search_path={schema},public"}
+    )
+    with monkeypatch.context() as patch:
+        patch.setenv("DB_DSN", dsn.render_as_string(hide_password=False))
+        command.upgrade(Config(str(INI)), "head")
+    assert _rows(schema, "select version_num from alembic_version") == [("0001",)]
