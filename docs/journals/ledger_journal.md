@@ -39,8 +39,8 @@ references or host paths here. Use hashes.
 
 - [ ] DB-001.1 — Alembic set-up and the `files` migration · #14 · acceptance: `tests/db/ledger/test_files_migration.py`
   - [x] DB-001.1.1 — Alembic set-up: `alembic.ini`, `env.py`, DSN through `load_config` · ac31e11
-  - [x] DB-001.1.2 — SQLAlchemy `File` model and `FileStatus` enum
-  - [ ] DB-001.1.3 — Migration `0001_files` with its db-tier test (the acceptance test)
+  - [x] DB-001.1.2 — SQLAlchemy `File` model and `FileStatus` enum · 34f81e8
+  - [x] DB-001.1.3 — Migration `0001_files` with its db-tier test (the acceptance test)
   - [ ] DB-001.1.4 — Journal Results
 
 ## DB-001 — Results
