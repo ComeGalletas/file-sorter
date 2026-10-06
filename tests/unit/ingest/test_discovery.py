@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -195,6 +196,48 @@ class TestProbeImage:
         (tmp_path / "empty.png").write_bytes(b"")
         assert isinstance(probe_image(tmp_path / "empty.png"), Skipped)
         assert isinstance(probe_image(tmp_path / "missing.png"), Skipped)
+
+    def test_truncated_heic_is_skipped(self, tmp_path: Path) -> None:
+        good = tmp_path / "good.heic"
+        Image.effect_noise((64, 64), 80).convert("RGB").save(good, format="HEIF")
+        data = good.read_bytes()
+        bad = tmp_path / "bad.heic"
+        bad.write_bytes(data[: len(data) // 2])
+        assert isinstance(probe_image(bad), Skipped)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("x"),
+            EOFError("x"),
+            SyntaxError("x"),
+            ValueError("x"),
+            struct.error("x"),
+            Image.DecompressionBombError("x"),
+        ],
+    )
+    def test_pillow_error_families_are_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        # ING-001.2.1: each family Pillow raises for a bad file becomes a Skipped
+        def boom(*_: object, **__: object) -> None:
+            raise error
+
+        monkeypatch.setattr(Image, "open", boom)
+        result = probe_image(tmp_path / "x.png")
+        assert isinstance(result, Skipped)
+        assert result.reason == f"undecodable image ({type(error).__name__})"
+
+    def test_a_bug_is_not_hidden_as_an_undecodable_image(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ING-001.2.1: only Pillow's families are caught; anything else surfaces
+        def boom(*_: object, **__: object) -> None:
+            raise AttributeError("a real bug")
+
+        monkeypatch.setattr(Image, "open", boom)
+        with pytest.raises(AttributeError):
+            probe_image(tmp_path / "x.png")
 
     def test_skip_reason_never_contains_the_path(self, tmp_path: Path) -> None:
         path = tmp_path / "secret-name-xyz.png"

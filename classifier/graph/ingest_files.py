@@ -6,6 +6,7 @@ prints or logs a path or a file name (CLAUDE.md "Hard rules").
 
 import hashlib
 import os
+import struct
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -81,6 +82,18 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
 _ANIMATED_FORMATS = frozenset({"GIF", "WEBP", "PNG"})
 
 
+# What Pillow raises for a file it can't decode: OSError covers UnidentifiedImageError and
+# truncation, SyntaxError and struct.error come from format plugins, EOFError from short reads.
+_PILLOW_ERRORS = (
+    OSError,
+    EOFError,
+    SyntaxError,
+    ValueError,
+    struct.error,
+    Image.DecompressionBombError,
+)
+
+
 class Probe(NamedTuple):
     """What decoding the first frame or page told us about a file."""
 
@@ -111,6 +124,6 @@ def probe_image(path: Path) -> Probe | Skipped:
                 animated=animated,
                 mtime=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC),
             )
-    except Exception as exc:  # Pillow raises OSError, SyntaxError, ValueError, ...
+    except _PILLOW_ERRORS as exc:  # anything else is a bug and must surface (ING-001.2.1)
         return Skipped(path, f"undecodable image ({type(exc).__name__})")
     return probe
