@@ -1,7 +1,7 @@
 # Ingest — journal
 
-**ID:** ING-001 · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** proposed · **Milestone:** m1 ·
-**Issues:** #15, #16 · **Branch:** per task, named by agent-office (`office/*`)
+**ID:** ING-001 · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** done (ING-001.1–.3) · **Milestone:** m1 ·
+**Issues:** #15 (PR #27), #16 (PR #33), #34 (PR #36) · **Branch:** `office/nibble-b6b2` (.1), `office/pixel-a032` (.2), `office/nibble-42bc` (.3)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -50,6 +50,7 @@ references or host paths here. Use hashes.
 - **ING-001.D4** — **Decompression bombs: Pillow's default stands** (lead, 2026-10-06). `Image.MAX_IMAGE_PIXELS` stays at its default, 89,478,485 pixels. Above that Pillow warns (`DecompressionBombWarning`); above twice that (~179 MP) it raises `DecompressionBombError`, which `probe_image` catches and returns as `Skipped` (ING-001.2.1). A test pins the limit, so changing it is a deliberate act.
 - **ING-001.D5** — **Skip reasons live in `files.error`; only `status = error` is retried** (lead, 2026-10-06). A skipped file has `status = skipped` and its reason in `files.error`: a fixed string or an exception type, never a path. No migration. A `skipped` row counts as known under R-ING-2 and is never retried. That holds although `error` also stores skip reasons, because retries key on the status, not the column.
 - **ING-001.D6** — **Symlinks and unreadable folders get no ledger row** (lead, 2026-10-06). They can't be hashed safely, so they count as skipped-unreadable on every run and are never "new". A non-image or undecodable *file* is hashed (read-only) and recorded as `skipped`. The node takes the root as a parameter, and `source_path` is the container path as walked (DOC-004.D3).
+  - **Extended by the lead after PR #33's review (2026-10-06):** a regular file that `hash_file` can't read, for example because permission is denied, also gets **no row**, and counts as skipped-unreadable on every run. R-ING-3 asks for a `skipped` row, but a row needs `source_hash` as its primary key, so this is the only workable reading. The same holds for a symlinked folder, which `os.walk` doesn't follow (see ING-001.2's Deferred).
 - **ING-001.1.2 alias:** `tif` is accepted as an alias of `tiff`, beside the MVP types in DESIGN.md §1. Extensions are matched case-insensitively, and `discover` filters by extension only: `probe_image` is the sole judge of decodability (R-ING-3).
 
 ## ING-001 — Plan
@@ -64,14 +65,16 @@ references or host paths here. Use hashes.
   - [x] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped · commit: fa0d4b1
   - [x] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime` · commit: 000f57c
   - [x] ING-001.1.4 — `animated` as an allow-list (ING-001.D3 decided) · commit: 8ab7a0d
-- [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
+- [x] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
   - [x] ING-001.2.1 — `probe_image`: catch only Pillow's error families · commit: ad6c99a
   - [x] ING-001.2.2 — `discover`: file symlinks are `Skipped("symlink")` · commit: 7b46b26
   - [x] ING-001.2.3 — `discover`: an unreadable subfolder is a `Skipped`, via `os.walk` `onerror` · commit: 8881580
   - [x] ING-001.2.4 — Record ING-001.D4 (decompression bombs) and pin the Pillow limit in a test · commit: 050abde
   - [x] ING-001.2.5 — `ingest` node and its typed result, with the db tests (the lead folded .2.6 into this commit) · commit: 82a60bc
   - ~~ING-001.2.6~~ folded into ING-001.2.5 (tests ship with their code, DOC-004.D1)
-  - [x] ING-001.2.7 — Results and self-rating · commit: (this commit)
+  - [x] ING-001.2.7 — Results and self-rating · commit: e170061
+- [x] ING-001.3 — A multi-image HEIC is read from its first image and isn't animated (R-ING-6, R-ING-9 as clarified by DOC-006; from PR #32's review) · #34 · acceptance: `tests/unit/ingest/test_discovery.py`
+  - [x] ING-001.3.1 — The test, with two mutation checks · commit: 9be0566
 
 ## ING-001 — Results
 
@@ -81,7 +84,7 @@ references or host paths here. Use hashes.
 - **Triage:** medium, solo. New behavior inside `classifier/graph/`, pure functions, no schema or contract change.
 - **Tests:** unit tier. The acceptance test `tests/unit/ingest/test_discovery.py` has 28 tests (4 for `hash_file`, 8 for `discover`, 16 for `probe_image`), all passing. `make test` (unit + db + integration) shows 155 passed. `make lint` is clean. Images are synthetic and generated in code: GIF, WebP and APNG with 2 frames, a 3-page TIFF, a 2-image MPO, a HEIC, a truncated PNG, a text file named `.png`, an empty file and a missing file.
 - **Self-rating:** 10/10, proud: yes (second pass). Since the first pass (9/10, gap: ING-001.D3 unconfirmed), the human decided D3 and `probe_image` now follows the allow-list, with a test per case. No gap is left against the acceptance test or R-ING-1, 3, 4, 6, 8, 9.
-- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Review:** PR #27, merged as `23097eb`, closing #15. Reviewer APPROVE (full, 7 minor), Privacy auditor PASS, at `8ab7a0d`; the verdict comment is on the PR. Minors 1–4 (narrow except, file symlinks, `onerror`, decompression bombs) were done in ING-001.2. The rest are closed here. The reviewer judged the 10/10 self-rating generous: the multi-image HEIC was untested, which ING-001.3 has since covered.
 - **Deferred:** the ledger node (ING-001.2, #16). Thumbnails (R-ING-5) wait for M2 (ING-001.D1). A HEIC with several images is read as a still, the first image only; that has no test, since no requirement covers it.
 
 ### ING-001.2 (worker: pipeline)
@@ -100,7 +103,11 @@ references or host paths here. Use hashes.
   - The node never commits. The caller owns the transaction, so the `db` fixture can roll back.
   - A non-image *file* is hashed and recorded as `skipped`. A symlink and an unreadable folder are not (ING-001.D6).
 - **Self-rating:** 9/10, proud: yes (first pass, from a fresh read of the diff). The one point is the gap named under Deferred, a symlinked folder being dropped without a trace. It is outside the issue's wording ("file symlinks") and the acceptance test. Nothing is left against R-ING-1, 2, 3, 4, 6, 7, 8, 9 or the four PR #27 follow-ups.
-- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Review:** PR #33, merged as `cea5152`, closing #16. Reviewer APPROVE (full, large; 4 minor, no blockers or majors), Privacy auditor PASS, at `e170061`; the verdict comment is on the PR. The minors were handled as follows:
+  - an unhashable regular file gets no row: ING-001.D6 is extended by the lead;
+  - what an `error` retry clears went to PIPE-001.1 and became PIPE-001.D2;
+  - the hash is filled in;
+  - the untested "error row now undecodable" case is optional and left open.
 - **Deferred:**
   - **A symlinked directory is dropped silently.** `os.walk` lists it in `dirnames` and doesn't follow it, so it is never reported. Proposed follow-up: yield `Skipped("symlink")` for it, like a file link. Severity: low.
   - **A changed file at the same path** gets a new hash and a new row, and the old row's `source_path` goes stale. Out of scope, as the lead set it; `watch` (M7) handles it.
@@ -118,5 +125,5 @@ references or host paths here. Use hashes.
   - **Mutation check 1 (`"HEIF"` added to `_ANIMATED_FORMATS`):** the new test failed on its final assertion: `assert (16, 16, True) == (16, 16, False)`, index 2. Reverted with `git checkout`.
   - **Mutation check 2 (`probe_image` seeks to the second image before `load()`):** the new test failed on the same assertion: `assert (32, 8, False) == (16, 16, False)`, index 0. Reverted with `git checkout`; `git status` then showed only the test file and this journal changed.
 - **Self-rating:** 10/10, proud: yes. Nothing is left against the issue's acceptance test, R-ING-6 or R-ING-9, and both regressions it guards were shown to fail the test.
-- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Review:** PR #36, merged as `f71f8d8`, closing #34. Reviewer APPROVE (full, 1 optional minor: a raw exception rather than the named message if `save` itself raises), Privacy auditor PASS, at `9be0566`; the verdict comment is on the PR.
 - **Deferred:** nothing. Note: an unrelated `make test-gpu` call ran by mistake inside the first mutation command; its output was discarded and it changed no files.

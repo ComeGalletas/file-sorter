@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-002 · SAN-001 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-001 · API-001 · MOD-001 · PIPE-002 · CFG-002 · RUN-008 · DB-002 · CLI-003 · TST-003 · DOC-005
+**Next free:** ING-002 · SAN-001 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-001 · API-001 · MOD-001 · PIPE-002 · CFG-003 · RUN-008 · DB-002 · CLI-003 · TST-004 · DOC-007
 
 ## Work items
 
@@ -23,16 +23,20 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | RUN-007 | The no-outbound-call hard rule covers the app runtime; host tooling limited to `gh` metadata and five named registries | RUN, DOC | process | done | — | PR #11 | [bootstrap_journal.md](bootstrap_journal.md) | `run-007-network-rule-scope` | 2026-10-06 |
 | CLI-001 | `classifier --version` prints the package version (harness dry run, runbook step 6) | CLI | feature | done | — | #2 (PR #5) | [harness_journal.md](harness_journal.md) | `office/nibble-2cb1` | 2026-10-05 |
 | TST-001 | Deliberately failing probe test: proves the pre-push gate blocks a red branch; never fixed or merged | TST, RUN | process | blocked (by design: the push was rejected, TST-001.D1) | — | #3 (open, no PR) | [harness_journal.md](harness_journal.md) | `office/sprocket-0819` (local only, never pushed) | 2026-10-05 |
-| CFG-001 | Typed config loader; refuse nested source and results roots | CFG, FOP | feature | proposed | m1 | #13 | [config_journal.md](config_journal.md) | per task (`office/*`) | 2026-10-06 |
-| DB-001 | Alembic set-up and the `files` ledger | DB | feature | proposed | m1 | #14 | [ledger_journal.md](ledger_journal.md) | per task (`office/*`) | 2026-10-06 |
-| ING-001 | Hashing, discovery, frame probing and the ingest node | ING, PIPE, DB | feature | proposed | m1 | #15, #16 | [ingest_journal.md](ingest_journal.md) | per task (`office/*`) | 2026-10-06 |
-| PIPE-001 | Batch graph skeleton with dry-run mode | PIPE | feature | proposed | m1 | #17 | [pipeline_journal.md](pipeline_journal.md) | per task (`office/*`) | 2026-10-06 |
-| CLI-002 | `classifier dry-run [--csv]` | CLI, PIPE, FOP | feature | proposed | m1 | #18 | [pipeline_journal.md](pipeline_journal.md) | per task (`office/*`) | 2026-10-06 |
-| TST-002 | Db fixture, tier audit, read-only source test, gate 1 | TST, RUN | feature | proposed | m1 | #19, #20, #21, #22 | [test_infra_journal.md](test_infra_journal.md) | per task (`office/*`) | 2026-10-06 |
+| CFG-001 | Typed config loader; refuse nested source and results roots | CFG, FOP | feature | done | m1 | #13 (PR #26) | [config_journal.md](config_journal.md) | `office/pixel-0686` | 2026-10-06 |
+| CFG-002 | Config loader hardening from PR #26's review: leading `//` and absolute roots, errors without input values, `DB_DSN` always wins (CFG-001.D2) | CFG | refactor | proposed (not scheduled; the human picks M1 or M2) | — | — | [config_journal.md](config_journal.md) | — | 2026-10-06 |
+| DB-001 | Alembic set-up and the `files` ledger | DB | feature | done | m1 | #14 (PR #30) | [ledger_journal.md](ledger_journal.md) | `office/pixel-7049` | 2026-10-06 |
+| ING-001 | Hashing, discovery, frame probing and the ingest node | ING, PIPE, DB | feature | done | m1 | #15 (PR #27), #16 (PR #33), #34 (PR #36) | [ingest_journal.md](ingest_journal.md) | per task (`office/*`) | 2026-10-06 |
+| PIPE-001 | Batch graph skeleton with dry-run mode | PIPE | feature | done | m1 | #17 (PR #35) | [pipeline_journal.md](pipeline_journal.md) | `office/pixel-3a83` | 2026-10-06 |
+| CLI-002 | `classifier dry-run [--csv]` | CLI, PIPE, FOP | feature | in progress | m1 | #18 | [pipeline_journal.md](pipeline_journal.md) | per task (`office/*`) | 2026-10-06 |
+| TST-002 | Db fixture, tier audit, read-only source test, gate 1 | TST, RUN | feature | in progress (.1, .3 done; .2 in review; .4 waits for CLI-002.1) | m1 | #19 (PR #31), #20 (PR #28, open), #21 (PR #29), #22 | [test_infra_journal.md](test_infra_journal.md) | per task (`office/*`) | 2026-10-06 |
+| TST-003 | A shared private-schema fixture for integration tests (from PR #35's `schema_support.py`) | TST | refactor | proposed (not scheduled; the human picks M1 or M2) | — | — | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-06 |
 | DOC-001 | Process standard: work IDs, journals, index, commits, triage, completion status, self-rating, test tiers (adopted from the pygame project) | DOC, TST | process | done | — | — | [process_standard_journal.md](process_standard_journal.md) | main | 2026-10-05 |
 | DOC-002 | Design review: the plan reconciled into DESIGN.md (C-1 to C-20, open questions answered) | DOC, all | process | done | — | — | [design_review_journal.md](design_review_journal.md) | main | 2026-10-05 |
 | DOC-003 | Windows-native workspace: Docker Desktop host, `file-sorter-full` layout, agent-office from the fork | DOC, RUN | process | done | — | — | [workspace_journal.md](workspace_journal.md) | main | 2026-10-05 |
 | DOC-004 | M1 G0 rule changes: workers write their own task tests (QA owns shared test infrastructure), `classifier/config.py` owned by Pipeline, container source paths stored only in the local ledger and reports | DOC, TST, CFG, ING | process | done | — | PR #24 | [process_standard_journal.md](process_standard_journal.md) | `doc-004-test-ownership` | 2026-10-06 |
+| DOC-005 | No aggregates about the human's folder, fixtures or labels in the repo (counts, file-type mix, sizes, label distributions); gate reports use percentages and "0 new ledger rows" (DOC-005.D1) | DOC, TST | process | done | — | PR #25 | [process_standard_journal.md](process_standard_journal.md) | `doc-005-no-folder-aggregates` | 2026-10-06 |
+| DOC-006 | R-ING-9 `animated` becomes the ING-001.D3 allow-list (GIF, WEBP, PNG with `is_animated`); R-ING-6 reads the first frame, page or image of any multi-frame file | DOC, ING | process | done | — | PR #32 | [design_review_journal.md](design_review_journal.md) | `doc-006-animated-allow-list` | 2026-10-06 |
 
 ## Plans and designs
 
@@ -43,6 +47,6 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | [../../CLAUDE.md](../../CLAUDE.md) | DOC-001, DOC-003 |
 | [TEMPLATE.md](TEMPLATE.md) | DOC-001 |
 | [../plans/TEMPLATE.md](../plans/TEMPLATE.md) | DOC-001 |
-| [../plans/m1.md](../plans/m1.md) | M1: CFG-001, DB-001, ING-001, PIPE-001, CLI-002, TST-002 |
+| [../plans/m1.md](../plans/m1.md) | M1: CFG-001, DB-001, ING-001 (incl. ING-001.3, #34), PIPE-001, CLI-002, TST-002 |
 | [../../.claude/roles/README.md](../../.claude/roles/README.md) | RUN-002 |
 | `../../fixtures/labels.csv` (git-ignored) | CLS-001, M3 gate |
