@@ -30,7 +30,7 @@ references or host paths here. Use hashes.
 - `tests/db/test_db_reachable.py` connects with `DB_DSN` and runs no migrations. The fixture needs DB-001.1's Alembic set-up.
 - `scripts/gate_1.py` is a stub that exits 1 (RUN-002.4).
   - `make gate-1` runs it in the `test` container. That container has the repo and `fixtures/` but no `/source` mount (RUN-001.D6), and `db-test` (tmpfs, empty on every start).
-  - `fixtures/images/` holds the 150 labelled real images (DOC-003.5), git-ignored, and the gate tier may read them.
+  - `fixtures/images/` is the git-ignored set of real fixtures (DOC-003.5), and the gate tier may read it.
 - **R-FOP-8:** the test parses `docker-compose.yml` instead of touching the mount, because tests may not read `source_root`.
 - **TST-002.D1** — **The implementing worker writes its own task's tests** (confirmed by the human, 2026-10-06, option 1 as recommended). The rule change is DOC-004.D1, merged in PR #24: CLAUDE.md, DESIGN.md §12 and the desk briefs.
   - Each worker writes its tests in the same commit as the code, under `tests/<tier>/<package>/`.
