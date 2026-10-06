@@ -108,7 +108,7 @@ Journals live in `docs/journals/<feature>_journal.md`; copy `docs/journals/TEMPL
   - the triage block (§2.1);
   - which tiers and acceptance test ran, with their counts;
   - the completion status (§2.3) and the self-rating (§2.4).
-- **Merging:** the lead merges with a merge commit (`gh pr merge --merge`), so each subtask commit and its ID stay in `main`'s history. Workers never merge.
+- **Merging:** the lead merges with a merge commit (`gh pr merge --merge --delete-branch`), so each subtask commit and its ID stay in `main`'s history and no merged branch is left behind. Workers never merge.
 
 ### 1.7 Hand-tuned values — flag and ask
 
@@ -304,6 +304,11 @@ Milestones M3–M6 run in **dry-run only**. Before M7, `results_root` gets empty
 - **Shell:** hooks and Makefile recipes are POSIX shell run by Git Bash (`SHELL := bash`). Don't use Linux-only tools, and don't use PowerShell in hooks.
   - Prefix `docker run` with `MSYS_NO_PATHCONV=1` whenever an argument is a container path (`-w /io`). Otherwise Git Bash rewrites it into a Windows path.
   - Parse hook JSON with `sed`: `jq` isn't available.
+  - **Read files with the Read tool, not `cat`** (RUN-002.D11). Shell output reaches Claude in the Windows console code page, so `—` and `§` come back as `�`. The files themselves are valid UTF-8.
+- **Worktree base (RUN-002.D10):**
+  - agent-office branches every worker worktree from whatever branch the main checkout is on.
+  - The lead switches back to `main` right after pushing any docs branch.
+  - Every worker starts its task with `git fetch && git rebase origin/main`.
 - **Line endings:** LF everywhere, enforced by `.gitattributes`. Never commit CRLF shell scripts or Dockerfiles.
 - **Image folders:** source and results are Windows-drive bind mounts (`/source` read-only, `/results`); their paths are only in the local `.env`. Bind-mount I/O is slower than native. `watch` and dev auto-reload must poll, because file events don't propagate. Paths contain spaces, so always quote them.
 - **GPU stack:** the RTX 5080 (Blackwell) needs PyTorch built for CUDA 12.8+ (`cu128`+).
