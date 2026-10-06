@@ -41,7 +41,7 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 5. `git push -u origin HEAD`; the pre-push gate runs. `gh pr create` with the template filled in.
 6. Write your job log (plan, steps, test results) as you go, to `<issue>.md` in the folder this command prints: `bash -c '. .claude/hooks/common.sh; log_dir'`. It prints the absolute path of `agent-logs/<role>/` in the workspace. Never write it to a relative `../agent-logs`: from inside a worktree that lands in `.agent-office/worktrees/` (RUN-005.D4).
 
-Never edit outside your role's paths; open an issue for the owner instead.
+Never edit outside your role's paths; open an issue for the owner instead. Your own task's tests are yours: write them in the same commit as the code, under `tests/<tier>/<package>/`. The shared test infrastructure is QA's (DOC-004.D1).
 
 **agent-office's Changes window is for watching only** (RUN-002.D12). That's the panel beside each desk's terminal, showing the desk's changed files and diffs. Don't use its commit, discard or open-a-PR buttons:
 - A commit from the panel lacks the `<ID>: …` subject and the journal tick (CLAUDE.md §1.6).
