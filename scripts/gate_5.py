@@ -1,7 +1,7 @@
 """Milestone 5 gate: Name (DESIGN.md §11).
 
 Criterion: 0 sensitive values in 500 generated names (the M5 plan settles how 500 names come from
-~150 images); names readable without opening the file (human review at G1).
+the real images); names readable without opening the file (human review at G1).
 
 STUB (RUN-002.4): exits 1 until milestone 5 implements the measurement.
 QA owns this file. Report aggregates and hashes only, never file names or references.
@@ -11,7 +11,7 @@ import sys
 
 CRITERION = (
     "0 sensitive values in 500 generated names (the M5 plan settles how 500 names come "
-    "from ~150 images); names readable without opening the file (human review at G1)."
+    "from the real images); names readable without opening the file (human review at G1)."
 )
 
 
