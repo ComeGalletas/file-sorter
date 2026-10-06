@@ -95,8 +95,8 @@ references or host paths here. Use hashes.
 ## CLI-002 — Tasks
 
 - [ ] CLI-002.1 — `classifier dry-run [--csv]` · #18 · acceptance: `tests/integration/test_dry_run_cli.py`
-  - [x] CLI-002.1.1 — `RunResult.ingest` raises `TypeError` instead of `assert`; annotate `run._build` (PR #35 follow-up) · unit test `tests/unit/graph/test_state.py` · commit: next commit
-  - [ ] CLI-002.1.2 — the `dry-run` command, the CSV writer and the integration test (.3 folded in)
+  - [x] CLI-002.1.1 — `RunResult.ingest` raises `TypeError` instead of `assert`; annotate `run._build` (PR #35 follow-up) · unit test `tests/unit/graph/test_state.py` · commit: 0ee1b3f
+  - [x] CLI-002.1.2 — the `dry-run` command, the CSV writer and the integration test (.3 folded in) · `tests/integration/test_dry_run_cli.py` (7 tests) · commit: next commit
   - ~~CLI-002.1.3~~ folded into CLI-002.1.2 (tests ship with their code, DOC-004.D1)
   - [ ] CLI-002.1.4 — journal notes (`nodes=` seam, `limit`) and Results
 
