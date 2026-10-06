@@ -19,11 +19,9 @@ A local bot on the RTX 5080 box watches one images folder. For each image it:
 The source folder is **read-only**: the bot never moves, modifies or deletes an original. Everything it produces goes to a separate **results** folder.
 
 **In scope (MVP):** jpg, jpeg, png, webp, gif, bmp, heic, tiff; the CLI; a local status UI; Postgres ledger; pgvector reference store; Docker Compose runtime.
-**Target folder profile (Oct 2026).**
+**Target folder profile.**
 
-- About 150 images in one flat folder (mostly png, then jpg/jpeg and gif, one webp), plus a few non-image files (audio, `desktop.ini`).
-- Many of the images are screenshots or Snipping Tool captures.
-- Fewer than 5 are adult images.
+- One flat folder of images, plus some non-image files that ingest skips. Its size, file-type mix and content are not recorded in this public repo (DOC-005.D1); the git-ignored labelled copy in `fixtures/` stands in for it.
 - Source and results are sibling folders on the same Windows drive, bind-mounted into Docker Desktop containers.
 - Real paths live only in the git-ignored `.env`.
 
@@ -132,7 +130,7 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 | memes | `Memes/` | a joke or humorous image, an image with an ironic meaning |
 | documents | `Documents/` | a document, a receipt, a form, a list of text |
 
-`unsorted` is the fallback format (`Unsorted/`, no prompts). The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` had no examples in the real folder (it can be re-added with the CLI). The original filename (after sanitization) is passed to the caption step as a hint, since snips are typically named `Screenshot <date>`.
+`unsorted` is the fallback format (`Unsorted/`, no prompts). The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` was dropped (it can be re-added with the CLI). The original filename (after sanitization) is passed to the caption step as a hint, since snips are typically named `Screenshot <date>`.
 
 ### 4.4 Caption
 
@@ -382,8 +380,8 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | --- | --- | --- |
 | 1 | Skeleton + ledger: compose, `files`, hashing, ingest, `dry-run` CSV | Re-running on the same folder skips 100% of files, with no new ledger rows. |
 | 2 | Sanitize: EXIF strip, literal/regex, `sanitize_log`, entity rule via local LLM | 50 seeded names come out with 0 residual sensitive values. EXIF on outputs contains only the allow-list. |
-| 3 | Classify: SigLIP + NSFW, default formats and topics, `<Topic>/<Format>` folders, mirror, thresholds per axis, unsorted, category CLI; **threshold calibration** | Measured on **all ~150 real images**, labelled in `fixtures/labels.csv`. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 90% **format** agreement on rows with a format; ≥ 85% **topic** agreement on rows with a topic (CLS-001.D5); every row tagged `suggestive-negative` must stay `safe`; the NSFW gate flags **every** labelled adult image and **0** safe ones; unrecognized < 10%. Extra box-only adult samples in `fixtures/` may be used for threshold calibration but don't count toward the gate. |
-| 4 | Status UI read-only: `/api/status`, `/api/files`, dashboard, `report` | A dry run of the whole real folder (~150 images) is reviewable end to end without a terminal. |
+| 3 | Classify: SigLIP + NSFW, default formats and topics, `<Topic>/<Format>` folders, mirror, thresholds per axis, unsorted, category CLI; **threshold calibration** | Measured on **every real image labelled in `fixtures/labels.csv`**. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 90% **format** agreement on rows with a format; ≥ 85% **topic** agreement on rows with a topic (CLS-001.D5); every row tagged `suggestive-negative` must stay `safe`; the NSFW gate flags **every** labelled adult image and **0** safe ones; unrecognized < 10%. Extra box-only adult samples in `fixtures/` may be used for threshold calibration but don't count toward the gate. |
+| 4 | Status UI read-only: `/api/status`, `/api/files`, dashboard, `report` | A dry run of the whole real folder is reviewable end to end without a terminal. |
 | 5 | Name: built-in and user templates, captions from both VLMs, collisions | 0 sensitive values in 500 names. A readability spot-check of names passes human review at G1. |
 | 6 | RAG + web: pgvector, judge, SearXNG, write-back, `refs` CLI | A franchise searched once resolves locally on the second image (`web_called = false`). |
 | 7 | File ops + watch: copy → results transaction, `watch`, `purge-sources` and `delete` (disabled by default) | Kill mid-run and restart: 0 duplicates, 0 lost files, ledger == results on disk. The source tree's checksum manifest is **byte-identical before and after** the run. With the default config, `purge-sources` and `delete` refuse. |
@@ -463,4 +461,4 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | Q-5 | ~~Repo location~~ | **Answered (2026-10-05):** Windows-native, no WSL repo. The workspace is `file-sorter-full\` and the repo is fixed at `file-sorter-full\file-sorter` (§9a). |
 | Q-6 | ~~Metadata loss~~ | **Answered:** the source is read-only and never deleted by sorting. Deletion stays as a separate function, disabled by default (P-1, R-FOP-0, R-FOP-8). |
 | Q-7 | ~~Public fixtures~~ | **Answered:** `fixtures/labels.csv` is git-ignored, and a 5-row synthetic `labels.example.csv` is committed. |
-| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. All ~150 real images are labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic); the NSFW gate catches every adult image with 0 false positives (§11, M3). |
+| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. Every real image is labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic); the NSFW gate catches every adult image with 0 false positives (§11, M3). |
