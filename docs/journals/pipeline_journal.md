@@ -31,6 +31,12 @@ references or host paths here. Use hashes.
   - Rows stay at `queued` or `skipped`, and the CSV's proposed-output column stays empty. `proposed` starts once `name` exists (M5).
   - R-PIPE-2's "ends at status `proposed`" applies once there is an output to propose.
   - The rejected option, marking every ingested row `proposed` now, would make later nodes skip those rows, because nodes select by status.
+- **PIPE-001.D2** — **On an `error` retry, each node overwrites its own columns (and nulls the ones it doesn't produce); the graph clears nothing downstream** (lead decision, 2026-10-06).
+  - Selection is by status, so no node reads a downstream column before its owner has rewritten it. `ingest.py`'s `_RETRY` stays as it is.
+  - Proof: a row seeded with downstream values, retried, then rewritten by a stand-in node.
+- **PIPE-001.D3** — **`run` commits once per node; ingest never commits itself; a raising node rolls back only its own work** (lead decision, 2026-10-06).
+  - A crash in node N+1 keeps node N's status checkpoint, and a resumed run selects by status (P-4).
+  - Proof: a second node that raises, then a re-run that resumes from the ledger.
 
 ## PIPE-001 — Plan
 
@@ -40,17 +46,25 @@ references or host paths here. Use hashes.
 ## PIPE-001 — Tasks
 
 - [ ] PIPE-001.1 — Batch graph skeleton with the ingest node and dry-run mode · #17 · acceptance: `tests/integration/test_dry_run_graph.py`
+  - [x] PIPE-001.1.1 — Graph state, node registry in §3 order, dry-run plan and the status selector (unit tests)
+  - [x] PIPE-001.1.2 — `run`: the LangGraph graph, one commit per node (integration tests, own-schema fixture)
+  - [x] PIPE-001.1.3 — Results, self-rating and journal close-out
 
 ## PIPE-001 — Results
 
 ### PIPE-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
+- **Status:** DONE (commits c8f2be7, 550ed5f; this close-out follows).
+- **Triage:** medium, solo, `classifier/graph/`: no schema, config or contract change.
 - **Tests:**
-- **Self-rating:**
+  - unit: `tests/unit/graph/test_nodes.py`, 5 passed (registry, §3 order, dry-run plan, unknown node).
+  - integration (acceptance): `tests/integration/test_dry_run_graph.py`, 8 passed. Covers the second run selecting nothing new, a dry run ending at `queued`/`skipped` (D1), no write under the source or results, the seeded-row retry (D2), the raising node and the resume (D3), and `select_by_status`.
+  - `make test` (unit + db + integration): 258 passed. `make lint`: clean. No gpu tier: no model is loaded.
+- **Self-rating:** 9/10, proud: yes. Gaps against the issue: `run` has no test for an empty node list, and `_build` returns an untyped compiled graph (`noqa: ANN202`). Neither affects the acceptance test or R-PIPE-1/2.
 - **Review:**
 - **Deferred:**
+  - A shared integration fixture for a private migrated schema is worth having: CLI-002.1 needs the same. It is kept in `tests/integration/schema_support.py` (not a conftest, per the lead). The lead may open a QA follow-up to move it into shared infrastructure.
+  - R-PIPE-2's `proposed` status and the CSV's proposed-output column wait for `name` (M5), per PIPE-001.D1.
 
 ---
 
