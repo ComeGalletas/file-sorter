@@ -52,17 +52,40 @@
 
 ## RUN-001 — Tasks
 
-- [x] RUN-001.1 — Python project: `pyproject.toml`, `classifier/` packages, CLI stub, `.dockerignore`, `Dockerfile`
-- [x] RUN-001.2 — Runtime: `docker-compose.yml`, egress and purge overrides, SearXNG settings, `config.yaml`, `sanitize.example.yaml`, `.env.example`
-- [x] RUN-001.3 — `Makefile` and `scripts/fetch_models.py`
-- [x] RUN-001.4 — Test tiers by path (`tests/conftest.py`), a smoke test and a db-reachability test
-- [x] RUN-001.5 — Verify `make up` and `make test` in Docker
-- [x] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes
+- [x] RUN-001.1 — Python project: `pyproject.toml`, `classifier/` packages, CLI stub, `.dockerignore`, `Dockerfile` → `da82362`
+- [x] RUN-001.2 — Runtime: `docker-compose.yml`, egress and purge overrides, SearXNG settings, `config.yaml`, `sanitize.example.yaml`, `.env.example` → `002aebd`
+- [x] RUN-001.3 — `Makefile` and `scripts/fetch_models.py` → `f881ad2`
+- [x] RUN-001.4 — Test tiers by path (`tests/conftest.py`), a smoke test and a db-reachability test → `2aadb2c`
+- [x] RUN-001.5 — Verify `make up` and `make test` in Docker → `3d401d9`
+- [x] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes → `8b340ae`
 - [ ] RUN-001.7 — README; privacy check; public GitHub repo; push
 
 ## RUN-001 — Results
 
-(filled as tasks land)
+- **Status:** DONE_WITH_CONCERNS. RUN-001.7 (README, privacy check, public repo, push) lands right after this.
+- **Triage:** large (new runtime contract) · tests: unit + db tiers, plus live checks inside the running stack · solo.
+- **Verified in the running stack (2026-10-05):**
+  - `make up`: all four services up, db healthy.
+  - `make test`: 3 passed (unit 2, db 1).
+  - `/source` mounted `ro`, `/results` `rw`.
+  - `app` can't reach the internet (connection to 1.1.1.1:443 refused).
+  - The `test` container has no `/source` or `/results`.
+- **GPU:** RTX 5080, capability (12, 0), torch 2.14.1+cu130 (CUDA 13.0); a matmul on the GPU works.
+- **Services:** ollama 0.35.1 answers; searxng healthz returns 200.
+- **Models, loaded offline (`HF_HUB_OFFLINE=1`):**
+  - SigLIP image vector 1152-d and bge-m3 1024-d, so C-4 holds.
+  - SigLIP + NSFW together use 2.0 GiB of VRAM.
+  - The NSFW model labels a synthetic image `normal` at 0.998.
+  - qwen3-vl:8b answers correctly; its first call takes 58 s (a cold 6 GB load), which supports per-stage batching (R-PIPE-1).
+- **Timings:** image build 6 min 56 s; `make models` 3 min 45 s (Ollama 7.3 GB, HF ~3.8 GB).
+- **Lessons:**
+  - Git Bash rewrites container paths in `docker run` (`-w /io`), so `MSYS_NO_PATHCONV=1` is required.
+  - Bash heredocs in this environment mangle backslash escapes, so generated files come from script files.
+- **Concerns:**
+  - No lockfile yet (D9 → follow-up RUN-004).
+  - The UI port waits for the M4 proxy (D5).
+  - Mounting `/results` created the empty results root on the host.
+- **Self-rating:** 9/10, proud: yes. Gap: dependency versions float until RUN-004.
 
 ---
 
@@ -98,12 +121,32 @@
 
 ## RUN-002 — Tasks
 
-- [x] RUN-002.1 — Hook scripts (`.claude/hooks/`) and the pre-push gate (`.githooks/pre-push`)
-- [x] RUN-002.2 — Settings layers (D6) and worktree-aware Makefile and compose (D2, D3)
-- [x] RUN-002.3 — Subagents (`.claude/agents/`) and desk role briefs (`.claude/roles/`)
-- [x] RUN-002.4 — GitHub issue and PR templates; `scripts/gate_1.py`–`gate_8.py` stubs that fail
-- [ ] RUN-002.5 — Verify: a lint finding comes back from an edit; a failing test blocks a push; logs land per role
-- [ ] RUN-002.6 — CLAUDE.md and DESIGN.md updated for D1–D5
+- [x] RUN-002.1 — Hook scripts (`.claude/hooks/`) and the pre-push gate (`.githooks/pre-push`) → `c1f12b9`
+- [x] RUN-002.2 — Settings layers (D6) and worktree-aware Makefile and compose (D2, D3) → `558860b`
+- [x] RUN-002.3 — Subagents (`.claude/agents/`) and desk role briefs (`.claude/roles/`) → `adfa4ef`
+- [x] RUN-002.4 — GitHub issue and PR templates; `scripts/gate_1.py`–`gate_8.py` stubs that fail → `4b40370`
+- [x] RUN-002.5 — Verify: a lint finding comes back from an edit; a failing test blocks a push; logs land per role
+- [x] RUN-002.6 — CLAUDE.md and DESIGN.md updated for D1–D6 (phase, roles location, `.task`, ALLOW_MAIN_PUSH rule, MSYS note, §9 as built, §10 layout)
+
+## RUN-002 — Results
+
+- **Status:** DONE_WITH_CONCERNS.
+- **Triage:** large (agent contract) · verification script with 22 scenarios on a real linked worktree and a local bare remote · solo.
+- **Verified (RUN-002.5), 22 of 22 passed:**
+  - The lint hook returns ruff's F401 for an unused import (exit 2), passes clean files and skips non-Python files.
+  - The log hook writes valid JSON under the role's folder.
+  - In a worktree: `make init` copies `.env` and `sanitize.yaml`; `.task` is ignored; `make test` uses `file-sorter-<worktree>`.
+  - The Stop hook blocks on a failing touched test, doesn't loop, and logs the failure under the `.task` role.
+  - The pre-push gate blocks: a failing unit test, a direct push to `main`, and a missing acceptance test.
+  - The pre-push gate passes a green branch with a passing acceptance test, and the remote receives it.
+  - Cleanup leaves no worktree, branch, compose project or files.
+- **Not yet verified:**
+  - Claude Code itself invoking the hooks through `settings.json`;
+  - the allow and deny rules taking effect in a live session;
+  - desks started with the settings layers.
+
+  These need running desks: runbook step 6, the harness dry run.
+- **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
 
 ---
 
