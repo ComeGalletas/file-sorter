@@ -47,6 +47,9 @@ references or host paths here. Use hashes.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
   - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
 - **ING-001.D3** — **`animated` is an allow-list** (decided by the human, 2026-10-06; it replaces the earlier default). `animated` is true only when Pillow's `format` is in {GIF, WEBP, PNG} (PNG covers APNG) **and** `is_animated` is true. Every other format is false, including TIFF, MPO and HEIC. Classification reads frame or page 0.
+- **ING-001.D4** — **Decompression bombs: Pillow's default stands** (lead, 2026-10-06). `Image.MAX_IMAGE_PIXELS` stays at its default, 89,478,485 pixels. Above that Pillow warns (`DecompressionBombWarning`); above twice that (~179 MP) it raises `DecompressionBombError`, which `probe_image` catches and returns as `Skipped` (ING-001.2.1). A test pins the limit, so changing it is a deliberate act.
+- **ING-001.D5** — **Skip reasons live in `files.error`; only `status = error` is retried** (lead, 2026-10-06). A skipped file has `status = skipped` and its reason in `files.error`: a fixed string or an exception type, never a path. No migration. A `skipped` row counts as known under R-ING-2 and is never retried. That holds although `error` also stores skip reasons, because retries key on the status, not the column.
+- **ING-001.D6** — **Symlinks and unreadable folders get no ledger row** (lead, 2026-10-06). They can't be hashed safely, so they count as skipped-unreadable on every run and are never "new". A non-image or undecodable *file* is hashed (read-only) and recorded as `skipped`. The node takes the root as a parameter, and `source_path` is the container path as walked (DOC-004.D3).
 - **ING-001.1.2 alias:** `tif` is accepted as an alias of `tiff`, beside the MVP types in DESIGN.md §1. Extensions are matched case-insensitively, and `discover` filters by extension only: `probe_image` is the sole judge of decodability (R-ING-3).
 
 ## ING-001 — Plan
@@ -65,7 +68,7 @@ references or host paths here. Use hashes.
   - [x] ING-001.2.1 — `probe_image`: catch only Pillow's error families · commit: (next commit)
   - [x] ING-001.2.2 — `discover`: file symlinks are `Skipped("symlink")` · commit: (next commit)
   - [x] ING-001.2.3 — `discover`: an unreadable subfolder is a `Skipped`, via `os.walk` `onerror` · commit: (next commit)
-  - [ ] ING-001.2.4 — Record ING-001.D4 (decompression bombs) and pin the Pillow limit in a test
+  - [x] ING-001.2.4 — Record ING-001.D4 (decompression bombs) and pin the Pillow limit in a test · commit: (next commit)
   - [ ] ING-001.2.5 — `ingest` node and its typed result, with the db tests (the lead folded .2.6 into this commit)
   - ~~ING-001.2.6~~ folded into ING-001.2.5 (tests ship with their code, DOC-004.D1)
   - [ ] ING-001.2.7 — Results and self-rating

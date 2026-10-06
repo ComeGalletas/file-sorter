@@ -280,6 +280,20 @@ class TestProbeImage:
         with pytest.raises(AttributeError):
             probe_image(tmp_path / "x.png")
 
+    def test_pillow_pixel_limit_is_left_at_its_default(self) -> None:
+        # ING-001.D4: warning above 89,478,485 px, DecompressionBombError above twice that
+        assert Image.MAX_IMAGE_PIXELS == 89_478_485
+
+    def test_an_oversized_image_is_skipped_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ING-001.D4: the hard-error branch, reached with a tiny limit instead of 179 MP
+        path = tmp_path / "big.png"
+        Image.new("RGB", (10, 10)).save(path)
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)  # 100 px > 2 * 10
+        result = probe_image(path)
+        assert result == Skipped(path, "undecodable image (DecompressionBombError)")
+
     def test_skip_reason_never_contains_the_path(self, tmp_path: Path) -> None:
         path = tmp_path / "secret-name-xyz.png"
         path.write_text("nope")
