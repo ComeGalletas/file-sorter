@@ -104,19 +104,21 @@ references or host paths here. Use hashes.
   - [x] CLI-002.1.2 — the `dry-run` command, the CSV writer and the integration test (.3 folded in) · `tests/integration/test_dry_run_cli.py` (7 tests) · commit: b79971c
   - ~~CLI-002.1.3~~ folded into CLI-002.1.2 (tests ship with their code, DOC-004.D1)
   - [x] CLI-002.1.4 — journal notes (`nodes=` seam, `limit`) and Results · commit: this commit
+  - [x] CLI-002.1.5 — PR #38 round 1: test the under-root filter and `prefix_for`, exclusive CSV open with a numeric suffix, `ValidationError` and `psycopg.Error` handled with fixed messages · commit: this commit
 
 ## CLI-002 — Results
 
 ### CLI-002.1 (worker: pipeline)
 
-- **Status:** DONE (commits 0ee1b3f, b79971c; this close-out follows).
+- **Status:** DONE (commits 0ee1b3f, b79971c; round 1 fixes in CLI-002.1.5).
 - **Triage:** medium, solo, `classifier/cli/` plus two small fixes in `classifier/graph/`: no schema, config or contract change (`IngestResult` unchanged).
 - **Tests:**
   - unit: `tests/unit/graph/test_state.py`, 2 passed (the `TypeError` and the happy path).
   - integration (acceptance): `tests/integration/test_dry_run_cli.py`, 7 passed. Covers the console counts with no names or paths, the CSV header, rows, ordering and empty `proposed_output`, only `reports/` under `results_root` and nothing under the source, no `results_root` without `--csv`, a second run with every file skipped-known and no new ledger rows, a nested-roots failure (R-FOP-9) with a non-zero exit, and a missing config.
-  - `make test` (unit + db + integration): 276 passed. `make lint`: clean. No gpu tier or eval: no model or prompt is touched.
-- **Self-rating:** 9/10, proud: yes. Gaps against the issue's acceptance test and R-PIPE-2: no test that a ledger row outside the scanned root is left out of the CSV (the query's prefix match is covered only through the happy path), and no test for an unwritable `reports/`, which raises a plain OSError rather than a clean message. Neither affects the acceptance criteria.
+  - Round 1 (CLI-002.1.5): integration 10 passed (adds the sibling-prefix and unrelated-root exclusion, the validation error and the database error without echoed values); unit `tests/unit/cli/test_dry_run_report.py`, 7 passed (`prefix_for`, same-second CSV suffix).
+  - `make test` (unit + db + integration): 286 passed. `make lint`: clean. No gpu tier or eval: no model or prompt is touched.
+- **Self-rating:** 9/10, proud: yes. Remaining gap: no test for an unwritable `reports/`, which raises a plain OSError rather than a clean message. It doesn't affect the acceptance criteria.
 - **Review:**
 - **Deferred:**
-  - The two gaps above, as a follow-up if the lead wants them.
+  - A clean message for an unwritable `reports/`, as a follow-up if the lead wants it.
   - Per CLI-002.D1, the CSV omits symlinks and unreadable files (no ledger row) and extra `duplicate_paths`; the console counts cover them.

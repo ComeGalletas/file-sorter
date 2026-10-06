@@ -32,14 +32,14 @@ class LedgerRow(NamedTuple):
     reason: str | None
 
 
-def _prefix(source_root: str) -> str:
+def prefix_for(source_root: str) -> str:
     return str(PurePosixPath(source_root)).rstrip("/") + "/"
 
 
 def rows_under_root(conn: psycopg.Connection, source_root: str) -> list[LedgerRow]:
     """Every `files` row whose `source_path` lies under `source_root`, by path (CLI-002.D1)."""
     with conn.cursor() as cur:
-        cur.execute(_UNDER_ROOT, {"prefix": _prefix(source_root)})
+        cur.execute(_UNDER_ROOT, {"prefix": prefix_for(source_root)})
         return [LedgerRow(*row) for row in cur.fetchall()]
 
 
@@ -53,18 +53,33 @@ def skip_reasons(rows: Sequence[LedgerRow]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
-def report_path(results_root: str, stamp: datetime) -> Path:
-    """`results_root/reports/dry-run-<UTC run timestamp>.csv`."""
-    return Path(results_root) / "reports" / f"dry-run-{stamp:%Y%m%dT%H%M%SZ}.csv"
+def report_path(results_root: str, stamp: datetime, attempt: int = 0) -> Path:
+    """`results_root/reports/dry-run-<UTC run timestamp>[-<attempt>].csv`."""
+    suffix = f"-{attempt}" if attempt else ""
+    return Path(results_root) / "reports" / f"dry-run-{stamp:%Y%m%dT%H%M%SZ}{suffix}.csv"
 
 
-def write_csv(path: Path, rows: Sequence[LedgerRow]) -> None:
-    """Write the report; `proposed_output` stays empty until M1 sets none (PIPE-001.D1)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8", newline="") as handle:
+def write_csv(results_root: str, stamp: datetime, rows: Sequence[LedgerRow]) -> Path:
+    """Write the report and return its path; `proposed_output` stays empty (PIPE-001.D1).
+
+    The file is opened exclusively, so two runs in the same second never overwrite each
+    other: the later one gets a numeric suffix.
+    """
+    report_path(results_root, stamp).parent.mkdir(parents=True, exist_ok=True)
+    attempt = 0
+    while True:
+        path = report_path(results_root, stamp, attempt)
+        try:
+            handle = path.open("x", encoding="utf-8", newline="")
+        except FileExistsError:
+            attempt += 1
+            continue
+        break
+    with handle:
         writer = csv.writer(handle)
         writer.writerow(COLUMNS)
         for row in rows:
             writer.writerow(
                 [row.source_hash, row.short_hash, row.source_path, row.status, row.reason or "", ""]
             )
+    return path

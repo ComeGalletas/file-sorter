@@ -147,3 +147,45 @@ def test_missing_config_exits_non_zero(tmp_path: Path) -> None:
     result = _invoke(tmp_path / "absent.yaml")
     assert result.exit_code != 0
     assert "config file not found" in result.output
+
+
+def test_csv_lists_only_rows_under_the_scanned_root(tmp_path: Path, schema_dsn: str) -> None:
+    source, results, config = _setup(tmp_path, schema_dsn)
+    sibling = str(tmp_path / "source2" / "x.png")  # same prefix as `source`, not under it
+    other = str(tmp_path / "elsewhere" / "y.png")
+    with psycopg.connect(schema_dsn) as conn:
+        for digest, path in (("c" * 64, sibling), ("d" * 64, other)):
+            conn.execute(
+                "insert into files"
+                " (source_hash, short_hash, source_path, source_mtime, ext, status)"
+                " values (%s, %s, %s, now(), 'png', 'queued')",
+                (digest, digest[:8], path),
+            )
+    assert _invoke(config, "--csv").exit_code == 0
+    (report,) = (results / "reports").glob("dry-run-*.csv")
+    with report.open(encoding="utf-8", newline="") as handle:
+        paths = [row["source_path"] for row in csv.DictReader(handle)]
+    assert len(paths) == 3
+    assert all(Path(p).parent == source for p in paths)
+    assert sibling not in paths and other not in paths
+
+
+def test_validation_error_exits_2_without_echoing_values(tmp_path: Path, schema_dsn: str) -> None:
+    _, _, config = _setup(tmp_path, schema_dsn)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["thumbs"]["size"] = "SECRET-VALUE-123"
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    result = _invoke(config)
+    assert result.exit_code == 2
+    assert "thumbs.size" in result.output
+    assert "SECRET-VALUE-123" not in result.output
+    assert "Traceback" not in result.output
+
+
+def test_database_error_exits_non_zero_without_echoing_the_dsn(tmp_path: Path) -> None:
+    _, _, config = _setup(tmp_path, "postgresql://user:hunter2@127.0.0.1:1/db?connect_timeout=2")
+    result = _invoke(config)
+    assert result.exit_code == 1
+    assert "database error" in result.output
+    assert "hunter2" not in result.output
+    assert "127.0.0.1" not in result.output
