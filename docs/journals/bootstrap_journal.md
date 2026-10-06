@@ -181,6 +181,12 @@
   - Tests: unit 2/2, db 1/1, integration none yet; acceptance `tests/unit/test_smoke.py` 2/2.
   - Self-rating: 9/10, proud: yes.
   - Review: Reviewer REQUEST_CHANGES, for a missing Results entry (this one) and unconfirmed authorship of the CLAUDE.md rule changes. The human confirmed authorship on 2026-10-05. Privacy auditor PASS.
+- **RUN-002.9 (PR #6), DONE:**
+  - Triage: small, docs only (roles README, this journal).
+  - Tests: unit 2/2, db 1/1, integration none yet; acceptance `tests/unit/test_smoke.py` 2/2.
+  - Self-rating: 9/10, proud: yes.
+  - Review: Reviewer REQUEST_CHANGES for the missing Results entry, again (this one; the lead added it). Privacy auditor PASS.
+  - **Recurring gap (proposal, the human decides):** keep the PR template checklist on human-side docs PRs; it would have caught this both times.
 - **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
 
 ---
