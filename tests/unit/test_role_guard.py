@@ -1,10 +1,15 @@
-"""RUN-005.1: the role guard (RUN-002.D8, RUN-005.D1) in a throwaway repo with a real worktree.
+"""RUN-005.1/.4: the role guard (RUN-002.D8, RUN-005.D1, D5) in a throwaway repo.
 
 Layout under tmp_path:
-    repo/                               main checkout  -> the lead's location
+    repo/                               main checkout  -> the lead's location (.env inside)
     repo/.agent-office/worktrees/w1/    linked worktree -> a worker's location
+      escape -> repo/                   a directory symlink out of the worktree (RUN-005.4)
+      link.md -> repo/CLAUDE.md         a file symlink out of the worktree (RUN-005.4)
     memory/                             outside the repo (like Claude's memory, agent-logs)
+    images/, sorted/                    SOURCE_ROOT and RESULTS_ROOT from repo/.env (D5)
 The guard is run exactly as Claude Code runs a PreToolUse hook: JSON on stdin, exit 2 = blocked.
+A symlink exercises the same resolution path as an NTFS junction; the real junction is
+checked on the Windows host (RUN-005 Results), since this container is Linux.
 """
 
 import json
@@ -23,20 +28,34 @@ GIT = ["git", "-c", "user.email=t@example.invalid", "-c", "user.name=t"]
 def sandbox(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
     root = tmp_path_factory.mktemp("guard")
     repo, memory = root / "repo", root / "memory"
+    images, sorted_ = root / "images", root / "sorted"
     hooks = repo / ".claude" / "hooks"
     hooks.mkdir(parents=True)
-    memory.mkdir()
+    for d in (memory, images, sorted_):
+        d.mkdir()
     for name in ("guard.sh", "common.sh"):
         shutil.copy(SRC / name, hooks / name)
-    (repo / ".gitignore").write_text(".agent-office/\n")
+    (repo / ".gitignore").write_text(".agent-office/\n.env\n")
+    (repo / "CLAUDE.md").write_text("rules\n")
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
     subprocess.run([*GIT, "add", "-A"], cwd=repo, check=True)
     subprocess.run([*GIT, "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    # Local, untracked, like the real .env: one value quoted, one not.
+    (repo / ".env").write_text(f'SOURCE_ROOT="{images}"\nRESULTS_ROOT={sorted_}\n')
     wt = repo / ".agent-office" / "worktrees" / "w1"
     subprocess.run(
         [*GIT, "worktree", "add", "-q", "-b", "office/w1", str(wt)], cwd=repo, check=True
     )
-    return {"repo": repo, "wt": wt, "memory": memory, "guard": hooks / "guard.sh"}
+    (wt / "escape").symlink_to(repo, target_is_directory=True)
+    (wt / "link.md").symlink_to(repo / "CLAUDE.md")
+    return {
+        "repo": repo,
+        "wt": wt,
+        "memory": memory,
+        "images": images,
+        "sorted": sorted_,
+        "guard": hooks / "guard.sh",
+    }
 
 
 def guard(sb: dict[str, Path], where: str, payload: dict, desk: bool = True) -> int:
@@ -165,3 +184,46 @@ def test_human_session_is_not_guarded(sandbox: dict[str, Path]) -> None:
         == 0
     )
     assert guard(sandbox, "wt", bash("gh pr merge 3 --merge"), desk=False) == 0
+
+
+# ---- RUN-005.4: links, case and the image folders (PR #9 review findings 1-3) ----
+
+
+def test_symlink_escape_resolves_to_the_main_checkout(sandbox: dict[str, Path]) -> None:
+    # Review finding 1: a link inside the worktree must not make the main checkout "own".
+    assert guard(sandbox, "wt", edit(sandbox["wt"] / "escape" / "CLAUDE.md")) == 2
+    assert guard(sandbox, "wt", edit(sandbox["wt"] / "escape" / "classifier" / "new.py")) == 2
+    assert guard(sandbox, "wt", edit(sandbox["wt"] / "link.md")) == 2
+
+
+@pytest.mark.parametrize(
+    "rel",
+    ["claude.md", "Claude.MD", "Design.md", "docs/Journals/INDEX.md", "DOCS/plans/m1.md"],
+)
+def test_worker_protected_names_are_case_insensitive(sandbox: dict[str, Path], rel: str) -> None:
+    # Review finding 2: on NTFS, claude.md is CLAUDE.md.
+    assert guard(sandbox, "wt", edit(sandbox["wt"] / rel)) == 2
+
+
+def test_lead_docs_allowance_is_case_insensitive(sandbox: dict[str, Path]) -> None:
+    assert guard(sandbox, "repo", edit(sandbox["repo"] / "Docs" / "journals" / "x.md")) == 0
+    assert guard(sandbox, "repo", edit(sandbox["repo"] / "Classifier" / "x.py")) == 2
+
+
+@pytest.mark.parametrize("where", ["repo", "wt"])
+@pytest.mark.parametrize("folder", ["images", "sorted"])
+def test_desks_never_write_to_the_image_folders(
+    sandbox: dict[str, Path], where: str, folder: str
+) -> None:
+    # Review finding 3 / RUN-005.D5: SOURCE_ROOT and RESULTS_ROOT come from the local .env.
+    assert guard(sandbox, where, edit(sandbox[folder] / "a.png")) == 2
+    assert guard(sandbox, where, edit(sandbox[folder] / "sub" / "b.png")) == 2
+
+
+def test_image_folders_are_matched_case_insensitively(sandbox: dict[str, Path]) -> None:
+    upper = str(sandbox["images"]).upper() + "/a.png"
+    assert guard(sandbox, "wt", edit(upper)) == 2
+
+
+def test_human_may_still_touch_the_image_folders(sandbox: dict[str, Path]) -> None:
+    assert guard(sandbox, "repo", edit(sandbox["images"] / "a.png"), desk=False) == 0

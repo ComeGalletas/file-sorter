@@ -324,6 +324,14 @@
   - External volumes are shared by design and never claimed by a project.
   - `make init` creates them, idempotently with `docker volume create`, because compose doesn't create external volumes. The existing volumes keep their data.
 - **RUN-005.D3:** **Hook messages are ASCII.** They say "section 2.2" instead of `§2.2`, because hook stderr reaches Claude in the Windows console code page (as in D11). The files themselves keep `§`.
+- **RUN-005.D1, amended after PR #9 review round 1:** **Classification uses the real path, compared case-insensitively.**
+  - String-prefix matching let a link or NTFS junction inside a worktree (`mklink /j escape <main checkout>`, no admin rights needed) make the main checkout's `CLAUDE.md` look like the worker's own: review finding 1, reproduced on this host.
+  - Matching the protected names case-sensitively let `claude.md` or `index.md` through, although on NTFS they're the same files: finding 2, reproduced.
+  - Now:
+    - every target is resolved first: the target itself if it exists (catches a file symlink), else its nearest existing parent folder (`cd && pwd -P`, then `cygpath -m` on Windows);
+    - this tree and the main checkout are resolved the same way;
+    - every comparison is case-insensitive.
+- **RUN-005.D5:** **No desk writes under `SOURCE_ROOT` or `RESULTS_ROOT`.** Review finding 3 noted that once the guard stopped governing paths outside the repo, the human's image folders were protected only by the containers' `:ro` mount (R-FOP-8) and the hard rule, not on the host. The guard now reads both roots from the main checkout's local, git-ignored `.env` (so no host path is committed) and denies every desk's write under them. Only the app writes there, through Docker. The human's own sessions are unaffected.
 - **RUN-005.D4:** **Job logs use the resolved path.** The README said to write `<AGENT_LOG_ROOT>/<role>/<issue>.md`, and `AGENT_LOG_ROOT` is the relative `../agent-logs`, which each desk resolved from inside its worktree. The README now gives the command that prints the absolute folder: `bash -c '. .claude/hooks/common.sh; log_dir'`. The test-runner already uses it. The two misplaced files from step 6 were moved by hand on 2026-10-06.
 
 ## RUN-005 — Tasks
@@ -331,10 +339,11 @@
 - [x] RUN-005.1 — Guard governs the repo tree (D1) + `tests/unit/test_role_guard.py` in a throwaway repo with a real linked worktree
 - [x] RUN-005.2 — External model volumes, created by `make init` (D2); verify that no warning appears in a worktree test run
 - [x] RUN-005.3 — ASCII hook messages (D3) and the resolved job-log path in the roles README (D4)
+- [x] RUN-005.4 — PR #9 review round 1: real-path resolution and case-insensitive matching (D1 amended), image folders protected (D5); 13 new tests; real NTFS junction checked on the host
 
 ## RUN-005 — Results
 
-- **Status:** DONE.
+- **Status:** DONE (after review round 1 → RUN-005.4).
 - **Triage:** medium. Behavior changes in the role guard and the compose volumes, plus message and docs fixes. Tests: all default tiers, a new 32-case guard suite, and a worktree compose run. Solo.
 - **Guard (RUN-005.1):** `tests/unit/test_role_guard.py` runs 32 cases (lead, worker, human; edits and commands) in a throwaway repo with a real linked worktree under `.agent-office/worktrees/`. All 32 pass.
 - **Regression check:** run against the old guard from `main`, **exactly the 5 new-behavior cases fail**:
@@ -349,9 +358,18 @@
 - **Messages and logs (RUN-005.3):**
   - There's no non-ASCII character left in any hook's `deny`, `fail` or `printf` output.
   - `log_dir` run from a worktree resolves to the workspace's `agent-logs/<role>`.
-- **Tests:** unit 40/40 (32 new), db 1/1; acceptance `tests/unit/test_role_guard.py` 32/32; ruff check and format clean.
+- **Tests (round 1):** unit 40/40 (32 new), db 1/1; acceptance `tests/unit/test_role_guard.py` 32/32; ruff check and format clean.
+- **Review round 1 (PR #9):** Reviewer REQUEST_CHANGES, Privacy auditor PASS. Findings 1 (junction) and 2 (case) were reproduced on this host before fixing: a junction escape to the main checkout's `CLAUDE.md` gave exit 0, and so did `claude.md` and `docs/journals/index.md`. Finding 3 was closed (D5) rather than only documented.
+- **RUN-005.4 tests:**
+  - **Suite:** `tests/unit/test_role_guard.py` now has **45 cases**, all passing. The 13 new ones cover a directory and a file symlink out of the worktree, five case variants for the worker, the lead's case-folded `docs/` allowance, writes into both image folders from both desks, a case-folded image root, and the human still allowed there.
+  - **Regression:** against the guard from before RUN-005.4, **exactly those 12 desk cases fail**; the human case and the earlier 32 pass under both.
+  - **Bug found by the suite:** with an image root that doesn't exist, the parent walk reached `/` and produced `//x`, defeating the comparison. Fixed by trimming the trailing `/`.
+  - **On this host:**
+    - **NTFS junction:** a real `mklink /J escape <main checkout>` inside a worktree. With the new guard, the junction write, `CLAUDE.md`, `claude.md` and `docs/journals/index.md` all exit 2.
+    - **Real `.env` paths** (7 probes): the source with backslashes and a space, a lowercase drive, and the results root are all blocked. A sibling folder that only shares a prefix, the lead's memory and the lead's journal are allowed. The lead's code edit is blocked.
+  - **Hardlinks:** out of scope. They can't be told apart from ordinary files, and creating one needs a shell command, which the guard doesn't path-check by design.
 - **For the lead (index, D13/D16):**
   - add rows for **RUN-004**: the deferred lockfile (RUN-001.D9), `proposed`;
   - add a row for **RUN-005**: this work, `done`;
   - set Next free to **RUN-006**.
-- **Self-rating:** 9/10, proud: yes. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
+- **Self-rating:** 9/10, proud: yes (after round 1). Round 1 rightly caught two bypasses that my first 32 cases missed. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
