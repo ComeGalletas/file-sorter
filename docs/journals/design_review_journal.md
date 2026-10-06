@@ -75,3 +75,26 @@ The decisions below are the outcomes of DESIGN.md §13 (C-1 to C-20, each confir
 - **Self-rating:** 8/10, proud: yes. Gaps:
   - The M5 sample size is above.
   - Nothing is enforced until the bootstrap hooks exist.
+
+---
+
+## DOC-006 — Requirement (human, 2026-10-06)
+
+**Objective:** make R-ING-9's `animated` rule an allow-list, so multi-page and multi-image files that aren't animations don't get the `{animated}` token or the `Animated/` subfolder.
+
+**Details:** while building ING-001.1, the Pipeline desk asked whether a multi-page TIFF counts as animated (ING-001.D3). R-ING-9 named GIF, WebP and APNG but defined the test as Pillow's `is_animated`, which is also true for a multi-page TIFF, an MPO JPEG and a HEIC sequence. A spec clarification, so a human-side PR (RUN-002.D16) on its own (RUN-007.D2).
+
+## DOC-006 — Confirmed reading
+
+- **DOC-006.D1 (= ING-001.D3):** **`animated` is an allow-list.** It is true only when Pillow's format is `GIF`, `WEBP` or `PNG` (APNG) and `is_animated` is true. Multi-page TIFF, MPO JPEG and HEIC sequences are not animated. (human, 2026-10-06)
+- **DOC-006.D2:** R-ING-6 now covers every multi-frame or multi-page file the same way: it is read from its first frame, page or image. Before, it named only GIF and TIFF.
+
+## DOC-006 — Tasks
+
+- [x] DOC-006.1 — DESIGN.md R-ING-6 and R-ING-9
+
+## DOC-006 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Spec text only. The behavior already shipped: ING-001.1.4 implements the allow-list with a test per case (PR #27), so this PR brings the spec in line with the code.
+- **Self-rating:** 9/10, proud: yes. Gap: none for the text; ING-001.1's tests prove the behavior.

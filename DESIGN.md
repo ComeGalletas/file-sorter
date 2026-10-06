@@ -72,8 +72,8 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 - **R-ING-7** The same `source_hash` at a second path is not re-processed; the extra path is appended to `files.duplicate_paths`.
 - **R-ING-4** Capture source mtime at ingest. It is the fallback for `{date}` and `{time}`.
 - **R-ING-5** Generate a 256 px thumbnail from the **sanitized** copy into `.work/thumbs/<short_hash>.webp`. The UI never reads originals.
-- **R-ING-6** GIF: use the first frame. TIFF: use the first page. HEIC: decode via `pillow-heif`.
-- **R-ING-9** `animated` is **derived, never classified** (CLS-001.D3). It is `true` when the file has more than one frame (GIF, WebP, APNG; Pillow `is_animated`). It feeds the `{animated}` token and the optional `Animated/` subfolder.
+- **R-ING-6** A file with several frames or pages is read from its first one: the first frame of a GIF, WebP or APNG, the first page of a TIFF, the first image of an MPO JPEG or a HEIC sequence. HEIC is decoded via `pillow-heif`.
+- **R-ING-9** `animated` is **derived, never classified** (CLS-001.D3). It is `true` only for a GIF, WebP or APNG with more than one frame: Pillow's format is `GIF`, `WEBP` or `PNG`, **and** `is_animated` is true. Pillow also reports `is_animated` for other multi-image files, such as a multi-page TIFF, an MPO JPEG (some camera and phone photos) or a HEIC sequence; those are **not** animated (ING-001.D3). It feeds the `{animated}` token and the optional `Animated/` subfolder.
 
 ### 4.2 Sanitize (`sanitize.yaml`)
 
