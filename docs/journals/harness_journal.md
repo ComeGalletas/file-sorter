@@ -20,7 +20,7 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
   - Acceptance test: `tests/unit/cli/test_version_option.py` (tier `unit`).
   - Owner role: pipeline (owns `classifier/cli/`); the test file is the pipeline worker's acceptance test for this dry run.
 - **Constraint:** The existing `classifier version` subcommand and its test (`tests/unit/test_smoke.py`) keep working. No other CLI change.
-- **Implements:** DESIGN.md §7 (CLI). Exercises R-RUN gate C-17 (pre-push is the hard block).
+- **Implements:** no R-CLI spec ID exists; it exercises the DESIGN.md §7 CLI surface and the C-17 gate (pre-push is the hard block).
 
 ## CLI-001 — Confirmed reading
 
