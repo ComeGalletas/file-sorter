@@ -365,11 +365,11 @@ docs/journals/{INDEX,TEMPLATE}.md  docs/journals/<feature>_journal.md   # work I
 config.yaml  sanitize.example.yaml  .env.example        # sanitize.yaml and .env are git-ignored
 docker-compose.yml  docker-compose.egress.yml  docker-compose.purge.yml  Dockerfile  Makefile  pyproject.toml  .gitattributes  .gitignore
 fixtures/labels.example.csv                           # labels.csv and images/ are git-ignored
-.claude/agents/{reviewer,privacy-auditor,test-runner}.md   # read-only subagents only (RUN-002.D1)
+.claude/agents/{reviewer,reviewer-quick,privacy-auditor,test-runner}.md   # read-only subagents only (RUN-002.D1)
 .claude/roles/{README,lead,pipeline,ml,rag,api-ui,qa}.md    # desk briefs
 .claude/settings.json  .claude/settings.{lead,worker}.json   # shared + per-desk layers (RUN-002.D6)
 .claude/hooks/   .githooks/pre-push                         # lint, stop tests, logs; the push gate
-docker/searxng/settings.yml  scripts/{fetch_models.py,init_local_files.sh,gate_1..8.py}
+docker/searxng/settings.yml  scripts/{fetch_models.py,init_local_files.sh,review_route.sh,gate_1..8.py}
 .github/ISSUE_TEMPLATE/task.md  .github/pull_request_template.md
 .task                                                       # git-ignored per worktree: role, issue, acceptance
 ```

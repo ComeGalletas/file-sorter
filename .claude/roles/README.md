@@ -1,6 +1,6 @@
 # Desk roles (RUN-002.D1)
 
-One file per agent-office desk. These are **briefs for whole Claude Code sessions**, not subagents. The only subagents are in `.claude/agents/` (reviewer, privacy-auditor, test-runner).
+One file per agent-office desk. These are **briefs for whole Claude Code sessions**, not subagents. The only subagents are in `.claude/agents/` (reviewer, reviewer-quick, privacy-auditor, test-runner).
 
 | Role | Brief | Settings layer | Works in |
 | --- | --- | --- | --- |

@@ -10,7 +10,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
 5. **The human's changes come as PRs from the human's own session** (RUN-002.D16). That is the human, or Claude working in the human's session, from any branch or worktree. They may touch DESIGN.md, CLAUDE.md, `.claude/` and the hooks. The role guard doesn't apply to them, because it only acts on agent-office desks. Like every PR, they get the reviewer and the privacy auditor, and the lead merges them. They never edit `docs/journals/INDEX.md`: the lead reconciles the index (RUN-002.D13).
 
-**Current phase:** bootstrapped. Runbook steps 1–4 are done (DOC-003, RUN-001, RUN-002): the repo, the Docker runtime, the models, the hooks and the settings layers. Next: agent-office (RUN-003, step 5), the harness dry run (step 6), then M1 G0. DESIGN.md §14 lists the open questions; ask the human, don't assume.
+**Current phase:** bootstrapped, with the harness proven in live desks. Runbook steps 1–6 are done (DOC-003, RUN-001 to RUN-003, CLI-001, TST-001): the repo, the Docker runtime, the models, the hooks, the settings layers, agent-office and the harness dry run. The hardening follow-ups RUN-005 to RUN-007 are merged. Next: M1 G0 (the lead plans M1; the human approves `docs/plans/m1.md`). DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
 ## Hard rules — never
 
@@ -278,7 +278,7 @@ Every worker also edits its own task lines and Results subsection in the journal
   - trailing dots and spaces are stripped from each path segment, the way Windows does, so `CLAUDE.md.` is treated as `CLAUDE.md`. NTFS alternate data streams (`CLAUDE.md:hidden`) are refused outright (RUN-005.D6, D7);
   - **no desk writes under `SOURCE_ROOT` or `RESULTS_ROOT`** (read from the local `.env`). Only the app writes there, through Docker (RUN-005.D5).
   - The settings layers `.claude/settings.lead.json` and `.claude/settings.worker.json` apply only to desks launched by hand.
-- **Subagents** are only the read-only reviewers: `reviewer`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
+- **Subagents** are only the read-only reviewers: `reviewer`, `reviewer-quick`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
 
 **Migrations:** Alembic keeps one head. A task that adds a migration rebases on `main` and fixes `down_revision` before merge.
 
