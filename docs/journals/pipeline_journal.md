@@ -48,18 +48,23 @@ references or host paths here. Use hashes.
 - [ ] PIPE-001.1 — Batch graph skeleton with the ingest node and dry-run mode · #17 · acceptance: `tests/integration/test_dry_run_graph.py`
   - [x] PIPE-001.1.1 — Graph state, node registry in §3 order, dry-run plan and the status selector (unit tests)
   - [x] PIPE-001.1.2 — `run`: the LangGraph graph, one commit per node (integration tests, own-schema fixture)
-  - [ ] PIPE-001.1.3 — Results, self-rating and journal close-out
+  - [x] PIPE-001.1.3 — Results, self-rating and journal close-out
 
 ## PIPE-001 — Results
 
 ### PIPE-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
+- **Status:** DONE (commits c8f2be7, 550ed5f; this close-out follows).
+- **Triage:** medium, solo, `classifier/graph/`: no schema, config or contract change.
 - **Tests:**
-- **Self-rating:**
+  - unit: `tests/unit/graph/test_nodes.py`, 5 passed (registry, §3 order, dry-run plan, unknown node).
+  - integration (acceptance): `tests/integration/test_dry_run_graph.py`, 8 passed. Covers the second run selecting nothing new, a dry run ending at `queued`/`skipped` (D1), no write under the source or results, the seeded-row retry (D2), the raising node and the resume (D3), and `select_by_status`.
+  - `make test` (unit + db + integration): 258 passed. `make lint`: clean. No gpu tier: no model is loaded.
+- **Self-rating:** 9/10, proud: yes. Gaps against the issue: `run` has no test for an empty node list, and `_build` returns an untyped compiled graph (`noqa: ANN202`). Neither affects the acceptance test or R-PIPE-1/2.
 - **Review:**
 - **Deferred:**
+  - A shared integration fixture for a private migrated schema is worth having: CLI-002.1 needs the same. It is kept in `tests/integration/schema_support.py` (not a conftest, per the lead). The lead may open a QA follow-up to move it into shared infrastructure.
+  - R-PIPE-2's `proposed` status and the CSV's proposed-output column wait for `name` (M5), per PIPE-001.D1.
 
 ---
 
