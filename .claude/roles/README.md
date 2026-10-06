@@ -26,6 +26,7 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 
 ## Every worker task starts like this
 
+0. **Start from the latest `main`:** `git fetch && git rebase origin/main`. agent-office creates your worktree from whatever branch the main checkout was on, which may be behind or on someone else's branch (RUN-002.D10).
 1. In the worktree: `make init` (copies `.env` and `sanitize.yaml` from the main checkout, RUN-002.D3).
 2. Write `.task` at the worktree root (git-ignored, RUN-002.D4):
 
@@ -41,3 +42,5 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 6. Write `<AGENT_LOG_ROOT>/<role>/<issue>.md` (plan, steps, test results) as you go.
 
 Never edit outside your role's paths; open an issue for the owner instead.
+
+**Read files with the Read tool, not `cat`** (RUN-002.D11). On this Windows host, shell output reaches you in the console code page, so `—` and `§` turn into `�`. That breaks references like "CLAUDE.md §2.2". The files themselves are UTF-8.

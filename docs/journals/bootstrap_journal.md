@@ -126,6 +126,10 @@
   - **Linked worktree = worker:** no `gh pr merge`, `git merge`, `git tag` or push to `main`; no edits to the index, plans, DESIGN.md or CLAUDE.md.
   - **Main checkout = lead:** edits only under `docs/` (and `.task`); `gh pr merge` only with `--merge`; no `mN` tags.
 - **RUN-002.D9:** agent-office names its branches `office/*`. The pre-push gate treats them as task branches, so the acceptance test in `.task` is required. Without this, every agent-office branch would have skipped the acceptance check.
+- **RUN-002.D10:** **agent-office creates every worker worktree from the branch the main checkout is on** (`startPoint()` in its `src/server/worktrees.ts`). In the first dry-run attempt, both workers forked from the lead's unmerged `harness-plan` commit (`96090c5`). Two fixes:
+  - The lead switches the main checkout back to `main` right after pushing a docs branch.
+  - Every worker starts with `git fetch && git rebase origin/main`.
+- **RUN-002.D11:** **Agents read files with the Read tool, not `cat`.** In the first attempt, workers reading the journals through Git Bash saw `—` and `§` as `�`, because shell output reaches Claude in the Windows console code page. The files are valid UTF-8 (checked: 19 em dashes, 3 `§`, LF only). Only the shell path mangles them.
 - **RUN-002.D7:** The hooks parse their JSON input with `sed`. `jq` isn't on Git Bash, and host Python isn't a project dependency.
 
 ## RUN-002 — Tasks
@@ -140,6 +144,8 @@
 - [x] RUN-002.7 — Role guard (D8), `office/*` task branches (D9), `.agent-office/` git-ignored and excluded from lint; verified on agent-office-style worktrees → `b60dffe`
   - [x] RUN-002.7.1 — pre-push runs its cheap checks first (`.env`, acceptance named) before the suite
   - [x] RUN-002.7.2 — Bug fixed: a missing `.task` made the pre-push hook exit silently under `set -e`. Found by the guard verification.
+
+- [x] RUN-002.8 — Fixes from the first dry-run attempt: lead stays on `main` and merges with `--delete-branch`; workers rebase first and read with the Read tool (D10, D11). Opened as a PR for the lead to review and merge.
 
 ## RUN-002 — Results
 
@@ -167,6 +173,11 @@
   - On an `office/*` branch the gate fails fast twice: first for no `.env` ("run 'make init'"), then for no acceptance test, before any test runs.
   
   The RUN-002.5 suite still passes 22 of 22 after the changes.
+- **RUN-002.8 (PR #4), DONE:**
+  - Triage: small, docs only (CLAUDE.md, role briefs, this journal).
+  - Tests: unit 2/2, db 1/1, integration none yet; acceptance `tests/unit/test_smoke.py` 2/2.
+  - Self-rating: 9/10, proud: yes.
+  - Review: Reviewer REQUEST_CHANGES, for a missing Results entry (this one) and unconfirmed authorship of the CLAUDE.md rule changes. The human confirmed authorship on 2026-10-05. Privacy auditor PASS.
 - **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
 
 ---
@@ -199,4 +210,26 @@
 
 ## RUN-003 — Results
 
-- **Status:** in progress. RUN-003.2 waits on the human; the live checks belong to the runbook step 6 dry run.
+- **Status:** in progress.
+- **RUN-003.2 (2026-10-05):** the office started with the repo as `[dir]`.
+  - The floor shows `file-sorter`; there is still one clone.
+  - Its data is in the git-ignored `.agent-office/`, and `git status` is clean.
+  - It listens on `127.0.0.1:4600` only.
+
+### Runbook step 6, first attempt (2026-10-06, 02:05–02:11 UTC)
+
+**Proved live:**
+- The repo's `settings.json` hooks run inside agent-office desks alongside agent-office's own `--settings`: events were logged from all five desk sessions.
+- The lead wrote `.task role=lead` and logged under `lead/`.
+- The lead planned CLI-001 and TST-001 through PR #1, ran 3 subagent passes, and merged with a merge commit (`4e85ab3`).
+- The lead opened issues #2 and #3 from the template, with the right titles and labels.
+- Both workers refused to start on a placeholder issue number (`#<A>`, `#<B>`), citing CLAUDE.md §2.2, and stopped without guessing.
+
+**Not reached:** the worker plan comment → approval → build → Stop-hook tests → pre-push gate → PR → review → merge, and a live role-guard block.
+
+**Causes:**
+- The worker prompts were pasted with placeholders, before the lead had opened the issues.
+- The workers forked from the lead's docs branch (→ D10).
+- The lead left `harness-plan` on GitHub (→ merge with `--delete-branch`).
+
+**Next:** resume both existing worker desks with the real issue numbers, after RUN-002.8 merges.
