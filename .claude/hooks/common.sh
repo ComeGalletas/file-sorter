@@ -27,8 +27,11 @@ compose_test() {
 #   role=pipeline   issue=12   acceptance=tests/unit/classify/test_margin.py
 # A desk cannot set environment variables for its own hooks, so they read this file.
 task_field() {
+  # Always succeeds (empty output when absent): callers run under `set -e`, and a failing
+  # command substitution would kill the pre-push hook silently instead of explaining why.
   local f; f="$(git rev-parse --show-toplevel 2>/dev/null)/.task"
-  [ -f "$f" ] && sed -n "s/^$1=//p" "$f" | head -1 | tr -d '\r'
+  [ -f "$f" ] || return 0
+  sed -n "s/^$1=//p" "$f" | head -1 | tr -d '\r'
 }
 
 agent_role() { printf '%s' "${AGENT_ROLE:-$(task_field role)}" | grep . || echo unassigned; }
