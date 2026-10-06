@@ -137,7 +137,9 @@
 - [x] RUN-002.5 — Verify: a lint finding comes back from an edit; a failing test blocks a push; logs land per role
 - [x] RUN-002.6 — CLAUDE.md and DESIGN.md updated for D1–D6 (phase, roles location, `.task`, ALLOW_MAIN_PUSH rule, MSYS note, §9 as built, §10 layout)
 
-- [ ] RUN-002.7 — Role guard (D8), `office/*` task branches (D9), `.agent-office/` git-ignored and excluded from lint; verified on agent-office-style worktrees
+- [x] RUN-002.7 — Role guard (D8), `office/*` task branches (D9), `.agent-office/` git-ignored and excluded from lint; verified on agent-office-style worktrees → `b60dffe`
+  - [x] RUN-002.7.1 — pre-push runs its cheap checks first (`.env`, acceptance named) before the suite
+  - [x] RUN-002.7.2 — Bug fixed: a missing `.task` made the pre-push hook exit silently under `set -e`. Found by the guard verification.
 
 ## RUN-002 — Results
 
@@ -157,6 +159,14 @@
   - desks started with the settings layers.
 
   These need running desks: runbook step 6, the harness dry run.
+- **RUN-002.7 verification (guard suite), 29 of 29 passed, on real worktrees under `.agent-office/worktrees/`:**
+  - Lead: every allowed action passes and every denied one is blocked.
+  - Worker: every allowed action passes and every denied one is blocked.
+  - The human's session is not guarded.
+  - `.agent-office/` is invisible to git and to ruff.
+  - On an `office/*` branch the gate fails fast twice: first for no `.env` ("run 'make init'"), then for no acceptance test, before any test runs.
+  
+  The RUN-002.5 suite still passes 22 of 22 after the changes.
 - **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
 
 ---
@@ -169,6 +179,24 @@
 
 ## RUN-003 — Tasks
 
-- [ ] RUN-003.1 — `npm install` and `npm install -g .` in the fork clone; `agent-office --help` answers
-- [ ] RUN-003.2 — Human: first start; add `file-sorter` as a floor
-- [ ] RUN-003.3 — Verify whether the existing clone was adopted (or junction it), and where worktrees go
+- [x] RUN-003.1 — `npm install` (16 s, builds `dist/`) and `npm install -g .`, which links to the fork clone, so a rebuild updates the command; `agent-office --help` answers. The fork's working tree is untouched.
+- [ ] RUN-003.2 — Human: first start with the repo as `[dir]` (command in `.claude/roles/README.md`)
+- [x] RUN-003.3 — Answered from agent-office's help and source, before the first start:
+  - **Existing clone:** `agent-office <dir>` makes that checkout a floor. No junction and no second clone, which resolves DOC-003.D3.
+  - **Data:** its data lives in `<dir>/.agent-office/` (password and state), which is git-ignored.
+  - **Worktrees:** worker worktrees go in `<dir>/.agent-office/worktrees/`, on the same drive, with branches named `office/*` (→ RUN-002.D9).
+  - **Settings:** every desk is launched with agent-office's own `--settings` (→ RUN-002.D8), and `AGENT_OFFICE_WORKER_ID` is set for each desk.
+
+## RUN-003 — Confirmed reading
+
+- **RUN-003.D1:** Start command: `agent-office "<workspace>/file-sorter" --projects "<workspace>" --max-workers 4`.
+  - Passing the repo as `[dir]` adopts this checkout.
+  - `--projects` keeps any future floor inside the workspace.
+  - `--max-workers 4` is the plan's 3–4 desk ceiling.
+  - It binds to 127.0.0.1 by default.
+- **RUN-003.D2:** The lead desk is hired **without** a worktree, so it works in the main checkout (the guard treats the main checkout as the lead). Every worker desk gets its own worktree.
+- **RUN-003.D3:** `npm audit`: 12 findings (6 moderate, 6 high), **all in dev and build dependencies**. `npm audit --omit=dev` finds 0 in what the running office loads. No `npm audit fix`: it would rewrite the fork's lockfile, and that's the human's call on their fork.
+
+## RUN-003 — Results
+
+- **Status:** in progress. RUN-003.2 waits on the human; the live checks belong to the runbook step 6 dry run.
