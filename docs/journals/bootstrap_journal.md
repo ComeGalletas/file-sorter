@@ -1,6 +1,6 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-005, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** in progress · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
 **Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
@@ -221,6 +221,11 @@
   - Triage: small, docs only (CLAUDE.md, DESIGN.md §10 and §12, the roles README, this journal). No behavior change, no rule change: status lines and lists brought in line with what's on `main`.
   - Tests: the default tiers and the acceptance `tests/unit/test_smoke.py`, run by the pre-push gate; counts in the PR body.
   - Self-rating: 9/10, proud: yes. Gap: the phase line goes stale again at each milestone; the lead's G1 report is the natural place to flag it to the human.
+  - Review (PR #12, routed to the full `reviewer` because it touches `.claude/roles/`):
+    - Round 1: REQUEST_CHANGES. DESIGN.md §12 still listed three subagents (minor). Privacy auditor PASS.
+    - Round 2, scoped to `855b268..52a8b92`: APPROVE. Privacy auditor PASS.
+    - Merged as `1d2c857`. Recorded by the lead.
+- **Closed, done with concerns** (the human, 2026-10-06; recorded by the lead in the M1 plan PR). Concern: nothing mechanically stops a merge that has no D14 verdict comment. It relies on the lead's brief, which RUN-006 extended with the reviewer used and `Reviewed at`. Follow-up: if a merge ever lands without the comment, give it a new RUN ID for a check, for example in the route script or a merge hook.
 
 ---
 
@@ -527,7 +532,7 @@
 - **RUN-007.D4:** **The host-tooling clause is exclusive, and it names the toolchain downloads** (PR #11 review round 1, finding 1).
   - **What the human confirmed**, on 2026-10-06, by choosing this option: "Only GitHub via gh for PR/issue metadata, plus download-only access to the registries the toolchain uses (images, packages, model weights). No other host, no uploads of file contents, never private files." So both clauses were confirmed, (a) GitHub and (b) toolchain downloads, not only the exclusivity. This answers round-2 finding 2.
   - Granting GitHub access alone left any other host, and any upload of file contents, neither allowed nor forbidden by CLAUDE.md.
-  - Host tooling may reach **only** GitHub through `gh` for PR and issue metadata, plus the declared toolchain's registries (container images, Python packages, model weights), **download only**.
+  - ~~Host tooling may reach **only** GitHub through `gh` for PR and issue metadata, plus the declared toolchain's registries (container images, Python packages, model weights), **download only**.~~ **Superseded by D5:** the toolchain is the explicit list of five registries, download only, at build or setup time, with no model weights.
   - The reviewer's "GitHub only" text would have made `make build` (base images, PyPI, the PyTorch index) and the lint hook's `ghcr.io` ruff pull into violations.
   - CLAUDE.md and the auditor now use the same host-tooling list (finding 2), and the `fetch` exception names Hugging Face as its only host (finding 3).
 - **RUN-007.D5:** **The toolchain is an explicit list: Docker Hub, `ghcr.io`, the Debian package archive, PyPI and `download.pytorch.org`** (PR #11 review round 2, finding 1; list confirmed by the human on 2026-10-06).
@@ -546,7 +551,10 @@
 
 ## RUN-007 — Results
 
-- **Status:** in progress. RUN-007.1, .3 and .4 are DONE; RUN-007.2 follows this PR's merge.
+- **Status:** DONE.
+  - RUN-007.1, .3 and .4 merged with PR #11 (`2e2566f`).
+  - RUN-007.2 merged with PR #10 (`5401730`). PR #10 was re-audited under `main`'s merged brief: Reviewer APPROVE, scoped to the merge `eb46eae..eb8f471`; Privacy auditor PASS on the full PR.
+  - The lead closed this status line in the M1 plan PR.
 - **Review round 2 (PR #11):** Reviewer REQUEST_CHANGES (1 major, 2 minor, 1 note), Privacy auditor PASS under `main`'s brief. Round-1 findings all resolved. New findings:
   1. the toolchain was undefined;
   2. what the human confirmed was unclear;
