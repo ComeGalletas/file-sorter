@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-002 · SAN-001 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-001 · API-001 · MOD-001 · PIPE-002 · CFG-002 · RUN-008 · DB-002 · CLI-003 · TST-003 · DOC-004
+**Next free:** ING-002 · SAN-001 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-001 · API-001 · MOD-001 · PIPE-002 · CFG-002 · RUN-008 · DB-002 · CLI-003 · TST-003 · DOC-005
 
 ## Work items
 
@@ -32,6 +32,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | DOC-001 | Process standard: work IDs, journals, index, commits, triage, completion status, self-rating, test tiers (adopted from the pygame project) | DOC, TST | process | done | — | — | [process_standard_journal.md](process_standard_journal.md) | main | 2026-10-05 |
 | DOC-002 | Design review: the plan reconciled into DESIGN.md (C-1 to C-20, open questions answered) | DOC, all | process | done | — | — | [design_review_journal.md](design_review_journal.md) | main | 2026-10-05 |
 | DOC-003 | Windows-native workspace: Docker Desktop host, `file-sorter-full` layout, agent-office from the fork | DOC, RUN | process | done | — | — | [workspace_journal.md](workspace_journal.md) | main | 2026-10-05 |
+| DOC-004 | M1 G0 rule changes: workers write their own task tests (QA owns shared test infrastructure), `classifier/config.py` owned by Pipeline, container source paths stored only in the local ledger and reports | DOC, TST, CFG, ING | process | done | — | PR #24 | [process_standard_journal.md](process_standard_journal.md) | `doc-004-test-ownership` | 2026-10-06 |
 
 ## Plans and designs
 
