@@ -13,6 +13,6 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
-# Claude Code: per-machine settings and per-worktree acceptance marker (RUN-002)
+# Claude Code: per-machine settings and the per-worktree task file (RUN-002.D4)
 .claude/settings.local.json
-.acceptance
+.task

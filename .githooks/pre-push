@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# The hard gate (C-17, RUN-002). Enabled by `make init` (core.hooksPath = .githooks).
+# Blocks the push unless:
+#   1. it doesn't push to main, or ALLOW_MAIN_PUSH=1 is set (bootstrap only, RUN-002.D5);
+#   2. the default tiers pass (unit + db + integration);
+#   3. the gpu tier passes when classifier/models/ or prompts/ changed;
+#   4. on a task branch, the acceptance test named in .task (acceptance=...) passes (RUN-002.D4).
+# Never bypass it with --no-verify (CLAUDE.md "Hard rules").
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+. .claude/hooks/common.sh
+
+fail() { printf 'pre-push BLOCKED: %s\n' "$*" >&2; exit 1; }
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  if [ "$remote_ref" = "refs/heads/main" ] && [ "${ALLOW_MAIN_PUSH:-0}" != "1" ]; then
+    fail "direct pushes to main are not allowed; open a PR (main changes only through gh pr merge)"
+  fi
+done
+
+echo "pre-push: default tiers (unit + db + integration)"
+compose_test pytest -q || fail "default test tiers failed"
+
+base="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+if [ -n "$base" ] && git diff --name-only "$base" HEAD | grep -qE '^(classifier/models/|prompts/)'; then
+  echo "pre-push: gpu tier (models/ or prompts/ changed)"
+  compose_test pytest -q -m gpu || fail "gpu tier failed"
+fi
+
+branch="$(git branch --show-current)"
+if [[ "$branch" =~ ^[a-z]+-[0-9]{3} ]]; then
+  acc="$(task_field acceptance)"
+  [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md §2.2)"
+  echo "pre-push: acceptance test $acc"
+  case "$acc" in
+    scripts/gate_*.py) compose_test python "$acc" || fail "acceptance gate $acc failed" ;;
+    *) compose_test pytest -q -m "unit or db or integration or gpu or gate" "$acc" || fail "acceptance test $acc failed" ;;
+  esac
+fi
+echo "pre-push: all gates passed"
