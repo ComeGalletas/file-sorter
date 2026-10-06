@@ -1,6 +1,6 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** proposed · **Milestone:** m1 ·
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** in progress (TST-002.1, .3 done; .2 in review; .4 waits for CLI-002.1); TST-003 proposed · **Milestone:** m1 ·
 **Issues:** #19, #20, #21, #22 · **Branch:** per task, named by agent-office (`office/*`)
 
 <!--
@@ -56,11 +56,11 @@ references or host paths here. Use hashes.
   - [x] TST-002.1.4 — Results · f49fd16
 - [ ] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
 - [x] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
-  - [x] TST-002.3.1 — `app`'s `/source` mount in `docker-compose.yml` is read-only (long and short forms)
-  - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it
-  - [x] TST-002.3.3 — the purge file is the only read-write remount, for `app` only, with its DANGER header
-  - [x] TST-002.3.4 — Results, self-rating and the local regression check
-  - [x] TST-002.3.5 — hardening from the round-1 review: short-form target read from the right; `read_only` true only for a real `True` or `"true"`
+  - [x] TST-002.3.1 — `app`'s `/source` mount in `docker-compose.yml` is read-only (long and short forms) · e7747f9
+  - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it · 83054ce
+  - [x] TST-002.3.3 — the purge file is the only read-write remount, for `app` only, with its DANGER header · 5d97934
+  - [x] TST-002.3.4 — Results, self-rating and the local regression check · 401f437
+  - [x] TST-002.3.5 — hardening from the round-1 review: short-form target read from the right; `read_only` true only for a real `True` or `"true"` · 4a8097d
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
 
 ## TST-002 — Results
@@ -80,7 +80,7 @@ references or host paths here. Use hashes.
   - `-k pair_2` alone fails with the message naming the pair's first test. That is intended.
   - A pre-existing polluted `db-test` (left by my own first, wrong attempt) made later runs fail until `docker compose down`. That was not a code problem. The tmpfs database does not outlive its container.
 - **Self-rating:** 9/10, proud: yes. Gaps: (1) the missing-DSN test exercises `require_db_dsn`, not the `db_dsn` fixture itself, because a session fixture can't be re-run inside a test; they share the one function. (2) `db` has no savepoint support, which nothing needs yet. (3) No random-order plugin; three orders were checked by hand.
-- **Review:**
+- **Review:** PR #31, merged as `6cb1279`, closing #19. Round 1: Reviewer APPROVE (full, 5 minor) and Privacy auditor PASS at `f49fd16`. The lead held the merge for minors 1–3 (a single-head check instead of a hardcoded `0001`, the `commit()` docstring, the journal hashes), fixed in `ba2a24b`. Round 2, scoped: APPROVE and PASS at `ba2a24b`. The verdict comments are on the PR.
 - **Deferred:** `db` has no savepoint support for tests that need to roll back part of their work. Nothing needs it yet.
 
 ### TST-002.2 (worker: qa)
@@ -98,7 +98,7 @@ references or host paths here. Use hashes.
 - **Triage:** small. One new unit test file that parses compose YAML with PyYAML; no dependency, no behavior change. Solo.
 - **Tests:** `tests/unit/runtime/test_source_mount_readonly.py`: 7 tests, all pass. `make test`: 189 passed. `make lint` clean. Regression check (local, not committed): setting `read_only: false` on app's `/source` in `docker-compose.yml` fails 2 tests (`test_app_mounts_source_read_only`, `test_no_other_compose_file_mounts_source_writable`); reverted. The test globs `docker-compose*.yml` at the repo root only and never reads `source_root` or the mount.
 - **Self-rating:** 9/10, proud: yes. Gap: it checks the compose files as written, not the merged result of `docker compose config` (which would need env and the Docker CLI, and would break the unit tier). The purge override is covered by its own tests instead.
-- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Review:** PR #29, merged as `a5eb4e5`, closing #21. Round 1: Reviewer APPROVE (full, 4 minor) and Privacy auditor PASS at `401f437`. The lead held the merge for minors 1–2 (a drive-letter host path in the short form; a quoted `read_only: "false"`), both ways a writable mount could slip through. They were fixed in TST-002.3.5. Round 2, scoped: APPROVE with no findings, and PASS, at `4a8097d`. The verdict comments are on the PR.
 - **Deferred:** a check on the merged compose config, if the lead wants one; it would belong to a non-unit tier.
 
 ### TST-002.4 (worker: qa)
@@ -109,3 +109,32 @@ references or host paths here. Use hashes.
 - **Self-rating:**
 - **Review:**
 - **Deferred:**
+
+---
+
+## TST-003 — Requirement (lead, from PR #35's review, 2026-10-06)
+
+- **Objective:** Make the private-schema helper for integration tests shared test infrastructure.
+- **Details:**
+  - `tests/integration/schema_support.py` (PR #35) creates a uuid-named schema, migrates it with Alembic, points a DSN at it through `search_path`, and drops it with `cascade`.
+  - It lives next to PIPE-001.1's test because the lead kept it out of a conftest, and DOC-004.D1 gives shared infrastructure to QA. CLI-002.1 needs the same helper, and later integration tests will too.
+  - Move it into QA-owned shared infrastructure: a module-scoped fixture in `tests/integration/conftest.py`, or a documented helper module. Move the existing tests onto it, unchanged in behaviour.
+- **Constraint:**
+  - It must coexist with the db tier's session schema (TST-002.1) and with PR #30's per-test migration schema.
+  - Never truncate a shared schema.
+  - Never skip: a missing `DB_DSN` fails with the TST-002.1 message.
+- **Implements:** CLAUDE.md §3 (shared expensive setup), DOC-004.D1.
+
+## TST-003 — Confirmed reading
+
+- Not in the approved M1 plan. **The human schedules it**, with M1 before G1 or with M2. Until then, CLI-002.1 may import `schema_support.py` as is.
+
+## TST-003 — Tasks
+
+- [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · issue: opened when scheduled · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
+
+## TST-003 — Results
+
+### TST-003.1 (worker: qa)
+
+- **Status:**

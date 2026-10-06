@@ -1,7 +1,7 @@
 # Config loading — journal
 
-**ID:** CFG-001 · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** proposed · **Milestone:** m1 ·
-**Issues:** #13 · **Branch:** per task, named by agent-office (`office/*`)
+**ID:** CFG-001 (+ CFG-002) · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** CFG-001 done; CFG-002 proposed · **Milestone:** m1 (CFG-002: not scheduled) ·
+**Issues:** #13 (PR #26) · **Branch:** `office/pixel-0686` (CFG-001.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -27,6 +27,7 @@ references or host paths here. Use hashes.
 - `pydantic>=2.8` and `pydantic-settings>=2.4` are already dependencies.
 - R-FOP-9 is a start-up check. M1 is the first milestone where a command reads `paths`, so it lands here rather than in M7.
 - **CFG-001.D1** — **The loader is `classifier/config.py`, owned by the Pipeline engineer** (confirmed by the human, 2026-10-06, as recommended). The rule change is DOC-004.D2, merged in PR #24: the roles table now gives Pipeline the package-root `config.py`.
+- **CFG-001.D2** — **`DB_DSN` always wins, and a non-null `db.dsn` in `config.yaml` is refused** (lead, 2026-10-06, from PR #26's review). This replaces the worker's "CFG-001.1.D2", where the file won: decisions carry the requirement ID. A DSN carries the database password, and `config.yaml` is committed, so secrets come from the environment only. Not implemented in CFG-001.1, which merged with the file-wins behaviour; it is implemented by **CFG-002**.
 
 ## CFG-001 — Plan
 
@@ -49,5 +50,33 @@ references or host paths here. Use hashes.
 - **Triage:** medium; `unit` tier plus lint; solo; branch `office/pixel-0686`.
 - **Tests:** `unit` 26 passed in `tests/unit/config/test_config.py` (the acceptance test). The pre-push gate also ran the default tiers: 154 passed. `make lint` clean.
 - **Self-rating:** pass 1: 9/10, proud: yes. The 1 point: **CFG-001.1.D2** (decided by the worker, open for the lead): a non-null `db.dsn` in the file wins over `DB_DSN`. `config.yaml` ships it `null`, so this only matters if someone sets it. Gap named against R-CFG-1; it is a one-line change if the lead wants the environment to win.
-- **Review:**
+- **Review:** PR #26, merged as `4af226f`, closing #13. Reviewer APPROVE (full, 4 minor), Privacy auditor PASS, at `5af6084`; the verdict comment is on the PR. The minors go to CFG-002. The worker's "CFG-001.1.D2" became the lead's CFG-001.D2.
 - **Deferred:** symlink resolution in `check_roots` (the lead asked for a pure comparison; containment through a bind-mount alias is not detectable without touching the filesystem).
+
+---
+
+## CFG-002 — Requirement (lead, from PR #26's review, 2026-10-06)
+
+- **Objective:** Harden the config loader along the four lines PR #26's review left open.
+- **Details:**
+  1. `check_roots`: collapse a leading `//` (which `posixpath.normpath` keeps) and require both roots to be absolute. Mixed relative and absolute roots are refused.
+  2. Wrap `yaml.YAMLError` and pydantic's `ValidationError` in `ConfigError`, and keep input values out of the messages, so a mistyped DSN is never echoed.
+  3. Implement **CFG-001.D2**: `DB_DSN` always wins, and a non-null `db.dsn` in the file is refused with a clear error.
+  4. Tests: a null `db.dsn` falling back to the environment; relative roots; a leading `//`; an error message that carries no input value.
+- **Constraint:** `deletion.enabled` and `vlm_nsfw` are untouched. No hard-coded paths.
+- **Implements:** R-FOP-9, R-CFG-1, P-5, CFG-001.D2.
+
+## CFG-002 — Confirmed reading
+
+- `classifier/config.py` and `tests/unit/config/test_config.py` are on `main` (PR #26). `config.yaml` ships `db.dsn: null`, so refusing a non-null value breaks nothing that is committed.
+- Not in the approved M1 plan. **The human schedules it**, either into M1 before G1 or into M2.
+
+## CFG-002 — Tasks
+
+- [ ] CFG-002.1 — The four hardening items with their unit tests · issue: opened when scheduled · acceptance: `tests/unit/config/test_config.py`
+
+## CFG-002 — Results
+
+### CFG-002.1 (worker: pipeline)
+
+- **Status:**
