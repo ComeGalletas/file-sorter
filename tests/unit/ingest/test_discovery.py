@@ -148,7 +148,7 @@ class TestProbeImage:
         assert result.animated is False
 
     def test_multi_page_tiff_is_not_animated_and_uses_the_first_page(self, tmp_path: Path) -> None:
-        # ING-001.D3 (default, for the human to confirm)
+        # ING-001.D3 (decided by the human): a 2-page TIFF is not animated
         path = tmp_path / "pages.tiff"
         first, *rest = [Image.new("RGB", (10 + i, 7)) for i in range(3)]
         first.save(path, save_all=True, append_images=rest)
@@ -156,6 +156,17 @@ class TestProbeImage:
         result = probe_image(path)
         assert isinstance(result, Probe)
         assert (result.format, result.animated, result.width) == ("TIFF", False, 10)
+
+    def test_multi_image_mpo_is_not_animated(self, tmp_path: Path) -> None:
+        # ING-001.D3: MPO (multi-image JPEG) is outside the allow-list, whatever Pillow says
+        path = tmp_path / "multi.jpg"
+        first, *rest = _frames(2)
+        first.save(path, format="MPO", save_all=True, append_images=rest)
+        with Image.open(path) as image:
+            assert (image.format, image.is_animated) == ("MPO", True)
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.format, result.animated) == ("MPO", False)
 
     def test_heic_decodes_through_pillow_heif(self, tmp_path: Path) -> None:
         path = tmp_path / "pic.heic"

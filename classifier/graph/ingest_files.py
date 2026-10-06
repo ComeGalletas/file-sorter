@@ -76,7 +76,8 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
                 yield Skipped(path, NOT_AN_IMAGE_TYPE)
 
 
-# R-ING-9 / ING-001.D3: only these formats can be animated. A multi-page TIFF is not.
+# R-ING-9 / ING-001.D3 (decided by the human): an allow-list. PNG covers APNG. Every other
+# format is never animated, including TIFF, MPO and HEIC.
 _ANIMATED_FORMATS = frozenset({"GIF", "WEBP", "PNG"})
 
 
@@ -100,8 +101,9 @@ def probe_image(path: Path) -> Probe | Skipped:
     try:
         with Image.open(path) as image:
             image.load()  # first frame or page; raises on a truncated file
-            frames = getattr(image, "n_frames", 1)
-            animated = image.format in _ANIMATED_FORMATS and frames > 1
+            animated = image.format in _ANIMATED_FORMATS and bool(
+                getattr(image, "is_animated", False)
+            )
             probe = Probe(
                 width=image.width,
                 height=image.height,
