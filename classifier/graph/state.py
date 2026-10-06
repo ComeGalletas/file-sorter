@@ -27,5 +27,6 @@ class RunResult:
     def ingest(self) -> IngestResult:
         """The ingest node's counts (CLI-002 and gate 1 read these)."""
         found = self.counts["ingest"]
-        assert isinstance(found, IngestResult)
+        if not isinstance(found, IngestResult):
+            raise TypeError(f"counts['ingest'] is {type(found).__name__}, not an IngestResult")
         return found
