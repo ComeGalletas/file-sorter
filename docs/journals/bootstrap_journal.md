@@ -58,11 +58,16 @@
 - [x] RUN-001.4 — Test tiers by path (`tests/conftest.py`), a smoke test and a db-reachability test → `2aadb2c`
 - [x] RUN-001.5 — Verify `make up` and `make test` in Docker → `3d401d9`
 - [x] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes → `8b340ae`
-- [ ] RUN-001.7 — README; privacy check; public GitHub repo; push
+- [x] RUN-001.7 — README; privacy check; public GitHub repo; push
 
 ## RUN-001 — Results
 
-- **Status:** DONE_WITH_CONCERNS. RUN-001.7 (README, privacy check, public repo, push) lands right after this.
+- **Status:** DONE_WITH_CONCERNS.
+- **RUN-001.7 (2026-10-05):**
+  - The privacy sweep checked all 75 files: host paths, user names, emails, secrets, image files, private files and the 110 words specific to the human's labels. Its one real hit, an example row echoing a real label, was fixed in CLS-001.7.
+  - `gh repo create ComeGalletas/file-sorter --public`. The first push of `main` went through the pre-push gate (3 passed) with `ALLOW_MAIN_PUSH=1`, the bootstrap exception.
+  - GitHub's file tree shows 75 files and none forbidden.
+  - The commit author is the human's existing identity, so its email is public. Switching future commits to the GitHub noreply address is offered to the human.
 - **Triage:** large (new runtime contract) · tests: unit + db tiers, plus live checks inside the running stack · solo.
 - **Verified in the running stack (2026-10-05):**
   - `make up`: all four services up, db healthy.

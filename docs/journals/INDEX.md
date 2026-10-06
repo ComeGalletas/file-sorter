@@ -14,7 +14,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | ID | Title | Systems | Type | Status | Milestone | Issues | Journal | Branch | Date |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | CLS-001 | Two category axes: a required format and an optional topic, `<Topic>/<Format>/` folders, derived `animated` flag, labels converted from the human's sample | CLS, NAME, FOP, DB, API, TST | feature | in progress (design done; build in M3) | m3 | — | [categories_journal.md](categories_journal.md) | main | 2026-10-05 |
-| RUN-001 | Repo bootstrap: Docker runtime (read-only source, internal network), CUDA image, Makefile, config, models pulled | RUN, CFG, TST | feature | in progress (push pending) | — | — | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
+| RUN-001 | Repo bootstrap: Docker runtime (read-only source, internal network), CUDA image, Makefile, config, models pulled | RUN, CFG, TST | feature | done | — | — | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
 | RUN-002 | Agent configuration: settings layers, hooks, pre-push gate, subagents, desk briefs, templates, gate stubs | RUN, DOC, TST | feature | in progress (live-session check in step 6) | — | — | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
 | RUN-003 | agent-office installed from the fork's source; floor for this repo | RUN | feature | proposed | — | — | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-10-05 |
 | DOC-001 | Process standard: work IDs, journals, index, commits, triage, completion status, self-rating, test tiers (adopted from the pygame project) | DOC, TST | process | done | — | — | [process_standard_journal.md](process_standard_journal.md) | main | 2026-10-05 |
