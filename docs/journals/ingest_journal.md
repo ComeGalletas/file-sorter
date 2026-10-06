@@ -47,6 +47,9 @@ references or host paths here. Use hashes.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
   - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
 - **ING-001.D3** — **`animated` is an allow-list** (decided by the human, 2026-10-06; it replaces the earlier default). `animated` is true only when Pillow's `format` is in {GIF, WEBP, PNG} (PNG covers APNG) **and** `is_animated` is true. Every other format is false, including TIFF, MPO and HEIC. Classification reads frame or page 0.
+- **ING-001.D4** — **Decompression bombs: Pillow's default stands** (lead, 2026-10-06). `Image.MAX_IMAGE_PIXELS` stays at its default, 89,478,485 pixels. Above that Pillow warns (`DecompressionBombWarning`); above twice that (~179 MP) it raises `DecompressionBombError`, which `probe_image` catches and returns as `Skipped` (ING-001.2.1). A test pins the limit, so changing it is a deliberate act.
+- **ING-001.D5** — **Skip reasons live in `files.error`; only `status = error` is retried** (lead, 2026-10-06). A skipped file has `status = skipped` and its reason in `files.error`: a fixed string or an exception type, never a path. No migration. A `skipped` row counts as known under R-ING-2 and is never retried. That holds although `error` also stores skip reasons, because retries key on the status, not the column.
+- **ING-001.D6** — **Symlinks and unreadable folders get no ledger row** (lead, 2026-10-06). They can't be hashed safely, so they count as skipped-unreadable on every run and are never "new". A non-image or undecodable *file* is hashed (read-only) and recorded as `skipped`. The node takes the root as a parameter, and `source_path` is the container path as walked (DOC-004.D3).
 - **ING-001.1.2 alias:** `tif` is accepted as an alias of `tiff`, beside the MVP types in DESIGN.md §1. Extensions are matched case-insensitively, and `discover` filters by extension only: `probe_image` is the sole judge of decodability (R-ING-3).
 
 ## ING-001 — Plan
@@ -60,8 +63,15 @@ references or host paths here. Use hashes.
   - [x] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: d096c44
   - [x] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped · commit: fa0d4b1
   - [x] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime` · commit: 000f57c
-  - [x] ING-001.1.4 — `animated` as an allow-list (ING-001.D3 decided) · commit: (next commit)
+  - [x] ING-001.1.4 — `animated` as an allow-list (ING-001.D3 decided) · commit: 8ab7a0d
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
+  - [x] ING-001.2.1 — `probe_image`: catch only Pillow's error families · commit: ad6c99a
+  - [x] ING-001.2.2 — `discover`: file symlinks are `Skipped("symlink")` · commit: 7b46b26
+  - [x] ING-001.2.3 — `discover`: an unreadable subfolder is a `Skipped`, via `os.walk` `onerror` · commit: 8881580
+  - [x] ING-001.2.4 — Record ING-001.D4 (decompression bombs) and pin the Pillow limit in a test · commit: 050abde
+  - [x] ING-001.2.5 — `ingest` node and its typed result, with the db tests (the lead folded .2.6 into this commit) · commit: 82a60bc
+  - ~~ING-001.2.6~~ folded into ING-001.2.5 (tests ship with their code, DOC-004.D1)
+  - [x] ING-001.2.7 — Results and self-rating · commit: (this commit)
 
 ## ING-001 — Results
 
@@ -76,9 +86,24 @@ references or host paths here. Use hashes.
 
 ### ING-001.2 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
+- **Status:** DONE_WITH_CONCERNS (low severity, two items under Deferred). Every subtask landed: .2.1 `ad6c99a`, .2.2 `7b46b26`, .2.3 `8881580`, .2.4 `050abde`, .2.5 `82a60bc`; .2.6 was folded into .2.5 as the lead asked.
+- **Triage:** large, solo. First code to write `files`, plus contract changes to `discover` and `probe_image`. No model, prompt or threshold is touched, so no `gpu` tier or eval run.
 - **Tests:**
-- **Self-rating:**
-- **Review:**
+  - **Acceptance:** `tests/db/ingest/test_ingest_ledger.py`, 30 tests, all passing. They cover new rows, skipped rows, the known-hash no-op, duplicate paths, the `error` retry, symlinks, an unreadable folder, a vanished file, the result contract, an unchanged source tree and a log with no path.
+  - **Unit:** `tests/unit/ingest/test_discovery.py` went from 28 to 42 tests (the narrowed except, the symlink and `onerror` cases, the pixel limit).
+  - **Default tiers:** `make test` shows 245 passed. `make lint` is clean.
+  - **Mutation check:** with the duplicate append disabled and the `error` retry removed, 8 of the new db tests fail. With the code restored, they pass.
+  - **Not run:** `gpu` tier and `eval/`, because no model or prompt is touched. Gate 1 (`make gate-1`, TST-002.4) is the next task's.
+- **Result contract (gate 1):** `IngestResult(new, skipped_known, skipped_unreadable, duplicate)` with a `total` property. Each walked file lands in exactly one bucket. `duplicate` counts a path appended **in this run**, so a re-run reports it as `skipped_known` and `new` is 0. A file newly recorded as `skipped`, a symlink and an unreadable folder all count as `skipped_unreadable`.
+- **Where this differs from the plan:**
+  - `files.format` is the classification axis, not Pillow's format, so ingest does not write it. The plan listed `format` by mistake.
+  - The node never commits. The caller owns the transaction, so the `db` fixture can roll back.
+  - A non-image *file* is hashed and recorded as `skipped`. A symlink and an unreadable folder are not (ING-001.D6).
+- **Self-rating:** 9/10, proud: yes (first pass, from a fresh read of the diff). The one point is the gap named under Deferred, a symlinked folder being dropped without a trace. It is outside the issue's wording ("file symlinks") and the acceptance test. Nothing is left against R-ING-1, 2, 3, 4, 6, 7, 8, 9 or the four PR #27 follow-ups.
+- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
 - **Deferred:**
+  - **A symlinked directory is dropped silently.** `os.walk` lists it in `dirnames` and doesn't follow it, so it is never reported. Proposed follow-up: yield `Skipped("symlink")` for it, like a file link. Severity: low.
+  - **A changed file at the same path** gets a new hash and a new row, and the old row's `source_path` goes stale. Out of scope, as the lead set it; `watch` (M7) handles it.
+  - **Not regular files** (a FIFO or device inside the source) would block `hash_file`. Not reachable on a folder of images. Severity: low.
+  - **One transaction per run.** A crash loses the run's rows, and the re-run redoes the hashing; it stays idempotent. Batched commits can come with the graph wiring (PIPE).
+  - Thumbnails (R-ING-5) wait for M2 (ING-001.D1).

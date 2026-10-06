@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -93,6 +94,47 @@ class TestDiscover:
         # discover filters by extension only; probe_image is the sole judge of decodability.
         (tmp_path / "fake.png").write_text("not an image")
         assert [type(item) for item in discover(tmp_path)] == [Candidate]
+
+    def test_file_symlinks_are_skipped_not_followed(self, tmp_path: Path) -> None:
+        # ING-001.2.2: a link may point outside the root, so it is never a Candidate
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "target.png").write_bytes(b"x")
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "link.png").symlink_to(outside / "target.png")
+        (root / "dangling.png").symlink_to(outside / "missing.png")
+        (root / "real.png").write_bytes(b"")
+        items = {item.path.name: item for item in discover(root)}
+        assert isinstance(items["real.png"], Candidate)
+        for name in ("link.png", "dangling.png"):
+            assert items[name] == Skipped(root / name, "symlink")
+
+    @pytest.mark.parametrize("bad", ["a_bad", "m_bad", "z_bad"])  # first, middle, last in order
+    def test_unreadable_subfolder_is_a_skipped_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: str
+    ) -> None:
+        # ING-001.2.3: chmod can't make a folder unreadable for root in the container,
+        # so the scan of one folder is made to fail instead.
+        for name in ("a_bad", "m_bad", "z_bad"):
+            self._touch(tmp_path, f"{name}/inside.png")
+        self._touch(tmp_path, "top.png")
+        real_scandir = os.scandir
+        target = str(tmp_path / bad)
+
+        def scandir(path: object = ".") -> object:
+            if str(path) == target:
+                raise PermissionError(13, "denied", target)
+            return real_scandir(path)
+
+        monkeypatch.setattr(os, "scandir", scandir)
+        items = list(discover(tmp_path))
+        skipped = [item for item in items if isinstance(item, Skipped)]
+        assert skipped == [Skipped(tmp_path / bad, "unreadable folder")]
+        assert "inside.png" not in {i.path.name for i in items if tmp_path / bad in i.path.parents}
+        # the other folders and the top level are still walked
+        assert len([i for i in items if isinstance(i, Candidate)]) == 3
+        assert str(tmp_path) not in skipped[0].reason
 
     def test_directories_are_not_yielded_and_an_empty_root_is_empty(self, tmp_path: Path) -> None:
         (tmp_path / "empty_dir").mkdir()
@@ -195,6 +237,62 @@ class TestProbeImage:
         (tmp_path / "empty.png").write_bytes(b"")
         assert isinstance(probe_image(tmp_path / "empty.png"), Skipped)
         assert isinstance(probe_image(tmp_path / "missing.png"), Skipped)
+
+    def test_truncated_heic_is_skipped(self, tmp_path: Path) -> None:
+        good = tmp_path / "good.heic"
+        Image.effect_noise((64, 64), 80).convert("RGB").save(good, format="HEIF")
+        data = good.read_bytes()
+        bad = tmp_path / "bad.heic"
+        bad.write_bytes(data[: len(data) // 2])
+        assert isinstance(probe_image(bad), Skipped)
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("x"),
+            EOFError("x"),
+            SyntaxError("x"),
+            ValueError("x"),
+            struct.error("x"),
+            Image.DecompressionBombError("x"),
+        ],
+    )
+    def test_pillow_error_families_are_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: Exception
+    ) -> None:
+        # ING-001.2.1: each family Pillow raises for a bad file becomes a Skipped
+        def boom(*_: object, **__: object) -> None:
+            raise error
+
+        monkeypatch.setattr(Image, "open", boom)
+        result = probe_image(tmp_path / "x.png")
+        assert isinstance(result, Skipped)
+        assert result.reason == f"undecodable image ({type(error).__name__})"
+
+    def test_a_bug_is_not_hidden_as_an_undecodable_image(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ING-001.2.1: only Pillow's families are caught; anything else surfaces
+        def boom(*_: object, **__: object) -> None:
+            raise AttributeError("a real bug")
+
+        monkeypatch.setattr(Image, "open", boom)
+        with pytest.raises(AttributeError):
+            probe_image(tmp_path / "x.png")
+
+    def test_pillow_pixel_limit_is_left_at_its_default(self) -> None:
+        # ING-001.D4: warning above 89,478,485 px, DecompressionBombError above twice that
+        assert Image.MAX_IMAGE_PIXELS == 89_478_485
+
+    def test_an_oversized_image_is_skipped_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # ING-001.D4: the hard-error branch, reached with a tiny limit instead of 179 MP
+        path = tmp_path / "big.png"
+        Image.new("RGB", (10, 10)).save(path)
+        monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)  # 100 px > 2 * 10
+        result = probe_image(path)
+        assert result == Skipped(path, "undecodable image (DecompressionBombError)")
 
     def test_skip_reason_never_contains_the_path(self, tmp_path: Path) -> None:
         path = tmp_path / "secret-name-xyz.png"

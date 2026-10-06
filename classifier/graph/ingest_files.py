@@ -6,6 +6,7 @@ prints or logs a path or a file name (CLAUDE.md "Hard rules").
 
 import hashlib
 import os
+import struct
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ IMAGE_EXTENSIONS = frozenset(
 # R-ING-8: ignored silently, with no ledger row and no log line. Compared lowercase.
 OS_METADATA_NAMES = frozenset({"desktop.ini", "thumbs.db", ".ds_store"})
 NOT_AN_IMAGE_TYPE = "not an image type"  # R-ING-3
+SYMLINK = "symlink"  # ING-001.2.2
+UNREADABLE_FOLDER = "unreadable folder"  # ING-001.2.3
 
 
 class Candidate(NamedTuple):
@@ -60,25 +63,48 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
     """Walk `root` recursively and read-only, in sorted order (R-ING-3, R-ING-8).
 
     OS metadata files are dropped silently. A file with an MVP image extension (matched
-    case-insensitively) is a `Candidate`; any other file is `Skipped`. Nothing is opened,
-    and symlinked directories are not followed.
+    case-insensitively) is a `Candidate`; any other file is `Skipped`, and so is a file
+    symlink (ING-001.2.2). Nothing is opened, and symlinked directories are not followed.
     """
-    for dirpath, dirnames, filenames in os.walk(root):
+    unreadable: list[Skipped] = []
+
+    def on_error(error: OSError) -> None:  # ING-001.2.3: never a silent drop
+        # The reason is fixed text: the OSError message carries the path.
+        unreadable.append(Skipped(Path(error.filename or root), UNREADABLE_FOLDER))
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=on_error):
+        yield from unreadable
+        unreadable.clear()
         dirnames.sort()
         for name in sorted(filenames):
             lowered = name.lower()
             if lowered in OS_METADATA_NAMES:
                 continue
             path = Path(dirpath) / name
-            if Path(lowered).suffix in IMAGE_EXTENSIONS:
+            if path.is_symlink():  # ING-001.2.2: it may point outside the root; never follow it
+                yield Skipped(path, SYMLINK)
+            elif Path(lowered).suffix in IMAGE_EXTENSIONS:
                 yield Candidate(path)
             else:
                 yield Skipped(path, NOT_AN_IMAGE_TYPE)
+    yield from unreadable  # a failing folder visited last has no later iteration to flush it
 
 
 # R-ING-9 / ING-001.D3 (decided by the human): an allow-list. PNG covers APNG. Every other
 # format is never animated, including TIFF, MPO and HEIC.
 _ANIMATED_FORMATS = frozenset({"GIF", "WEBP", "PNG"})
+
+
+# What Pillow raises for a file it can't decode: OSError covers UnidentifiedImageError and
+# truncation, SyntaxError and struct.error come from format plugins, EOFError from short reads.
+_PILLOW_ERRORS = (
+    OSError,
+    EOFError,
+    SyntaxError,
+    ValueError,
+    struct.error,
+    Image.DecompressionBombError,
+)
 
 
 class Probe(NamedTuple):
@@ -111,6 +137,6 @@ def probe_image(path: Path) -> Probe | Skipped:
                 animated=animated,
                 mtime=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC),
             )
-    except Exception as exc:  # Pillow raises OSError, SyntaxError, ValueError, ...
+    except _PILLOW_ERRORS as exc:  # anything else is a bug and must surface (ING-001.2.1)
         return Skipped(path, f"undecodable image ({type(exc).__name__})")
     return probe
