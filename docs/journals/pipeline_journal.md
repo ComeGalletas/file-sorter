@@ -31,6 +31,12 @@ references or host paths here. Use hashes.
   - Rows stay at `queued` or `skipped`, and the CSV's proposed-output column stays empty. `proposed` starts once `name` exists (M5).
   - R-PIPE-2's "ends at status `proposed`" applies once there is an output to propose.
   - The rejected option, marking every ingested row `proposed` now, would make later nodes skip those rows, because nodes select by status.
+- **PIPE-001.D2** — **On an `error` retry, each node overwrites its own columns (and nulls the ones it doesn't produce); the graph clears nothing downstream** (lead decision, 2026-10-06).
+  - Selection is by status, so no node reads a downstream column before its owner has rewritten it. `ingest.py`'s `_RETRY` stays as it is.
+  - Proof: a row seeded with downstream values, retried, then rewritten by a stand-in node.
+- **PIPE-001.D3** — **`run` commits once per node; ingest never commits itself; a raising node rolls back only its own work** (lead decision, 2026-10-06).
+  - A crash in node N+1 keeps node N's status checkpoint, and a resumed run selects by status (P-4).
+  - Proof: a second node that raises, then a re-run that resumes from the ledger.
 
 ## PIPE-001 — Plan
 
@@ -40,6 +46,9 @@ references or host paths here. Use hashes.
 ## PIPE-001 — Tasks
 
 - [ ] PIPE-001.1 — Batch graph skeleton with the ingest node and dry-run mode · #17 · acceptance: `tests/integration/test_dry_run_graph.py`
+  - [x] PIPE-001.1.1 — Graph state, node registry in §3 order, dry-run plan and the status selector (unit tests)
+  - [ ] PIPE-001.1.2 — `run`: the LangGraph graph, one commit per node (integration tests, own-schema fixture)
+  - [ ] PIPE-001.1.3 — Results, self-rating and journal close-out
 
 ## PIPE-001 — Results
 
