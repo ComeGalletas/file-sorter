@@ -390,3 +390,42 @@
   - add a row for **RUN-005**: this work, `done`;
   - set Next free to **RUN-006**.
 - **Self-rating:** 9/10, proud: yes (after round 1). Round 1 rightly caught two bypasses that my first 32 cases missed. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
+
+---
+
+## RUN-007 — Requirement (human, 2026-10-06)
+
+- **Objective:** Change the wording of the "no outbound call" hard rule, as the human ruled, in a PR of its own, before any code that relies on it.
+- **Details:**
+  - PR #10 (RUN-006) carried this policy change (its RUN-006.D8) together with the route script, whose `gh` calls needed it.
+  - In round 3, the lead had the privacy auditor judge PR #10 against the **rewritten brief inside PR #10 itself**.
+  - Claude Code's auto-mode security check flagged the resulting PASS as "Instruction Poisoning", and the lead held the merge.
+  - The human chose to split the policy out.
+- **Constraint:**
+  - This PR changes only the rule wording: CLAUDE.md's hard rule and the privacy auditor's check 1.
+  - It is audited under the rules **currently on `main`**, never under its own text.
+  - PR #10 then merges `main` and is re-audited under the merged rules.
+- **Implements:** CLAUDE.md "Hard rules"; DESIGN.md P-3.
+
+## RUN-007 — Confirmed reading
+
+- **RUN-007.D1:** **The "no outbound call" hard rule covers the app runtime only** (ruled by the human on 2026-10-06; recorded in PR #10 as RUN-006.D8).
+  - The runtime is the Compose services, `classifier/`, and anything that runs inside the containers. That includes `scripts/gate_*.py`, which runs in the `test` container.
+  - The `fetch` service and the opt-in egress backends remain the designed exceptions.
+  - Host-side process tooling may use `gh` for GitHub PR and issue metadata.
+  - **Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.**
+  - "Never send pixels to any remote service" is unchanged.
+- **RUN-007.D2:** **A PR never changes the rules it's judged by.** Rule changes (CLAUDE.md, DESIGN.md, the reviewer and auditor briefs) go in their own PR, audited under the rules on `main`, and merge before any PR that depends on them. This is the lesson from PR #10 round 3.
+- **RUN-007.D3:** The PR #10 round-3 Reviewer's minor note on Makefile wording is applied here: "Makefile recipes that don't run in a container" instead of "the Makefile's host recipes".
+
+## RUN-007 — Tasks
+
+- [x] RUN-007.1 — CLAUDE.md hard rule and privacy auditor check 1 worded per D1 (and D3)
+- [ ] RUN-007.2 — After merge: PR #10 merges `main` (a normal merge, no history rewrite, so `Reviewed at` stays an ancestor) and gets a privacy re-audit under the merged brief
+
+## RUN-007 — Results
+
+- **Status:** in progress. RUN-007.1 is DONE; RUN-007.2 follows this PR's merge.
+- **Triage:** medium. A rule-contract change, wording only; no code, so no new tests (non-behavioral for the code). Tests: the default tiers via the pre-push gate.
+- **For the lead (index, D13/D16):** add a row for RUN-007, and set Next free to **RUN-008**. This adds to the RUN-004 to RUN-006 rows already pending in the M1 plan PR.
+- **Self-rating:** 9/10, proud: yes. Gap: the lesson (D2) is recorded here and in the lead's brief, but not enforced. The route script could send every PR that touches CLAUDE.md or `.claude/agents/` to a "policy" lane in the future.

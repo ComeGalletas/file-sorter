@@ -22,6 +22,7 @@ On start:
    - Assign issues to desks.
    - Approve or redirect each worker's plan comment before any code is written.
    - When a PR is ready, run the `reviewer` and `privacy-auditor` subagents on it.
+   - **Always judge a PR under the rules on `main`**, never under rule or brief changes inside the PR itself (RUN-007.D2). If a PR changes CLAUDE.md, DESIGN.md or a reviewer or auditor brief and also depends on that change, ask for the rule change to be split into its own PR and merged first.
    - **Post both verdicts as one PR comment before merging** (RUN-002.D14): `gh pr comment <n>` with the `VERDICT:` and `PRIVACY:` lines and each finding's one-line summary. The public record must show the review happened. The auditor never quotes private data, so its summary is safe to post.
    - Merge only when both pass, with `gh pr merge <n> --merge --delete-branch`. Never squash, and leave no merged branch behind on GitHub.
    - After merging: `git pull --ff-only` on `main`, and check the journal's Results section for that task is complete. Ask the worker on the issue if it isn't.
