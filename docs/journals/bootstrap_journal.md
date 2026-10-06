@@ -131,6 +131,11 @@
   - Every worker starts with `git fetch && git rebase origin/main`.
 - **RUN-002.D11:** **Agents read files with the Read tool, not `cat`.** In the first attempt, workers reading the journals through Git Bash saw `—` and `§` as `�`, because shell output reaches Claude in the Windows console code page. The files are valid UTF-8 (checked: 19 em dashes, 3 `§`, LF only). Only the shell path mangles them.
 - **RUN-002.D12:** **agent-office's Changes window is view-only for us.** Its UI source describes it as the files a desk changed and their diff "against the branch the office was opened on, with commit / discard / open-a-PR" (`src/client/ui/changes.ts`). Its buttons would bypass three rules: commit subjects with IDs and journal ticks, never discarding a desk's work, and the PR template. The human asked for this rule on 2026-10-06.
+- **RUN-002.D13:** **The index lags GitHub on purpose.** Updating it at every merge would mean a docs PR per merge, or the lead leaving `main` (against D10). Workers can't edit it (guard). In the step 6 run, the lead simply skipped it. So:
+  - Between checkpoints, the issue's state on GitHub is the live status.
+  - The lead brings the rows in line in its next docs PR, at G1 at the latest, and the G1 check requires them to match.
+- **RUN-002.D14:** **Review verdicts go on the PR.** In step 6, the reviewer and auditor ran on every PR, but their verdicts lived only in the lead's local transcripts, so GitHub showed merges with no visible review. The lead now posts both verdict lines and the one-line findings as a PR comment before merging. The auditor never quotes private data, so its summary is safe in a public repo.
+- **RUN-002.D15:** **A push that only deletes branches skips the test run.** Deleting a remote branch publishes no code, and a red working tree shouldn't be able to block a cleanup. The `main` rule still applies first.
 - **RUN-002.D7:** The hooks parse their JSON input with `sed`. `jq` isn't on Git Bash, and host Python isn't a project dependency.
 
 ## RUN-002 — Tasks
@@ -149,6 +154,8 @@
 - [x] RUN-002.8 — Fixes from the first dry-run attempt: lead stays on `main` and merges with `--delete-branch`; workers rebase first and read with the Read tool (D10, D11). Opened as a PR for the lead to review and merge.
 
 - [x] RUN-002.9 — Roles README: the Changes window is view-only (D12)
+
+- [x] RUN-002.10 — Review trail and status rules from the step 6 run: verdicts posted on the PR (D14), index lags GitHub until the lead's next docs PR or G1 (D13), `gh pr comment` allowed, deletion pushes skip tests (D15). Standard labels created on GitHub (`blocked`, `m1`–`m8`, `role:*`); `blocked` added to #3; `origin/harness-plan` removed.
 
 ## RUN-002 — Results
 
@@ -242,3 +249,26 @@
 - The lead left `harness-plan` on GitHub (→ merge with `--delete-branch`).
 
 **Next:** resume both existing worker desks with the real issue numbers, after RUN-002.8 merges.
+
+### Runbook step 6, completed (2026-10-06, 02:24–02:32 UTC)
+
+**Exit criterion met:** one closed issue with a merged PR (#2 → PR #5), and one open issue whose branch the gate refused (#3, never on GitHub).
+
+**Proved live in agent-office desks:**
+- Workers rebased on `origin/main`, ran `make init`, wrote `.task`, and logged under `pipeline/` and `qa/`.
+- Both posted a triage block and a plan before coding. The lead approved #2's plan and corrected its triage from small to medium (a behavior change), and the worker followed the correction.
+- The Stop hook ran the touched tests: `StopTests: pass` (pipeline) and `fail` (QA, by design).
+- The pre-push gate: Pipeline `pre-push: all gates passed`; QA `1 failed, 3 passed … pre-push BLOCKED: default test tiers failed`, `rc=1`, no `--no-verify`, and no branch on GitHub.
+- PR #5 used the template: `Closes #2`, the corrected triage, tier counts, `DONE`, and a full self-rating (9/10 with a named gap). One commit, `CLI-001.1.1`. Merge commit `77a897c`; branch deleted; #2 closed by the PR.
+- Reviewer `VERDICT: APPROVE` and auditor `PRIVACY: PASS` on PR #5, and the same pair on #1, #4 and #6.
+- After a merge, a worker's worktree is removed when it goes home.
+
+**Gaps, all addressed in RUN-002.10:**
+- The index was not updated (→ D13).
+- The verdicts were not visible on GitHub (→ D14).
+- The `blocked` label didn't exist, so #3 lacked it (labels created).
+- The stale `harness-plan` branch (removed).
+
+**Prompt-induced, not a process gap:** the QA desk pushed without the lead approving its plan, because its first message from the human said to expect the push to be blocked.
+
+**Not yet exercised live:** a role-guard block, and a lint-hook finding. No desk attempted a forbidden action or wrote lint-failing code; the live probe after this PR covers both.
