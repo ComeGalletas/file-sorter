@@ -130,6 +130,7 @@
   - The lead switches the main checkout back to `main` right after pushing a docs branch.
   - Every worker starts with `git fetch && git rebase origin/main`.
 - **RUN-002.D11:** **Agents read files with the Read tool, not `cat`.** In the first attempt, workers reading the journals through Git Bash saw `—` and `§` as `�`, because shell output reaches Claude in the Windows console code page. The files are valid UTF-8 (checked: 19 em dashes, 3 `§`, LF only). Only the shell path mangles them.
+- **RUN-002.D12:** **agent-office's Changes window is view-only for us.** Its UI source describes it as the files a desk changed and their diff "against the branch the office was opened on, with commit / discard / open-a-PR" (`src/client/ui/changes.ts`). Its buttons would bypass three rules: commit subjects with IDs and journal ticks, never discarding a desk's work, and the PR template. The human asked for this rule on 2026-10-06.
 - **RUN-002.D7:** The hooks parse their JSON input with `sed`. `jq` isn't on Git Bash, and host Python isn't a project dependency.
 
 ## RUN-002 — Tasks
@@ -146,6 +147,8 @@
   - [x] RUN-002.7.2 — Bug fixed: a missing `.task` made the pre-push hook exit silently under `set -e`. Found by the guard verification.
 
 - [x] RUN-002.8 — Fixes from the first dry-run attempt: lead stays on `main` and merges with `--delete-branch`; workers rebase first and read with the Read tool (D10, D11). Opened as a PR for the lead to review and merge.
+
+- [x] RUN-002.9 — Roles README: the Changes window is view-only (D12)
 
 ## RUN-002 — Results
 

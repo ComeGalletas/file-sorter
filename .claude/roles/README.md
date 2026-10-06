@@ -43,4 +43,11 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 
 Never edit outside your role's paths; open an issue for the owner instead.
 
+**agent-office's Changes window is for watching only** (RUN-002.D12). That's the panel beside each desk's terminal, showing the desk's changed files and diffs. Don't use its commit, discard or open-a-PR buttons:
+- A commit from the panel lacks the `<ID>: …` subject and the journal tick (CLAUDE.md §1.6).
+- Discard destroys a desk's uncommitted work.
+- A PR from the panel skips the template.
+
+Desks commit and open PRs themselves.
+
 **Read files with the Read tool, not `cat`** (RUN-002.D11). On this Windows host, shell output reaches you in the console code page, so `—` and `§` turn into `�`. That breaks references like "CLAUDE.md §2.2". The files themselves are UTF-8.
