@@ -28,6 +28,7 @@ IMAGE_EXTENSIONS = frozenset(
 OS_METADATA_NAMES = frozenset({"desktop.ini", "thumbs.db", ".ds_store"})
 NOT_AN_IMAGE_TYPE = "not an image type"  # R-ING-3
 SYMLINK = "symlink"  # ING-001.2.2
+UNREADABLE_FOLDER = "unreadable folder"  # ING-001.2.3
 
 
 class Candidate(NamedTuple):
@@ -65,7 +66,15 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
     case-insensitively) is a `Candidate`; any other file is `Skipped`, and so is a file
     symlink (ING-001.2.2). Nothing is opened, and symlinked directories are not followed.
     """
-    for dirpath, dirnames, filenames in os.walk(root):
+    unreadable: list[Skipped] = []
+
+    def on_error(error: OSError) -> None:  # ING-001.2.3: never a silent drop
+        # The reason is fixed text: the OSError message carries the path.
+        unreadable.append(Skipped(Path(error.filename or root), UNREADABLE_FOLDER))
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=on_error):
+        yield from unreadable
+        unreadable.clear()
         dirnames.sort()
         for name in sorted(filenames):
             lowered = name.lower()
@@ -78,6 +87,7 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
                 yield Candidate(path)
             else:
                 yield Skipped(path, NOT_AN_IMAGE_TYPE)
+    yield from unreadable  # a failing folder visited last has no later iteration to flush it
 
 
 # R-ING-9 / ING-001.D3 (decided by the human): an allow-list. PNG covers APNG. Every other

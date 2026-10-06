@@ -110,6 +110,32 @@ class TestDiscover:
         for name in ("link.png", "dangling.png"):
             assert items[name] == Skipped(root / name, "symlink")
 
+    @pytest.mark.parametrize("bad", ["a_bad", "m_bad", "z_bad"])  # first, middle, last in order
+    def test_unreadable_subfolder_is_a_skipped_entry(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bad: str
+    ) -> None:
+        # ING-001.2.3: chmod can't make a folder unreadable for root in the container,
+        # so the scan of one folder is made to fail instead.
+        for name in ("a_bad", "m_bad", "z_bad"):
+            self._touch(tmp_path, f"{name}/inside.png")
+        self._touch(tmp_path, "top.png")
+        real_scandir = os.scandir
+        target = str(tmp_path / bad)
+
+        def scandir(path: object = ".") -> object:
+            if str(path) == target:
+                raise PermissionError(13, "denied", target)
+            return real_scandir(path)
+
+        monkeypatch.setattr(os, "scandir", scandir)
+        items = list(discover(tmp_path))
+        skipped = [item for item in items if isinstance(item, Skipped)]
+        assert skipped == [Skipped(tmp_path / bad, "unreadable folder")]
+        assert "inside.png" not in {i.path.name for i in items if tmp_path / bad in i.path.parents}
+        # the other folders and the top level are still walked
+        assert len([i for i in items if isinstance(i, Candidate)]) == 3
+        assert str(tmp_path) not in skipped[0].reason
+
     def test_directories_are_not_yielded_and_an_empty_root_is_empty(self, tmp_path: Path) -> None:
         (tmp_path / "empty_dir").mkdir()
         assert list(discover(tmp_path)) == []
