@@ -68,3 +68,30 @@ def test_only_app_mounts_source_in_the_base_file() -> None:
 def test_egress_file_does_not_touch_source() -> None:
     egress = REPO / "docker-compose.egress.yml"
     assert source_mounts(egress) == {}, "docker-compose.egress.yml must not mount /source"
+
+
+def test_no_other_compose_file_mounts_source_writable() -> None:
+    """A new override can't loosen the mount: only the purge file may remount /source rw."""
+    for path in compose_files():
+        if path == PURGE:
+            continue
+        for name, flags in source_mounts(path).items():
+            assert all(flags), f"{path.name}: {name} mounts /source writable (R-FOP-8)"
+
+
+def test_purge_file_remounts_source_for_app_only() -> None:
+    mounts = source_mounts(PURGE)
+    assert set(mounts) == {"app"}, "docker-compose.purge.yml may touch only app's /source"
+    assert mounts["app"] == [False], "the purge file's /source remount is its one purpose"
+    others = set(services(PURGE)) - {"app"}
+    assert not others, f"docker-compose.purge.yml defines extra services: {sorted(others)}"
+
+
+def test_purge_file_keeps_its_danger_header() -> None:
+    lines = PURGE.read_text(encoding="utf-8").splitlines()
+    header = []
+    for line in lines:
+        if not line.startswith("#"):
+            break
+        header.append(line)
+    assert "danger" in "\n".join(header).lower(), "purge file header must warn (DANGER)"
