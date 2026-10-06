@@ -136,6 +136,7 @@
   - The lead brings the rows in line in its next docs PR, at G1 at the latest, and the G1 check requires them to match.
 - **RUN-002.D14:** **Review verdicts go on the PR.** In step 6, the reviewer and auditor ran on every PR, but their verdicts lived only in the lead's local transcripts, so GitHub showed merges with no visible review. The lead now posts both verdict lines and the one-line findings as a PR comment before merging. The auditor never quotes private data, so its summary is safe in a public repo.
 - **RUN-002.D15:** **A push that only deletes branches skips the test run.** Deleting a remote branch publishes no code, and a red working tree shouldn't be able to block a cleanup. The `main` rule still applies first.
+- **RUN-002.D16:** **Human-side PRs are a defined path** (CLAUDE.md "Sources of truth" item 5). They come from the human's own session (the human, or Claude working in it), from any branch or worktree. They may change DESIGN.md, CLAUDE.md and the agent config. The guard ignores them by design, because they carry no `AGENT_OFFICE_WORKER_ID`. They are reviewed and merged like any PR, and they never edit the index. This came from PR #7's review, finding 3: RUN-002.10 had edited the index itself, against D13 and against "only the lead edits it", and those edits were withdrawn.
 - **RUN-002.D7:** The hooks parse their JSON input with `sed`. `jq` isn't on Git Bash, and host Python isn't a project dependency.
 
 ## RUN-002 — Tasks
@@ -156,6 +157,9 @@
 - [x] RUN-002.9 — Roles README: the Changes window is view-only (D12)
 
 - [x] RUN-002.10 — Review trail and status rules from the step 6 run: verdicts posted on the PR (D14), index lags GitHub until the lead's next docs PR or G1 (D13), `gh pr comment` allowed, deletion pushes skip tests (D15). Standard labels created on GitHub (`blocked`, `m1`–`m8`, `role:*`); `blocked` added to #3; `origin/harness-plan` removed.
+  - [x] RUN-002.10.4 — Review finding 4: `tests/unit/test_pre_push.py` (deletion-only, deleting main, pushing to main, mixed push) in a throwaway repo; `git` added to the image after the torch layer (rebuild 1 min)
+  - [x] RUN-002.10.5 — Review findings 1–2: index edits withdrawn (the lead reconciles them, D13); RUN-002.10 Results entry; RUN-003.2 ticked, RUN-003 done
+  - [x] RUN-002.10.6 — Review finding 3: human-side PRs documented (CLAUDE.md "Sources of truth" item 5, D16)
 
 ## RUN-002 — Results
 
@@ -194,7 +198,23 @@
   - Self-rating: 9/10, proud: yes.
   - Review: Reviewer REQUEST_CHANGES for the missing Results entry, again (this one; the lead added it). Privacy auditor PASS.
   - **Recurring gap (proposal, the human decides):** keep the PR template checklist on human-side docs PRs; it would have caught this both times.
-- **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
+- **RUN-002.10 (PR #7), DONE:**
+  - **Triage:** medium. Process rules for the lead, plus one behavior change in `.githooks/pre-push` (deletion-only pushes).
+  - **Review round 1:** Reviewer REQUEST_CHANGES, Privacy auditor PASS, posted on the PR, which is the first live use of D14. All four findings were accepted:
+    1. This Results entry was missing.
+    2. The index had been edited without matching journals. The index edits were withdrawn; the lead reconciles them (D13).
+    3. Human-side PRs weren't documented (→ D16).
+    4. The hook's behavior change had no committed test (→ RUN-002.10.4).
+  - **Tests:** unit 8/8 (4 of them new: `tests/unit/test_pre_push.py`), db 1/1, integration none yet; acceptance `tests/unit/test_smoke.py` 2/2.
+  - **Regression check:** with the deletion shortcut removed from the hook, exactly `test_deletion_only_push_skips_the_test_run` fails (1 failed, 3 passed). With the hook restored, 4 passed.
+  - **Self-rating:** 9/10, proud: yes. Gap: D14 relies on the lead following its brief; nothing blocks a merge without a verdict comment.
+- **Live probe, after step 6 (QA desk, 2026-10-06):**
+  - Worker `gh pr merge` → `BLOCKED by the role guard … workers never merge or tag`.
+  - Worker edit of DESIGN.md → `BLOCKED by the role guard … only the human changes DESIGN.md and CLAUDE.md`. The first attempt didn't reach the guard: Claude Code's auto-mode classifier refused a harmless `tail | od` read beforehand. A retry with a read-free Edit hit the guard.
+  - Unused import → the lint hook fed ruff's F401 back as a blocking hook error.
+  - The worktree stayed clean and nothing was pushed. The desk was sent home with its worktree and branch deleted.
+  - **The hooks and the role guard are now verified in live agent-office desks.**
+- **Self-rating:** 9/10, proud: yes. Every hook and gate has now fired in a live desk. Remaining gap: the D14 verdict comment isn't enforced mechanically.
 
 ---
 
@@ -207,7 +227,7 @@
 ## RUN-003 — Tasks
 
 - [x] RUN-003.1 — `npm install` (16 s, builds `dist/`) and `npm install -g .`, which links to the fork clone, so a rebuild updates the command; `agent-office --help` answers. The fork's working tree is untouched.
-- [ ] RUN-003.2 — Human: first start with the repo as `[dir]` (command in `.claude/roles/README.md`)
+- [x] RUN-003.2 — Human: first start with the repo as `[dir]` (command in `.claude/roles/README.md`), 2026-10-05
 - [x] RUN-003.3 — Answered from agent-office's help and source, before the first start:
   - **Existing clone:** `agent-office <dir>` makes that checkout a floor. No junction and no second clone, which resolves DOC-003.D3.
   - **Data:** its data lives in `<dir>/.agent-office/` (password and state), which is git-ignored.
@@ -226,7 +246,7 @@
 
 ## RUN-003 — Results
 
-- **Status:** in progress.
+- **Status:** DONE. The office runs with this checkout as its floor, and runbook step 6 passed in its desks (below).
 - **RUN-003.2 (2026-10-05):** the office started with the repo as `[dir]`.
   - The floor shows `file-sorter`; there is still one clone.
   - Its data is in the git-ignored `.agent-office/`, and `git status` is clean.
