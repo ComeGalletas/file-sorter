@@ -36,18 +36,18 @@ references or host paths here. Use hashes.
 
 ## CFG-001 — Tasks
 
-- [ ] CFG-001.1 — Typed config loader and the R-FOP-9 root check · #13 · acceptance: `tests/unit/config/test_config.py`
-  - [x] CFG-001.1.1 — Typed models, unknown keys refused (hash: see Results)
-  - [x] CFG-001.1.2 — `load_config` with `CLASSIFIER_CONFIG` and `DB_DSN` (hash: see Results)
-  - [x] CFG-001.1.3 — `check_roots` (R-FOP-9), called by `load_config` (hash: see Results)
+- [x] CFG-001.1 — Typed config loader and the R-FOP-9 root check · #13 · acceptance: `tests/unit/config/test_config.py`
+  - [x] CFG-001.1.1 — Typed models, unknown keys refused (07cee8e)
+  - [x] CFG-001.1.2 — `load_config` with `CLASSIFIER_CONFIG` and `DB_DSN` (8455dc5)
+  - [x] CFG-001.1.3 — `check_roots` (R-FOP-9), called by `load_config` (4c63c8a)
 
 ## CFG-001 — Results
 
 ### CFG-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
+- **Status:** DONE
+- **Triage:** medium; `unit` tier plus lint; solo; branch `office/pixel-0686`.
+- **Tests:** `unit` 26 passed in `tests/unit/config/test_config.py` (the acceptance test). The pre-push gate also ran the default tiers: 154 passed. `make lint` clean.
+- **Self-rating:** pass 1: 9/10, proud: yes. The 1 point: **CFG-001.1.D2** (decided by the worker, open for the lead): a non-null `db.dsn` in the file wins over `DB_DSN`. `config.yaml` ships it `null`, so this only matters if someone sets it. Gap named against R-CFG-1; it is a one-line change if the lead wants the environment to win.
 - **Review:**
-- **Deferred:**
+- **Deferred:** symlink resolution in `check_roots` (the lead asked for a pure comparison; containment through a bind-mount alias is not detectable without touching the filesystem).
