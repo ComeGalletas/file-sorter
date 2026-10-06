@@ -39,13 +39,13 @@ references or host paths here. Use hashes.
 - **Dependencies:** `pillow>=11.0` and `pillow-heif>=0.18` are already dependencies. Pillow's `is_animated` covers GIF, WebP and APNG (R-ING-9).
 - **R-ING-2's "except error":** a file whose last run ended in `error` is retried. That matters from M7. In M1 no node writes `error` except an unreadable file, which R-ING-3 marks `skipped`.
 - **Where the code lives:** ingest is a graph node, so it goes in `classifier/graph/` (Pipeline). Pure helpers (hashing, discovery, frame probing) sit beside it and are unit-tested without a database.
-- **ING-001.D1** — **Lead reading, for the human to confirm:** R-ING-5 thumbnails move to M2. DESIGN says to generate them "from the **sanitized** copy", and §11 doesn't list them in M1's scope.
-- **ING-001.D2** — **Open, for the human:** may M1 store `source_path` and `duplicate_paths` in the ledger, and write source paths to the dry-run CSV, before the M2 sanitizer exists?
-  - CLAUDE.md's hard rules forbid storing "unsanitized filenames". DESIGN §5 has `source_path` as a key column, and R-PIPE-2's CSV maps `source → proposed output`.
-  - Options:
-    1. **(Recommended)** Store the container path (`/source/...`) in the local ledger, which is never committed, and in the git-ignored `results_root/reports/` CSV. Logs and test output carry hashes only. The rule is read as covering logs and anything persisted beyond the local ledger and reports.
-    2. Store only hashes until M2. Ingest re-walks the folder to map hash → path on every run, and the CSV has no source column.
-  - Option 2 makes `dry-run` output hard to review by hand.
+- **ING-001.D1** — **R-ING-5 thumbnails move to M2** (confirmed by the human, 2026-10-06). DESIGN generates them "from the **sanitized** copy", and §11 doesn't list them in M1's scope.
+- **ING-001.D2** — **Store the container source path only in the local ledger and the local reports** (confirmed by the human, 2026-10-06, option 1 as recommended). The rule change is DOC-004.D3, merged in PR #24: CLAUDE.md's hard rule now names this as its one exception.
+  - `files.source_path` and `files.duplicate_paths` hold the container path (`/source/...`).
+  - The `dry-run` CSV under `results_root/reports/` may carry it too.
+  - Logs, console and test output, issues, PRs and journals carry hashes only. Host paths are never stored.
+  - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
+  - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
 
 ## ING-001 — Plan
 

@@ -32,13 +32,11 @@ references or host paths here. Use hashes.
   - `make gate-1` runs it in the `test` container. That container has the repo and `fixtures/` but no `/source` mount (RUN-001.D6), and `db-test` (tmpfs, empty on every start).
   - `fixtures/images/` holds the 150 labelled real images (DOC-003.5), git-ignored, and the gate tier may read them.
 - **R-FOP-8:** the test parses `docker-compose.yml` instead of touching the mount, because tests may not read `source_root`.
-- **TST-002.D1** — **Open, for the human: who writes a task's acceptance test.**
-  - CLAUDE.md's roles table gives `tests/` to QA. §3 says "every behavior change ships its test in the same commit", and the harness (CLI-001) let the implementing worker write it.
-  - Options:
-    1. **(Recommended)** The implementing worker writes its own task's tests, in the same commit, under `tests/<tier>/<package>/`. QA owns the shared infrastructure (conftest, fixtures, tier audit, gate scripts, recordings) and reviews test quality.
-    2. QA writes every acceptance test first, and the implementing PR waits for it.
-  - Option 2 doubles the issues and serialises every task. Choosing option 1 is a CLAUDE.md change, so it is the human's.
-- **TST-002.D2** — **Lead reading, for the human to confirm: the folder gate 1 runs on.** The gate ingests `fixtures/images/` twice against a fresh `db-test`, in the `test` container.
+- **TST-002.D1** — **The implementing worker writes its own task's tests** (confirmed by the human, 2026-10-06, option 1 as recommended). The rule change is DOC-004.D1, merged in PR #24: CLAUDE.md, DESIGN.md §12 and the desk briefs.
+  - Each worker writes its tests in the same commit as the code, under `tests/<tier>/<package>/`.
+  - QA owns the shared infrastructure (conftest, fixtures, tier audit, gate scripts, recordings) and reviews test quality. So TST-002's four tasks stay QA's: they are shared infrastructure and the gate.
+  - The rejected option, QA writing every acceptance test first, would double the issues and serialise every task.
+- **TST-002.D2** — **Gate 1 runs on `fixtures/images/`** (confirmed by the human, 2026-10-06). It ingests the folder twice against a fresh `db-test`, in the `test` container.
   - It measures run 2: the share of files skipped as known (target 100%), and new ledger rows (target 0).
   - The real source folder isn't mounted in the `test` profile, and `fixtures/images/` holds the same real images.
 

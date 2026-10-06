@@ -26,11 +26,11 @@ references or host paths here. Use hashes.
 - `config.yaml` already holds the §6 shape with container paths (`/source`, `/results`) and `db.dsn: null`. `docker-compose.yml` sets `CLASSIFIER_CONFIG=/app/config.yaml` and `DB_DSN` for `app` and `test`. No loader exists yet: `classifier/` is empty packages.
 - `pydantic>=2.8` and `pydantic-settings>=2.4` are already dependencies.
 - R-FOP-9 is a start-up check. M1 is the first milestone where a command reads `paths`, so it lands here rather than in M7.
-- **CFG-001.D1** — **Open, for the human:** where the loader lives. CLAUDE.md's ownership table has no row for the package root. The lead's proposal is `classifier/config.py`, owned by the Pipeline engineer, because every Pipeline node reads it first.
+- **CFG-001.D1** — **The loader is `classifier/config.py`, owned by the Pipeline engineer** (confirmed by the human, 2026-10-06, as recommended). The rule change is DOC-004.D2, merged in PR #24: the roles table now gives Pipeline the package-root `config.py`.
 
 ## CFG-001 — Plan
 
-1. `classifier/config.py` (pending D1): `Config` and section models, `load_config(path | None) -> Config`, with the path from `CLASSIFIER_CONFIG` and the DSN from `DB_DSN`.
+1. `classifier/config.py` (D1): `Config` and section models, `load_config(path | None) -> Config`, with the path from `CLASSIFIER_CONFIG` and the DSN from `DB_DSN`.
 2. `check_roots(config)`: resolve both paths and refuse, with a clear error, when one contains the other (R-FOP-9).
 3. Unit tests with temporary YAML files: the real `config.yaml` loads; unknown keys, a missing DSN and nested roots fail; `deletion.enabled` defaults to `false`.
 

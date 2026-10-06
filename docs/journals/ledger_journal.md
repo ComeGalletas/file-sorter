@@ -27,7 +27,7 @@ references or host paths here. Use hashes.
 - The `pgvector/pgvector:0.8.7-pg16` images back both `db` and `db-test`. `tests/db/test_db_reachable.py` already proves pgvector loads in `db-test`.
 - `sqlalchemy>=2.0`, `alembic>=1.13`, `psycopg[binary]>=3.2` and `pgvector>=0.3` are already dependencies.
 - §5 says "Unsorted" is a format, not a status, and review is `needs_review` + `review_reason ∈ {unsorted, ambiguous_reference}`. Both go in as columns now, so M3 needs no enum change.
-- `source_path` is a §5 key column. Whether M1 may store it before the sanitizer exists is **ING-001.D2** (open, for the human). This migration creates the column either way.
+- `source_path` is a §5 key column. **ING-001.D2** (the human, 2026-10-06; rule change DOC-004.D3) allows it, and `duplicate_paths`, to hold the container path (`/source/...`) in the local ledger. This migration creates both columns.
 
 ## DB-001 — Plan
 

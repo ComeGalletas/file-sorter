@@ -27,11 +27,10 @@ references or host paths here. Use hashes.
 
 - `langgraph>=0.6` is already a dependency. The CLI is a Typer app in `classifier/cli/__init__.py`, with `version` and `--version` (CLI-001).
 - C-8 settles the conflict between per-file flow and per-stage batching: batch nodes with the ledger as checkpoint, and `fileops` per file.
-- **PIPE-001.D1** — **Open, for the human:** what `dry-run` ends at in M1.
-  - R-PIPE-2 says a dry run "ends at status `proposed`" and writes `source → proposed output`. In M1 there is no naming step, so there is no proposed output.
-  - Options:
-    1. **(Recommended)** Rows stay at the last status a node set (`queued` or `skipped`), and the CSV's proposed-output column stays empty. `proposed` starts once `name` exists (M5).
-    2. Mark every ingested row `proposed` now. That would make later milestones skip those rows, because nodes select by status.
+- **PIPE-001.D1** — **In M1, a dry run ends at the last status a node set** (confirmed by the human, 2026-10-06, option 1 as recommended).
+  - Rows stay at `queued` or `skipped`, and the CSV's proposed-output column stays empty. `proposed` starts once `name` exists (M5).
+  - R-PIPE-2's "ends at status `proposed`" applies once there is an output to propose.
+  - The rejected option, marking every ingested row `proposed` now, would make later nodes skip those rows, because nodes select by status.
 
 ## PIPE-001 — Plan
 
@@ -61,7 +60,7 @@ references or host paths here. Use hashes.
 - **Details:**
   - It loads the config (CFG-001), runs the root check (R-FOP-9), then runs the graph with `dry_run=True` (PIPE-001).
   - It prints counts: new, skipped-known, skipped (by reason), duplicates.
-  - `--csv` writes `results_root/reports/dry-run-<run timestamp>.csv`. The columns are `source_hash`, `short_hash`, `status`, `reason` and `proposed_output` (empty in M1, PIPE-001.D1). A `source_path` column is included only if ING-001.D2 allows it.
+  - `--csv` writes `results_root/reports/dry-run-<run timestamp>.csv`. The columns are `source_hash`, `short_hash`, `source_path` (the container path; ING-001.D2, DOC-004.D3), `status`, `reason` and `proposed_output` (empty in M1, PIPE-001.D1).
   - The exit code is 0 on success, and non-zero on a config or root-check failure.
 - **Constraint:**
   - Nothing is written under `source_root`. Under `results_root` it writes only `reports/`; the category folders don't exist before M7 (CLAUDE.md "Milestone gates").
