@@ -1,7 +1,7 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** in progress · **Milestone:** — (runbook steps 3–5) ·
-**Issues:** — (before the issue queue exists) · **Branch:** main (bootstrap is the one exception to PR-only work)
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-005, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** in progress · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
 
@@ -424,7 +424,7 @@
   - The quick reviewer's first step is the route script itself; unless it prints `reviewer-quick`, it refuses.
   - It may run only named read-only commands. Subagent tools can't be limited per command in the frontmatter, so this is stated in its brief. Writes are still blocked for desks by the role guard (RUN-005.D1).
 - **RUN-006.D7:** **Scoped re-reviews are safe against rewritten history** (finding 4). If `Reviewed at` is no longer an ancestor of the head, after a force-push or rebase, the reviewer does a full review and says so on the `SCOPE:` line. Process check 4 runs on every commit not seen before. A suspected blocker that couldn't be confirmed is never an APPROVE (finding 6). Just before merging, the lead re-runs the route and checks that the head is still the `Reviewed at` commit (finding 10).
-- **RUN-006.D8:** **The "no outbound call" hard rule covers the app runtime only** (decided by the human on 2026-10-06, after PR #10 round 2's privacy FAIL on the route script's `gh` calls).
+- **RUN-006.D8 (superseded by RUN-007.D1, D4, D5; the policy text was split out into PR #11 and merged there):** **The "no outbound call" hard rule covers the app runtime only** (decided by the human on 2026-10-06, after PR #10 round 2's privacy FAIL on the route script's `gh` calls).
   - The runtime is the Compose services, `classifier/`, and anything run inside the containers.
   - Host-side process tooling (the hooks, `scripts/review_route.sh`, the desks' own `gh` use) may use `gh` for GitHub PR and issue metadata.
   - Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.
@@ -492,3 +492,63 @@
   - add rows for RUN-004 (`proposed`), RUN-005 (`done`) and RUN-006 (`done`);
   - set Next free to **RUN-007**.
 - **Self-rating:** 8/10, proud: yes. Gap: D4's speed-up is a prediction until M1's reviews are measured. And the quick reviewer's five checks are only as good as Haiku's reading of a diff, which is why its scope is limited to docs.
+
+---
+
+## RUN-007 — Requirement (human, 2026-10-06)
+
+- **Objective:** Change the wording of the "no outbound call" hard rule, as the human ruled, in a PR of its own, before any code that relies on it.
+- **Details:**
+  - PR #10 (RUN-006) carried this policy change (its RUN-006.D8) together with the route script, whose `gh` calls needed it.
+  - In round 3, the lead had the privacy auditor judge PR #10 against the **rewritten brief inside PR #10 itself**.
+  - Claude Code's auto-mode security check flagged the resulting PASS as "Instruction Poisoning", and the lead held the merge.
+  - The human chose to split the policy out.
+- **Constraint:**
+  - This PR changes only the rule wording: CLAUDE.md's hard rule and the privacy auditor's check 1.
+  - It is audited under the rules **currently on `main`**, never under its own text.
+  - PR #10 then merges `main` and is re-audited under the merged rules.
+- **Implements:** CLAUDE.md "Hard rules"; DESIGN.md P-3.
+
+## RUN-007 — Confirmed reading
+
+- **RUN-007.D1:** **The "no outbound call" hard rule covers the app runtime only** (ruled by the human on 2026-10-06; recorded in PR #10 as RUN-006.D8).
+  - The runtime is the Compose services, `classifier/`, and anything that runs inside the containers. That includes `scripts/gate_*.py`, which runs in the `test` container.
+  - The `fetch` service and the opt-in egress backends remain the designed exceptions.
+  - Host-side process tooling may use `gh` for GitHub PR and issue metadata.
+  - **Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.**
+  - "Never send pixels to any remote service" is unchanged.
+- **RUN-007.D2:** **A PR never changes the rules it's judged by.** Rule changes (CLAUDE.md, DESIGN.md, the reviewer and auditor briefs) go in their own PR, audited under the rules on `main`, and merge before any PR that depends on them. This is the lesson from PR #10 round 3.
+- **RUN-007.D4:** **The host-tooling clause is exclusive, and it names the toolchain downloads** (PR #11 review round 1, finding 1).
+  - **What the human confirmed**, on 2026-10-06, by choosing this option: "Only GitHub via gh for PR/issue metadata, plus download-only access to the registries the toolchain uses (images, packages, model weights). No other host, no uploads of file contents, never private files." So both clauses were confirmed, (a) GitHub and (b) toolchain downloads, not only the exclusivity. This answers round-2 finding 2.
+  - Granting GitHub access alone left any other host, and any upload of file contents, neither allowed nor forbidden by CLAUDE.md.
+  - Host tooling may reach **only** GitHub through `gh` for PR and issue metadata, plus the declared toolchain's registries (container images, Python packages, model weights), **download only**.
+  - The reviewer's "GitHub only" text would have made `make build` (base images, PyPI, the PyTorch index) and the lint hook's `ghcr.io` ruff pull into violations.
+  - CLAUDE.md and the auditor now use the same host-tooling list (finding 2), and the `fetch` exception names Hugging Face as its only host (finding 3).
+- **RUN-007.D5:** **The toolchain is an explicit list: Docker Hub, `ghcr.io`, the Debian package archive, PyPI and `download.pytorch.org`** (PR #11 review round 2, finding 1; list confirmed by the human on 2026-10-06).
+  - These are the five sources the repo pins today: the Dockerfile's base image, `apt-get` and `pip`; the Compose service images; the Makefile's and lint hook's ruff image.
+  - Host tooling may use them **for downloads only, at build or setup time**, never from app runtime code. Adding one takes its own rule-change PR (D2), so a PR can't declare a registry and use it at the same time.
+  - "Model weights" left clause (b) (round-2 finding 3). Weights arrive only through the runtime exceptions: the `fetch` container (Hugging Face) and the `ollama` container (the Ollama registry). Both are now named in CLAUDE.md and the auditor, together with SearXNG.
+  - DESIGN.md P-3 gains a note that it governs the runtime, and that host tooling is limited by CLAUDE.md (round-2 note 4).
+- **RUN-007.D3:** The PR #10 round-3 Reviewer's minor note on Makefile wording is applied here: "Makefile recipes that don't run in a container" instead of "the Makefile's host recipes".
+
+## RUN-007 — Tasks
+
+- [x] RUN-007.1 — CLAUDE.md hard rule and privacy auditor check 1 worded per D1 (and D3) → `5702a7d`
+- [x] RUN-007.4 — PR #11 review round 2: explicit registry list at build/setup time (D5), the human's confirmation recorded verbatim (D4), weights tied to the runtime exceptions, DESIGN.md P-3 note
+- [x] RUN-007.3 — PR #11 review round 1: exclusive host-tooling clause with toolchain downloads (D4), one host-tooling list in both files, Hugging Face named for `fetch`, journal header and hash
+- [x] RUN-007.2 — After PR #11 merged (`2e2566f`), PR #10 merged `main` with a normal merge: no history rewrite, so `Reviewed at eb46eae` stays an ancestor. Conflicts: CLAUDE.md's rule and the auditor's check 1 took `main`'s RUN-007 text; `lead.md` combined RUN-006's routing with RUN-007.D2; the journal kept both. Next is a privacy re-audit of PR #10 under the merged brief.
+
+## RUN-007 — Results
+
+- **Status:** in progress. RUN-007.1, .3 and .4 are DONE; RUN-007.2 follows this PR's merge.
+- **Review round 2 (PR #11):** Reviewer REQUEST_CHANGES (1 major, 2 minor, 1 note), Privacy auditor PASS under `main`'s brief. Round-1 findings all resolved. New findings:
+  1. the toolchain was undefined;
+  2. what the human confirmed was unclear;
+  3. "model weights" was redundant;
+  4. a DESIGN.md note was missing.
+  
+  All four were addressed in RUN-007.4. The registry list was confirmed by the human (D5).
+- **Review round 1 (PR #11):** Reviewer REQUEST_CHANGES (1 major, 3 minor), Privacy auditor PASS, run from `main`'s brief as D2 requires. The reviewer confirmed that every other hard-rule bullet is unchanged byte for byte, and that auditor checks 2–4 are identical to `main`. All four findings were addressed in RUN-007.3. The wording for the major was confirmed by the human (D4).
+- **Triage:** medium. A rule-contract change, wording only; no code, so no new tests (non-behavioral for the code). Tests: the default tiers via the pre-push gate.
+- **For the lead (index, D13/D16):** add a row for RUN-007, and set Next free to **RUN-008**. This adds to the RUN-004 to RUN-006 rows already pending in the M1 plan PR.
+- **Self-rating:** 9/10, proud: yes. Gap: the lesson (D2) is recorded here and in the lead's brief, but not enforced. The route script could send every PR that touches CLAUDE.md or `.claude/agents/` to a "policy" lane in the future.
