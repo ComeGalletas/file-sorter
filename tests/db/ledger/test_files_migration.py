@@ -6,7 +6,6 @@ touch the shared database's own state. The schema is dropped with `cascade` at t
 success or failure, so the database is left exactly as found.
 """
 
-import os
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -19,6 +18,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy.engine import make_url
 
 from classifier.db.url import to_sqlalchemy_url
+from tests.db.db_support import require_db_dsn
 
 INI = Path(__file__).resolve().parents[3] / "classifier" / "db" / "alembic.ini"
 STATUSES = [
@@ -39,7 +39,7 @@ LATER_COLUMNS = {
 @pytest.fixture
 def schema() -> Iterator[str]:
     name = f"mig_{uuid.uuid4().hex[:12]}"
-    with psycopg.connect(os.environ["DB_DSN"], autocommit=True) as conn:
+    with psycopg.connect(require_db_dsn(), autocommit=True) as conn:
         conn.execute(f'create schema "{name}"')
         try:
             yield name
@@ -49,7 +49,7 @@ def schema() -> Iterator[str]:
 
 @pytest.fixture
 def alembic_cfg(schema: str) -> Config:
-    url = make_url(to_sqlalchemy_url(os.environ["DB_DSN"])).update_query_dict(
+    url = make_url(to_sqlalchemy_url(require_db_dsn())).update_query_dict(
         {"options": f"-c search_path={schema},public"}
     )
     cfg = Config(str(INI))
@@ -60,7 +60,7 @@ def alembic_cfg(schema: str) -> Config:
 
 
 def _rows(schema: str, sql: str) -> list[tuple]:
-    with psycopg.connect(os.environ["DB_DSN"]) as conn:
+    with psycopg.connect(require_db_dsn()) as conn:
         conn.execute(f'set search_path to "{schema}", public')
         return conn.execute(sql).fetchall()
 
@@ -111,7 +111,7 @@ def test_defaults_and_checks(alembic_cfg: Config, schema: str) -> None:
         "insert into files (source_hash, short_hash, source_path, source_mtime, ext) "
         "values (repeat('a', 64), 'aaaaaaaa', '/source/x', now(), 'png')"
     )
-    with psycopg.connect(os.environ["DB_DSN"], autocommit=True) as conn:
+    with psycopg.connect(require_db_dsn(), autocommit=True) as conn:
         conn.execute(f'set search_path to "{schema}", public')
         conn.execute(insert)
         row = conn.execute(
@@ -160,7 +160,7 @@ def test_env_loads_the_dsn_through_load_config(
     schema: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Without an explicit URL, env.py takes the DSN from load_config (`DB_DSN` wins)."""
-    dsn = make_url(os.environ["DB_DSN"]).update_query_dict(
+    dsn = make_url(require_db_dsn()).update_query_dict(
         {"options": f"-c search_path={schema},public"}
     )
     with monkeypatch.context() as patch:
