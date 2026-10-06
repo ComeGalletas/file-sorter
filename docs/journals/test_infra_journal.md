@@ -53,7 +53,7 @@ references or host paths here. Use hashes.
   - [x] TST-002.1.1 — `tests/db/db_support.py` (the `DB_DSN` check) and `tests/db/conftest.py` (`db_dsn`, `migrated_db`, `db`)
   - [x] TST-002.1.2 — `tests/db/test_db_fixture.py`: head, rollback in one test, ordered pair, missing-DSN message
   - [x] TST-002.1.3 — PR #30's migration test and `test_db_reachable.py` take the shared `DB_DSN` check
-  - [ ] TST-002.1.4 — Results
+  - [x] TST-002.1.4 — Results
 - [ ] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
 - [ ] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
@@ -62,12 +62,21 @@ references or host paths here. Use hashes.
 
 ### TST-002.1 (worker: qa)
 
-- **Status:**
-- **Triage:**
+- **Status:** DONE (commits b9947fb, fcaceef, 9516686; the Results commit follows).
+- **Triage:** medium. Db-tier test infrastructure only, no production code. Solo.
+- **Design:**
+  - `tests/db/db_support.py` holds `require_db_dsn()`; `tests/db/conftest.py` holds `db_dsn` (session), `migrated_db` (session) and `db` (function). It is imported as `tests.db.db_support` because the repo runs pytest in `importlib` mode, which does not put `tests/db/` on `sys.path`.
+  - **`migrated_db` migrates its own schema, not `public`.** I first migrated `public`, as planned. With `search_path = <schema>, public`, PR #30's migration test then saw `public.alembic_version` (and the enum) and skipped its upgrade, so 2 tests failed whenever they ran after the fixture. They only passed in the default order by luck of alphabetical order (`ledger/` before `test_db_fixture.py`). The fix: the fixture creates the `vector` extension in `public` first, migrates a `session_<uuid>` schema through `options=-c search_path=...` in the yielded DSN, and drops it at session end. `public` keeps only the extension.
+  - **The ordered pair:** `test_pair_2_does_not_see_it` asserts that `test_pair_1_writes_a_row` recorded its hash in a module-level holder before it checks the row is gone, so it fails alone. **Also proven inside one test:** `test_rollback_inside_one_test` writes, sees the row, rolls back, and a second connection sees no row.
+  - Plain `rollback()`, no savepoints. A test that must commit isolates itself in its own schema, as #30 does.
 - **Tests:**
-- **Self-rating:**
+  - `make test`: 201 passed (db: 12, including 5 new; unit: 189). `make lint`: clean.
+  - **Coexistence with PR #30's migration test, in the same session:** `pytest tests/db/test_db_fixture.py tests/db/ledger tests/db/test_db_reachable.py` (fixture first) passed 12/12. `test_db_reachable.py` first, then the fixture, then the ledger tests, passed 12/12. The full `make test` (ledger first) passed 201/201.
+  - `-k pair_2` alone fails with the message naming the pair's first test. That is intended.
+  - A pre-existing polluted `db-test` (left by my own first, wrong attempt) made later runs fail until `docker compose down`. That was not a code problem. The tmpfs database does not outlive its container.
+- **Self-rating:** see the PR body.
 - **Review:**
-- **Deferred:**
+- **Deferred:** `db` has no savepoint support for tests that need to roll back part of their work. Nothing needs it yet.
 
 ### TST-002.2 (worker: qa)
 
