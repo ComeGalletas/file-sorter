@@ -21,6 +21,7 @@ init: ## Create .env and sanitize.yaml from the examples, generate secrets, enab
 	@grep -q '^DB_PASSWORD=.' .env || echo "DB_PASSWORD=$$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env
 	@grep -q '^SEARXNG_SECRET=.' .env || echo "SEARXNG_SECRET=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env
 	@git config core.hooksPath .githooks
+	@for v in file-sorter_ollama file-sorter_hf; do docker volume inspect "$$v" >/dev/null 2>&1 || docker volume create "$$v" >/dev/null; done   # RUN-005.D2
 	@echo "init done"
 
 build: ## Build the app/test image
