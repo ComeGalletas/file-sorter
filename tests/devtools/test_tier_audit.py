@@ -12,6 +12,11 @@ Named gap (TST-002.2 Results): a unit test that reaches a db or model through a 
 helper is only caught if the helper's dotted name is in INDIRECT_DB / INDIRECT_MODEL below.
 Whether a helper needs the db or a model is not reliably decidable from the test's source, so
 the lists start empty and a task that adds such a helper registers it here.
+
+Also not detected: a real transport hidden behind `httpx.Client(...)` (module-level calls and
+`from httpx import post` are flagged; a `MockTransport` stays legal), a db reached through an
+autouse fixture in a conftest.py, and dynamic imports whose argument is not a string constant.
+Setting an env var such as DB_DSN opens no connection, so it is not flagged.
 """
 
 import ast
@@ -25,7 +30,6 @@ import pytest
 TESTS = Path(__file__).resolve().parents[1]
 
 # Concatenated so this module does not trip its own scan of string constants.
-DB_ENV_VAR = "DB_" + "DSN"
 OLLAMA_PORT = "114" + "34"
 
 DB_IMPORTS = {"psycopg", "psycopg2", "psycopg_pool", "asyncpg"}
@@ -41,13 +45,16 @@ HTTP_CALLS = {"get", "post", "put", "patch", "delete", "head", "request", "strea
 INDIRECT_DB: tuple[str, ...] = ()
 INDIRECT_MODEL: tuple[str, ...] = ()
 
-# What each kind of violation needs: the tier the module belongs in.
+# What each kind of violation needs: the tier the module belongs in. A real HTTP request has no
+# tier of its own: the unit-test fix is a fake transport.
 TIER_FOR = {"db": "db", "model": "gpu", "ollama": "gpu"}
+FAKE_TRANSPORT_FIX = "use a fake transport (httpx.MockTransport) instead of a real request"
+DYNAMIC_IMPORTS = {"import_module", "__import__"}
 
 
 @dataclass(frozen=True)
 class Violation:
-    kind: str  # db | model | ollama
+    kind: str  # db | model | ollama | http
     line: int
     what: str
 
@@ -76,6 +83,13 @@ def _call_name(node: ast.Call) -> tuple[str | None, str]:
     return None, ""
 
 
+def _is_fixture_decorator(node: ast.expr) -> bool:
+    target = node.func if isinstance(node, ast.Call) else node
+    return (isinstance(target, ast.Name) and target.id == "fixture") or (
+        isinstance(target, ast.Attribute) and target.attr == "fixture"
+    )
+
+
 def scan_source(
     source: str,
     indirect_db: Iterable[str] = INDIRECT_DB,
@@ -83,7 +97,24 @@ def scan_source(
 ) -> list[Violation]:
     tree = ast.parse(source)
     found: list[Violation] = []
-    own_fixtures = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    own_fixtures = {
+        n.name
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef)
+        and any(_is_fixture_decorator(d) for d in n.decorator_list)
+    }
+    http_modules: dict[str, str] = {}  # local name -> httpx | requests
+    http_functions: dict[str, str] = {}  # local name -> "httpx.post"
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if _root(alias.name) in HTTP_MODULES:
+                    http_modules[alias.asname or _root(alias.name)] = _root(alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            if _root(node.module) in HTTP_MODULES:
+                for alias in node.names:
+                    if alias.name in HTTP_CALLS:
+                        http_functions[alias.asname or alias.name] = f"{node.module}.{alias.name}"
     indirect_db, indirect_model = tuple(indirect_db), tuple(indirect_model)
 
     def add(kind: str, node: ast.AST, what: str) -> None:
@@ -110,32 +141,40 @@ def scan_source(
             check_dotted(node.module, node)
             for alias in node.names:
                 check_dotted(f"{node.module}.{alias.name}", node)
+                if alias.name in HTTP_CALLS and _root(node.module) in HTTP_MODULES:
+                    add("http", node, f"imports the request function {node.module}.{alias.name}")
         elif isinstance(node, ast.Call):
             receiver, name = _call_name(node)
+            if name in DYNAMIC_IMPORTS and node.args:
+                first = node.args[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    check_dotted(first.value, node)
             if name in DB_CALLS:
                 add("db", node, f"calls {name}()")
             elif name in MODEL_CALLS:
                 add("model", node, f"calls {name}()")
-            elif receiver in HTTP_MODULES and name in HTTP_CALLS:
-                add("ollama", node, f"calls {receiver}.{name}() (a real HTTP request)")
+            elif receiver in http_modules and name in HTTP_CALLS:
+                add("http", node, f"calls {http_modules[receiver]}.{name}() (a real HTTP request)")
+            elif receiver is None and name in http_functions:
+                add("http", node, f"calls {http_functions[name]}() (a real HTTP request)")
             elif name == "usefixtures":
                 for arg in node.args:
                     if isinstance(arg, ast.Constant) and arg.value in DB_FIXTURES:
                         add("db", node, f"uses the {arg.value} fixture")
-        elif isinstance(node, ast.FunctionDef):
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs:
                 if arg.arg in DB_FIXTURES and arg.arg not in own_fixtures:
                     add("db", node, f"requests the {arg.arg} fixture")
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if node.value == DB_ENV_VAR:
-                add("db", node, f"reads {DB_ENV_VAR}")
-            elif OLLAMA_PORT in node.value:
+            if OLLAMA_PORT in node.value:
                 add("ollama", node, "names the Ollama port")
     return sorted(set(found), key=lambda v: (v.line, v.kind, v.what))
 
 
 def fix_for(rel: Path, kind: str) -> str:
     """The move, or the TIER_BY_DIR line, that puts the module in its right tier."""
+    if kind == "http":
+        return FAKE_TRANSPORT_FIX
     tier = TIER_FOR[kind]
     parts = rel.parts
     if len(parts) > 1 and parts[0] == "unit":
@@ -177,14 +216,21 @@ def test_no_unit_test_touches_db_models_or_ollama() -> None:
         ("def test_a(db):\n    pass\n", "db"),
         ("def test_a(migrated_db):\n    pass\n", "db"),
         ("import pytest\n@pytest.mark.usefixtures('db')\ndef test_a():\n    pass\n", "db"),
-        (f"import os\nos.environ['{DB_ENV_VAR}']\n", "db"),
-        (f"import os\nos.getenv('{DB_ENV_VAR}')\n", "db"),
         ("import torch\n", "model"),
         ("from transformers import AutoModel\n", "model"),
         ("def f(m):\n    m.from_pretrained('x')\n", "model"),
         ("import ollama\n", "ollama"),
-        ("import httpx\nhttpx.post('http://x')\n", "ollama"),
-        ("import requests\nrequests.get('http://x')\n", "ollama"),
+        ("import httpx\nhttpx.post('http://x')\n", "http"),
+        ("import requests\nrequests.get('http://x')\n", "http"),
+        ("import httpx as h\nh.post('http://x')\n", "http"),
+        ("import requests as r\nr.get('http://x')\n", "http"),
+        ("from httpx import post\n", "http"),
+        ("from requests import get as fetch\nfetch('http://x')\n", "http"),
+        ("import importlib\nimportlib.import_module('psycopg')\n", "db"),
+        ("from importlib import import_module\nimport_module('torch.nn')\n", "model"),
+        ("__import__('ollama')\n", "ollama"),
+        ("async def test_a(db):\n    pass\n", "db"),
+        ("def db():\n    return 1\n\ndef test_a(db):\n    pass\n", "db"),
         (f"URL = 'http://ollama:{OLLAMA_PORT}'\n", "ollama"),
     ],
 )
@@ -199,6 +245,11 @@ def test_scanner_flags_each_forbidden_use(source: str, kind: str) -> None:
         "import httpx\nclient = httpx.Client(transport=httpx.MockTransport(lambda r: None))\n",
         "import pytest\n\n@pytest.fixture\ndef db():\n    return 1\n\ndef test_a(db):\n    pass\n",
         "from classifier.config import load\n",
+        "def test_a(monkeypatch):\n    monkeypatch.setenv('DB_DSN', 'x')\n",
+        "import importlib\nimportlib.import_module('json')\nimportlib.import_module(name)\n",
+        "import httpx\nr = httpx.Response(200)\nh = httpx.MockTransport(lambda q: r)\n",
+        "import pytest\n\n@pytest.fixture\nasync def db():\n    return 1\n"
+        "\nasync def test_a(db):\n    pass\n",
     ],
 )
 def test_scanner_passes_clean_modules(source: str) -> None:
