@@ -1,7 +1,7 @@
 file,format,topic,adult,reference,subject,tags
 example_0001.png,game-screenshots,videogames,no,Example Game,character screen,
 example_0002.png,screenshots,videogames,no,Example Launcher,store page snip,
-example_0003.jpg,photos,memes,no,,joke flier,
+example_0003.jpg,photos,memes,no,,joke sign,
 example_0004.png,memes,anime,yes,Example Show / Example Character,reaction,
 example_0005.png,memes,animals,no,,"suggestive joke, not explicit",suggestive-negative
 example_0006.gif,artwork,,no,,abstract animation,
