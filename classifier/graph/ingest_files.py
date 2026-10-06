@@ -27,6 +27,7 @@ IMAGE_EXTENSIONS = frozenset(
 # R-ING-8: ignored silently, with no ledger row and no log line. Compared lowercase.
 OS_METADATA_NAMES = frozenset({"desktop.ini", "thumbs.db", ".ds_store"})
 NOT_AN_IMAGE_TYPE = "not an image type"  # R-ING-3
+SYMLINK = "symlink"  # ING-001.2.2
 
 
 class Candidate(NamedTuple):
@@ -61,8 +62,8 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
     """Walk `root` recursively and read-only, in sorted order (R-ING-3, R-ING-8).
 
     OS metadata files are dropped silently. A file with an MVP image extension (matched
-    case-insensitively) is a `Candidate`; any other file is `Skipped`. Nothing is opened,
-    and symlinked directories are not followed.
+    case-insensitively) is a `Candidate`; any other file is `Skipped`, and so is a file
+    symlink (ING-001.2.2). Nothing is opened, and symlinked directories are not followed.
     """
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames.sort()
@@ -71,7 +72,9 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
             if lowered in OS_METADATA_NAMES:
                 continue
             path = Path(dirpath) / name
-            if Path(lowered).suffix in IMAGE_EXTENSIONS:
+            if path.is_symlink():  # ING-001.2.2: it may point outside the root; never follow it
+                yield Skipped(path, SYMLINK)
+            elif Path(lowered).suffix in IMAGE_EXTENSIONS:
                 yield Candidate(path)
             else:
                 yield Skipped(path, NOT_AN_IMAGE_TYPE)

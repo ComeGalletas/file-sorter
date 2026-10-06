@@ -95,6 +95,21 @@ class TestDiscover:
         (tmp_path / "fake.png").write_text("not an image")
         assert [type(item) for item in discover(tmp_path)] == [Candidate]
 
+    def test_file_symlinks_are_skipped_not_followed(self, tmp_path: Path) -> None:
+        # ING-001.2.2: a link may point outside the root, so it is never a Candidate
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "target.png").write_bytes(b"x")
+        root = tmp_path / "root"
+        root.mkdir()
+        (root / "link.png").symlink_to(outside / "target.png")
+        (root / "dangling.png").symlink_to(outside / "missing.png")
+        (root / "real.png").write_bytes(b"")
+        items = {item.path.name: item for item in discover(root)}
+        assert isinstance(items["real.png"], Candidate)
+        for name in ("link.png", "dangling.png"):
+            assert items[name] == Skipped(root / name, "symlink")
+
     def test_directories_are_not_yielded_and_an_empty_root_is_empty(self, tmp_path: Path) -> None:
         (tmp_path / "empty_dir").mkdir()
         assert list(discover(tmp_path)) == []

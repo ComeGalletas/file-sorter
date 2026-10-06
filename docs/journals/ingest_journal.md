@@ -63,7 +63,7 @@ references or host paths here. Use hashes.
   - [x] ING-001.1.4 — `animated` as an allow-list (ING-001.D3 decided) · commit: (next commit)
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
   - [x] ING-001.2.1 — `probe_image`: catch only Pillow's error families · commit: (next commit)
-  - [ ] ING-001.2.2 — `discover`: file symlinks are `Skipped("symlink")`
+  - [x] ING-001.2.2 — `discover`: file symlinks are `Skipped("symlink")` · commit: (next commit)
   - [ ] ING-001.2.3 — `discover`: an unreadable subfolder is a `Skipped`, via `os.walk` `onerror`
   - [ ] ING-001.2.4 — Record ING-001.D4 (decompression bombs) and pin the Pillow limit in a test
   - [ ] ING-001.2.5 — `ingest` node and its typed result, with the db tests (the lead folded .2.6 into this commit)
