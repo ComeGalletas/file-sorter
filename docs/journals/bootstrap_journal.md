@@ -1,7 +1,7 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** in progress · **Milestone:** — (runbook steps 3–5) ·
-**Issues:** — (before the issue queue exists) · **Branch:** main (bootstrap is the one exception to PR-only work)
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-005, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** in progress · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
 
@@ -416,16 +416,23 @@
   - **Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.**
   - "Never send pixels to any remote service" is unchanged.
 - **RUN-007.D2:** **A PR never changes the rules it's judged by.** Rule changes (CLAUDE.md, DESIGN.md, the reviewer and auditor briefs) go in their own PR, audited under the rules on `main`, and merge before any PR that depends on them. This is the lesson from PR #10 round 3.
+- **RUN-007.D4:** **The host-tooling clause is exclusive, and it names the toolchain downloads** (PR #11 review round 1, finding 1; wording confirmed by the human on 2026-10-06).
+  - Granting GitHub access alone left any other host, and any upload of file contents, neither allowed nor forbidden by CLAUDE.md.
+  - Host tooling may reach **only** GitHub through `gh` for PR and issue metadata, plus the declared toolchain's registries (container images, Python packages, model weights), **download only**.
+  - The reviewer's "GitHub only" text would have made `make build` (base images, PyPI, the PyTorch index) and the lint hook's `ghcr.io` ruff pull into violations.
+  - CLAUDE.md and the auditor now use the same host-tooling list (finding 2), and the `fetch` exception names Hugging Face as its only host (finding 3).
 - **RUN-007.D3:** The PR #10 round-3 Reviewer's minor note on Makefile wording is applied here: "Makefile recipes that don't run in a container" instead of "the Makefile's host recipes".
 
 ## RUN-007 — Tasks
 
-- [x] RUN-007.1 — CLAUDE.md hard rule and privacy auditor check 1 worded per D1 (and D3)
+- [x] RUN-007.1 — CLAUDE.md hard rule and privacy auditor check 1 worded per D1 (and D3) → `5702a7d`
+- [x] RUN-007.3 — PR #11 review round 1: exclusive host-tooling clause with toolchain downloads (D4), one host-tooling list in both files, Hugging Face named for `fetch`, journal header and hash
 - [ ] RUN-007.2 — After merge: PR #10 merges `main` (a normal merge, no history rewrite, so `Reviewed at` stays an ancestor) and gets a privacy re-audit under the merged brief
 
 ## RUN-007 — Results
 
-- **Status:** in progress. RUN-007.1 is DONE; RUN-007.2 follows this PR's merge.
+- **Status:** in progress. RUN-007.1 and .3 are DONE; RUN-007.2 follows this PR's merge.
+- **Review round 1 (PR #11):** Reviewer REQUEST_CHANGES (1 major, 3 minor), Privacy auditor PASS, run from `main`'s brief as D2 requires. The reviewer confirmed that every other hard-rule bullet is unchanged byte for byte, and that auditor checks 2–4 are identical to `main`. All four findings were addressed in RUN-007.3. The wording for the major was confirmed by the human (D4).
 - **Triage:** medium. A rule-contract change, wording only; no code, so no new tests (non-behavioral for the code). Tests: the default tiers via the pre-push gate.
 - **For the lead (index, D13/D16):** add a row for RUN-007, and set Next free to **RUN-008**. This adds to the RUN-004 to RUN-006 rows already pending in the M1 plan PR.
 - **Self-rating:** 9/10, proud: yes. Gap: the lesson (D2) is recorded here and in the lead's brief, but not enforced. The route script could send every PR that touches CLAUDE.md or `.claude/agents/` to a "policy" lane in the future.
