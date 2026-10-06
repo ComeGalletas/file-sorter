@@ -47,7 +47,7 @@ references or host paths here. Use hashes.
 
 - [ ] PIPE-001.1 — Batch graph skeleton with the ingest node and dry-run mode · #17 · acceptance: `tests/integration/test_dry_run_graph.py`
   - [x] PIPE-001.1.1 — Graph state, node registry in §3 order, dry-run plan and the status selector (unit tests)
-  - [ ] PIPE-001.1.2 — `run`: the LangGraph graph, one commit per node (integration tests, own-schema fixture)
+  - [x] PIPE-001.1.2 — `run`: the LangGraph graph, one commit per node (integration tests, own-schema fixture)
   - [ ] PIPE-001.1.3 — Results, self-rating and journal close-out
 
 ## PIPE-001 — Results
