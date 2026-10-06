@@ -161,6 +161,8 @@
   - [x] RUN-002.10.5 — Review findings 1–2: index edits withdrawn (the lead reconciles them, D13); RUN-002.10 Results entry; RUN-003.2 ticked, RUN-003 done
   - [x] RUN-002.10.6 — Review finding 3: human-side PRs documented (CLAUDE.md "Sources of truth" item 5, D16)
 
+- [x] RUN-002.11 — Stale lines after the bootstrap: CLAUDE.md's "Current phase" (steps 5–6 and RUN-005 to RUN-007 are done; next is M1 G0), and `reviewer-quick` (RUN-006) added to the subagent lists in CLAUDE.md, DESIGN.md §10 and §12, and the roles README. DESIGN.md §10 also lists `scripts/review_route.sh`.
+
 ## RUN-002 — Results
 
 - **Status:** DONE_WITH_CONCERNS.
@@ -215,6 +217,14 @@
   - The worktree stayed clean and nothing was pushed. The desk was sent home with its worktree and branch deleted.
   - **The hooks and the role guard are now verified in live agent-office desks.**
 - **Self-rating:** 9/10, proud: yes. Every hook and gate has now fired in a live desk. Remaining gap: the D14 verdict comment isn't enforced mechanically.
+- **RUN-002.11, DONE:**
+  - Triage: small, docs only (CLAUDE.md, DESIGN.md §10 and §12, the roles README, this journal). No behavior change, no rule change: status lines and lists brought in line with what's on `main`.
+  - Tests: the default tiers and the acceptance `tests/unit/test_smoke.py`, run by the pre-push gate; counts in the PR body.
+  - Self-rating: 9/10, proud: yes. Gap: the phase line goes stale again at each milestone; the lead's G1 report is the natural place to flag it to the human.
+  - Review (PR #12, routed to the full `reviewer` because it touches `.claude/roles/`):
+    - Round 1: REQUEST_CHANGES. DESIGN.md §12 still listed three subagents (minor). Privacy auditor PASS.
+    - Round 2, scoped to `855b268..52a8b92`: APPROVE. Privacy auditor PASS.
+    - Merged as `1d2c857`. Recorded by the lead.
 - **Closed, done with concerns** (the human, 2026-10-06; recorded by the lead in the M1 plan PR). Concern: nothing mechanically stops a merge that has no D14 verdict comment. It relies on the lead's brief, which RUN-006 extended with the reviewer used and `Reviewed at`. Follow-up: if a merge ever lands without the comment, give it a new RUN ID for a check, for example in the route script or a merge hook.
 
 ---
