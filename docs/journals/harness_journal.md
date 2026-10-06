@@ -48,7 +48,10 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
 - **Triage:** medium: a behavior change inside one package (lead corrected it from small on #2). Tiers: unit + lint; the pre-push gate runs the default tiers and the acceptance test. Solo.
 - **Tests:** `make test`: 5 passed (unit 4, db 1; no integration tests exist yet), including the acceptance test `tests/unit/cli/test_version_option.py` (2 passed) and `tests/unit/test_smoke.py` (2 passed, CLI-001.D2). `make lint`: clean. In the container, the installed entry point `classifier --version` printed the version and exited 0.
 - **Self-rating:** pass 1: 9/10, proud: yes. Gap (−1): the test pins `--version` on its own but not when it is combined with a subcommand (e.g. `--version version` should print once and exit). The acceptance test doesn't require that and Click's eager handling covers it, so I left it out rather than widen the scope. No second pass needed.
-- **Review:** Reviewer APPROVE (one minor: the commit hash was missing here; added by the lead) · Privacy auditor PASS · PR #5, merged as `77a897c`, closing #2.
+- **Review:** PR #5, merged as `77a897c`, closing #2.
+  - The lead ran both subagents before merging: Reviewer APPROVE, Privacy auditor PASS.
+  - Those verdicts live only in the lead's session transcript. RUN-002.D14, which puts verdicts on the PR, came later, so PR #5 shows none on GitHub.
+  - The Reviewer's one minor finding, the commit hash missing from the task line, was fixed by the lead's reconciliation PR #8, not at merge time.
 - **Deferred:** none.
 
 ---
