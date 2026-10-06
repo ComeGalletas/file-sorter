@@ -102,10 +102,11 @@
 ## DOC-005 — Tasks
 
 - [x] DOC-005.1 — Rule text (CLAUDE.md, the privacy auditor's check 4); scrub DESIGN.md (§1 profile, `products` note, M3/M4 gates, Q-8) and the categories, design review, workspace and bootstrap journals
+- [x] DOC-005.2 — Review round 1: the gate 3 and gate 5 stubs' docstrings and `CRITERION` strings (finding 1, missed because the first search skipped `*.py`); DESIGN.md §4.3's filename hint stated as the Windows default (finding 2)
 
 ## DOC-005 — Results
 
 - **Status:** DONE.
 - **Triage:** small. Docs, journals and one auditor-brief clause; no behavior change. Tests from the pre-push gate.
-- **Check:** a search of every tracked file for the removed counts, sizes and profile terms finds none outside this block's generic wording.
+- **Check:** the first search skipped `*.py` and missed two gate stubs (review round 1, finding 1). The repeat search covers every tracked file, scripts included, and finds no count, size or profile of the human's folder. No test asserts a gate's `CRITERION` text. The only remaining numbers are the archived plan's own sample size in `docs/PLAN.md` (the original plan, not the human's folder) and model download sizes in `scripts/fetch_models.py`.
 - **Self-rating:** 9/10, proud: yes. Gap: the old text remains in `main`'s public history; only a history rewrite would remove it, which the rules forbid.

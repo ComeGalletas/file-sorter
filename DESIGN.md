@@ -130,7 +130,7 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 | memes | `Memes/` | a joke or humorous image, an image with an ironic meaning |
 | documents | `Documents/` | a document, a receipt, a form, a list of text |
 
-`unsorted` is the fallback format (`Unsorted/`, no prompts). The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` was dropped (it can be re-added with the CLI). The original filename (after sanitization) is passed to the caption step as a hint, since snips are typically named `Screenshot <date>`.
+`unsorted` is the fallback format (`Unsorted/`, no prompts). The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` was dropped (it can be re-added with the CLI). The original filename (after sanitization) is passed to the caption step as a hint, since Windows screen captures are named `Screenshot <date>` by default.
 
 ### 4.4 Caption
 
