@@ -173,6 +173,11 @@
   - On an `office/*` branch the gate fails fast twice: first for no `.env` ("run 'make init'"), then for no acceptance test, before any test runs.
   
   The RUN-002.5 suite still passes 22 of 22 after the changes.
+- **RUN-002.8 (PR #4), DONE:**
+  - Triage: small, docs only (CLAUDE.md, role briefs, this journal).
+  - Tests: unit 2/2, db 1/1, integration none yet; acceptance `tests/unit/test_smoke.py` 2/2.
+  - Self-rating: 9/10, proud: yes.
+  - Review: Reviewer REQUEST_CHANGES, for a missing Results entry (this one) and unconfirmed authorship of the CLAUDE.md rule changes. The human confirmed authorship on 2026-10-05. Privacy auditor PASS.
 - **Self-rating:** 8/10, proud: yes. The gap is the live-session check above, which step 6 closes.
 
 ---
