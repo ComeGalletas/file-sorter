@@ -51,11 +51,11 @@ references or host paths here. Use hashes.
 
 - [ ] TST-002.1 — Db-tier fixture: one migrated database per session, a rolled-back transaction per test · #19 · acceptance: `tests/db/test_db_fixture.py`
 - [ ] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
-- [ ] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
+- [x] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
   - [x] TST-002.3.1 — `app`'s `/source` mount in `docker-compose.yml` is read-only (long and short forms)
   - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it
   - [x] TST-002.3.3 — the purge file is the only read-write remount, for `app` only, with its DANGER header
-  - [ ] TST-002.3.4 — Results, self-rating and the local regression check
+  - [x] TST-002.3.4 — Results, self-rating and the local regression check
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
 
 ## TST-002 — Results
@@ -80,12 +80,12 @@ references or host paths here. Use hashes.
 
 ### TST-002.3 (worker: qa)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
-- **Deferred:**
+- **Status:** DONE. Commits e7747f9 (3.1), 83054ce (3.2), the 3.3 commit and the 3.4 commit; the PR body carries the final hashes.
+- **Triage:** small. One new unit test file that parses compose YAML with PyYAML; no dependency, no behavior change. Solo.
+- **Tests:** `tests/unit/runtime/test_source_mount_readonly.py`: 7 tests, all pass. `make test`: 189 passed. `make lint` clean. Regression check (local, not committed): setting `read_only: false` on app's `/source` in `docker-compose.yml` fails 2 tests (`test_app_mounts_source_read_only`, `test_no_other_compose_file_mounts_source_writable`); reverted. The test globs `docker-compose*.yml` at the repo root only and never reads `source_root` or the mount.
+- **Self-rating:** 9/10, proud: yes. Gap: it checks the compose files as written, not the merged result of `docker compose config` (which would need env and the Docker CLI, and would break the unit tier). The purge override is covered by its own tests instead.
+- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Deferred:** a check on the merged compose config, if the lead wants one; it would belong to a non-unit tier.
 
 ### TST-002.4 (worker: qa)
 
