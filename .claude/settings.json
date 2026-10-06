@@ -31,7 +31,8 @@
       "Bash(gh pr diff*)",
       "Bash(gh pr checks*)",
       "Bash(gh pr create*)",
-      "Bash(gh pr comment*)"
+      "Bash(gh pr comment*)",
+      "Bash(bash scripts/review_route.sh *)"
     ],
     "deny": [
       "Read(./.env)",

@@ -162,7 +162,7 @@ Branch: <branch> in <worktree path>
 2. **Worker:** works in its own worktree. It runs `make init` there (which copies `.env` and `sanitize.yaml` from the main checkout), and writes the git-ignored `.task` file (`role=`, `issue=`, `acceptance=`; see `.claude/roles/README.md`). Then it posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
 3. **Worker:** implements, committing one subtask at a time (§1.6). The `PostToolUse` hook runs ruff on the edited file. The `Stop` hook runs the touched tests.
 4. **Worker:** opens the PR. The pre-push hook (`.githooks/pre-push`) runs the default tiers, plus `gpu` when `classifier/models/` or `prompts/` changed, plus the acceptance test named in `.task`. A non-zero exit blocks the push, and so does a task branch without `acceptance=`.
-5. **Lead:** runs the Reviewer and Privacy auditor subagents on the PR diff, and posts both verdicts as one PR comment before merging (RUN-002.D14). Blocking findings → the same comment, or a new issue.
+5. **Lead:** picks the reviewer with `bash scripts/review_route.sh <n>` (RUN-006.D1). Small, docs-only PRs get `reviewer-quick` (Haiku, static); everything else gets the full `reviewer`. The Privacy auditor always runs. The lead posts both verdicts as one PR comment before merging, with `Reviewed at <sha>` (RUN-002.D14). Blocking findings → the same comment, or a new issue. A re-review checks only the earlier findings and the diff since `Reviewed at` (RUN-006.D2).
 6. **Lead:** merges (§1.6), which closes the issue through `Closes #n`, and checks that the journal's Results section is complete. The index catches up with GitHub in the lead's next docs PR, at G1 at the latest (RUN-002.D13).
 
 **Agent logs (local only, never committed).** Each role logs its own work under `$AGENT_LOG_ROOT/<role>/`. The default is `../agent-logs/`, the workspace's `agent-logs\` folder next to this repo.
@@ -261,7 +261,8 @@ Edit only the folders your role owns. Need a change elsewhere? Open an issue for
 | Data/RAG engineer | Sonnet | `classifier/rag/`, `references*` migrations |
 | API/UI engineer | Sonnet | `classifier/api/`, `classifier/ui/` |
 | QA engineer | Sonnet | `tests/`, `fixtures/` (except `fixtures/images/`), `scripts/gate_*.py` |
-| Reviewer | Sonnet subagent, read-only | — |
+| Reviewer | Sonnet subagent, read-only | — (full review; reproductions only to confirm a suspected blocker) |
+| Reviewer, quick | Haiku subagent, read-only | — (small, docs-only PRs, picked by `scripts/review_route.sh`) |
 | Privacy auditor | Haiku subagent, read-only | — |
 | Test runner | Sonnet subagent | writes only `$AGENT_LOG_ROOT/qa/test-history.md` |
 

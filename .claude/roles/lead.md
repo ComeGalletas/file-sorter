@@ -21,9 +21,21 @@ On start:
 4. **Run.**
    - Assign issues to desks.
    - Approve or redirect each worker's plan comment before any code is written.
-   - When a PR is ready, run the `reviewer` and `privacy-auditor` subagents on it.
+   - When a PR is ready, **pick the reviewer with `bash scripts/review_route.sh <n>`** (RUN-006.D1). It prints `reviewer-quick` (small, docs-only PRs: a fast static Haiku review) or `reviewer` (everything else: the full review). Run that subagent and the `privacy-auditor`, which always runs.
    - **Always judge a PR under the rules on `main`**, never under rule or brief changes inside the PR itself (RUN-007.D2). If a PR changes CLAUDE.md, DESIGN.md or a reviewer or auditor brief and also depends on that change, ask for the rule change to be split into its own PR and merged first.
-   - **Post both verdicts as one PR comment before merging** (RUN-002.D14): `gh pr comment <n>` with the `VERDICT:` and `PRIVACY:` lines and each finding's one-line summary. The public record must show the review happened. The auditor never quotes private data, so its summary is safe to post.
+   - **On a re-review**, give the reviewer the previous verdict comment and its `Reviewed at` commit. It then checks the earlier findings and only the diff since then (RUN-006.D2).
+   - **Post both verdicts as one PR comment before merging** (RUN-002.D14): `gh pr comment <n>` with:
+     - the `VERDICT:` and `PRIVACY:` lines;
+     - each finding's one-line summary;
+     - which reviewer ran;
+     - `Reviewed at <sha>`, from the reviewer's `REVIEWED:` line.
+     
+     The public record must show the review happened. The auditor never quotes private data, so its summary is safe to post.
+   - **Just before merging, re-check** (RUN-006.D7):
+     - `bash scripts/review_route.sh <n>` still names the reviewer that ran;
+     - `gh pr view <n> --json headRefOid` still equals the `Reviewed at` commit.
+     
+     If the head moved, review the new commits first.
    - Merge only when both pass, with `gh pr merge <n> --merge --delete-branch`. Never squash, and leave no merged branch behind on GitHub.
    - After merging: `git pull --ff-only` on `main`, and check the journal's Results section for that task is complete. Ask the worker on the issue if it isn't.
    - **The index lags GitHub on purpose** (RUN-002.D13). Between checkpoints, the issue's open or closed state is the live status. Bring every row in line with GitHub (status, issue numbers, branch) in your next docs PR, and at G1 at the latest.

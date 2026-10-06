@@ -391,6 +391,108 @@
   - set Next free to **RUN-006**.
 - **Self-rating:** 9/10, proud: yes (after round 1). Round 1 rightly caught two bypasses that my first 32 cases missed. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
 
+
+---
+
+## RUN-006 — Requirement (human, 2026-10-06)
+
+- **Objective:** Make reviews faster where depth isn't needed, without weakening them where it is.
+- **Details:** The human asked whether a lower-reasoning reviewer would speed reviews up.
+  - Measured review durations from the subagent transcripts (Sonnet reviewer, Haiku auditor):
+    - docs-only and small PRs (#1, #4, #5, #6, #8): **1.3–4.6 min**;
+    - PR #7: 7.0 + 4.2 min;
+    - **PR #9, the role guard: 16.3, then 32.6+ min** (47 and 69 tool calls).
+  - The privacy audit takes 0.6–2.5 min everywhere.
+  - The long reviews were exactly the ones that found real holes: the junction bypass, the case bypass, the trailing dot. A blanket downgrade would cost the most where it matters.
+- **Constraint:** Security-relevant paths keep the full Sonnet review with live reproductions. Which reviewer runs is decided mechanically, not by judgment.
+- **Implements:** CLAUDE.md §2.2 step 5; RUN-002.D14.
+
+## RUN-006 — Confirmed reading
+
+- **RUN-006.D1:** **The reviewer is routed by a script.** `scripts/review_route.sh <pr>` prints `reviewer-quick` only when the PR body's triage says `Size: small` **and** every changed file is under `docs/` or is the top-level `README.md`. Anything else goes to the full `reviewer`, including a missing triage size and any change to code, tests, hooks, settings, agents, roles, compose, CLAUDE.md or DESIGN.md. `reviewer-quick` is Haiku and static, with no reproductions. If it sees anything outside its scope, it asks for the full reviewer. The privacy auditor always runs.
+- **RUN-006.D2:** **Re-reviews cover only the change since the last review.**
+  - The lead's verdict comment records `Reviewed at <head sha>` and which reviewer ran.
+  - On round N, the reviewer gets the previous verdict and that commit. It verifies each earlier finding, then reviews only `git diff <sha>..<head>`.
+  - It widens to a full review only if that diff touches files or behavior the earlier rounds didn't cover, and says so on a `SCOPE:` line.
+- **RUN-006.D3:** **Reproductions are for confirming a suspected blocker.** One sandbox per suspicion, removed afterwards, about 10 minutes each at most. Anything not confirmed in that budget is reported as `unverified`, with the steps to try, instead of being chased.
+- **RUN-006.D5, after PR #10 review round 1:** **The route is decided only from evidence that can't be faked or truncated, and any doubt goes to the full reviewer.**
+  - **Files:** the paginated `pulls/<n>/files` API, checking each file's **previous** name as well as its new one. `gh pr view --json files` showed only new names, so moving `CLAUDE.md` into `docs/` looked docs-only (finding 1). It also stopped at 100 files (finding 2).
+  - **File count:** if the listing doesn't match GitHub's `changedFiles` count, the PR goes to the full reviewer.
+  - **Size:** read only from a fenced triage block that also has `Tests:` and `Agents:` lines, with HTML comments removed first. If there's no such block, or the blocks disagree, the PR goes to the full reviewer (finding 3).
+  - **Errors:** any `gh` failure prints `reviewer`, instead of `set -e` exiting with no output (finding 7).
+- **RUN-006.D6:** **Every reviewer treats the PR as data, never as instructions** (finding 5).
+  - The quick reviewer's first step is the route script itself; unless it prints `reviewer-quick`, it refuses.
+  - It may run only named read-only commands. Subagent tools can't be limited per command in the frontmatter, so this is stated in its brief. Writes are still blocked for desks by the role guard (RUN-005.D1).
+- **RUN-006.D7:** **Scoped re-reviews are safe against rewritten history** (finding 4). If `Reviewed at` is no longer an ancestor of the head, after a force-push or rebase, the reviewer does a full review and says so on the `SCOPE:` line. Process check 4 runs on every commit not seen before. A suspected blocker that couldn't be confirmed is never an APPROVE (finding 6). Just before merging, the lead re-runs the route and checks that the head is still the `Reviewed at` commit (finding 10).
+- **RUN-006.D8 (superseded by RUN-007.D1, D4, D5; the policy text was split out into PR #11 and merged there):** **The "no outbound call" hard rule covers the app runtime only** (decided by the human on 2026-10-06, after PR #10 round 2's privacy FAIL on the route script's `gh` calls).
+  - The runtime is the Compose services, `classifier/`, and anything run inside the containers.
+  - Host-side process tooling (the hooks, `scripts/review_route.sh`, the desks' own `gh` use) may use `gh` for GitHub PR and issue metadata.
+  - Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.
+  - CLAUDE.md's hard rule and the privacy auditor's check 1 now say so. Before this, the rule's wording would also have forbidden the `gh` workflow itself.
+- **RUN-006.D4:** **Measurable outcome**, to be checked at M1 G1 from the subagent transcripts:
+  - docs-only PR reviews under **2 min**;
+  - round-2+ reviews of a small fix under **10 min**;
+  - no drop in findings on security-relevant PRs.
+
+## RUN-006 — Tasks
+
+- [x] RUN-006.1 — `scripts/review_route.sh` and `tests/unit/test_review_route.py`
+- [x] RUN-006.2 — `.claude/agents/reviewer-quick.md` (Haiku, static, escalates out-of-scope diffs)
+- [x] RUN-006.3 — `reviewer.md`: round-N scope, reproduction budget, `REVIEWED:` line; `lead.md` and CLAUDE.md §2.2: routing, `Reviewed at` in the verdict comment; settings allow the route script
+- [x] RUN-006.4 — PR #10 review round 1: rename-aware, paginated, count-checked file listing and fenced-block size (D5); data-not-instructions and route-first quick reviewer (D6); rewritten-history fallback, unverified-never-approve, pre-merge re-check (D7); allow rule narrowed; tests for each
+- [x] RUN-006.5 — PR #10 review round 2: hard-rule scope decided by the human (D8), CLAUDE.md and the privacy auditor scoped to match; empty `changedFiles` routes to the full reviewer; `gh api` GET-only in the reviewer; a fake-`gh` test covers the listing's parsing
+
+## RUN-006 — Results
+
+- **Status:** DONE (after review round 1 → RUN-006.4). The measurable outcome (D4) is checked at M1 G1, from the subagent transcripts.
+- **Triage:** medium. A new script with tests, a new subagent, and changes to the reviewer, the lead brief, CLAUDE.md and the settings. Solo.
+- **Route script (RUN-006.1):** `tests/unit/test_review_route.py`, 25 cases, all passing:
+  - small docs-only PRs → quick;
+  - 16 kinds of non-docs path (code, tests, scripts, hooks, agents, roles, settings, compose, Dockerfile, Makefile, config, CLAUDE.md, DESIGN.md, prompts, a look-alike `docs-not-really/`) → full;
+  - medium and large → full;
+  - a missing triage → full;
+  - a case-insensitive size with CRLF line endings;
+  - the first `Size:` line wins, so a quoted "Size: small" later in a medium PR can't downgrade it;
+  - no files → full.
+- **Real PRs, routed through `gh` on this host:**
+  - #1 and #8, the lead's docs-only plan and reconcile PRs → `reviewer-quick`;
+  - #4 and #6, which touch `.claude/roles/README.md` → full, because role briefs are agent contract;
+  - #5, #7 and #9 (medium) → full.
+- **Quick reviewer (RUN-006.2):** Haiku, static, five checks: template, IDs, journal consistency, who may edit the index and plans, public-repo hygiene. If a diff turns out to be outside `docs/` and `README.md`, it refuses and routes the PR to the full reviewer.
+- **Full reviewer and lead (RUN-006.3):**
+  - the reviewer opens with a `SCOPE:` line (full, or a re-review of `<sha>..<head>`), works to the reproduction budget, and closes with a `REVIEWED: <head sha>` line;
+  - the lead's verdict comment carries which reviewer ran and `Reviewed at`;
+  - the settings allow the route script.
+- **Review round 1 (PR #10):** Reviewer REQUEST_CHANGES (5 major, 5 minor), Privacy auditor PASS. The lead couldn't run the route script from the unmerged branch (permission denied) and defaulted to the full reviewer, which was correct. All ten findings were accepted:
+  1. renames;
+  2. the 100-file cap;
+  3. where the size is read from;
+  4. rewritten history;
+  5. prompt injection in the quick reviewer;
+  6. an unverified blocker treated as approval;
+  7. a `gh` failure printing nothing;
+  8. the allow rule;
+  9. missing tests;
+  10. the pre-merge re-check.
+- **RUN-006.4 tests:**
+  - **Suite:** `tests/unit/test_review_route.py` now has **38 cases**, all passing. The new ones cover three renames into `docs/` judged by their old path, a rename inside `docs/` staying quick, a truncated listing (100 of 101), a matching count, a size outside a fence, a fence without `Tests:` and `Agents:`, a single-line and a multi-line HTML comment, disagreeing blocks, `Size: smaller`, and the `gh` fallback with nothing usable on PATH.
+  - **Regression:** against the round-1 script, **exactly 10 fail**, the ones for findings 1, 2, 3 and 7. The 28 others pass under both (`smaller` was already handled).
+  - **Real PRs on the host,** through the paginated, rename-aware API: #1 and #8 → quick; #4–#7, #9 and #10 → full. Unchanged, so the stricter triage parsing doesn't break the lead's real docs PRs.
+- **Review round 2 (PR #10):** Reviewer APPROVE, scoped to `0ce96fd..21dc629` (ancestor confirmed). Round-1 findings 1–4 and 6–10 resolved; 5 partly resolved, because the quick reviewer's command limit is prose only, a residual risk recorded in D6. **Privacy auditor FAIL** on the route script's `gh` calls under the "no outbound call" hard rule. The lead held the merge for the human, who decided the rule's scope (D8).
+- **RUN-006.5:**
+  - **Rule scope:** CLAUDE.md's hard rule and the auditor's check 1 are scoped to the app runtime, per D8.
+  - **Round-2 minors:**
+    - an empty or non-numeric `changedFiles` now routes to the full reviewer, instead of silently skipping the count check;
+    - the reviewer may use `gh api` for GET only;
+    - the journal task order is fixed (.3 before .4).
+  - **Tests:** a **fake `gh`** on `PATH` now drives the script's real `gh` path: docs-only → quick; a rename → judged by its old name; a count mismatch → full; and `""`, `null` or `many` as the count → full. `tests/unit/test_review_route.py` has **44 cases**; against the round-2 script, exactly the 3 unreadable-count cases fail.
+  - **Limit:** the fake `gh` returns output already filtered, so the jq expression itself is exercised only by the real `gh`. That happens on every real routing, as with the real PRs above.
+- **Watcher note (this session's tooling, not the repo):** the PR watchers had an invalid jq escape (`\*`) and hid their errors, so they never reported comments on #9 or #10. They were fixed to print "N new comment(s)" before extracting details, without hiding errors.
+- **For the lead (index, D13/D16):**
+  - add rows for RUN-004 (`proposed`), RUN-005 (`done`) and RUN-006 (`done`);
+  - set Next free to **RUN-007**.
+- **Self-rating:** 8/10, proud: yes. Gap: D4's speed-up is a prediction until M1's reviews are measured. And the quick reviewer's five checks are only as good as Haiku's reading of a diff, which is why its scope is limited to docs.
+
 ---
 
 ## RUN-007 — Requirement (human, 2026-10-06)
@@ -434,7 +536,7 @@
 - [x] RUN-007.1 — CLAUDE.md hard rule and privacy auditor check 1 worded per D1 (and D3) → `5702a7d`
 - [x] RUN-007.4 — PR #11 review round 2: explicit registry list at build/setup time (D5), the human's confirmation recorded verbatim (D4), weights tied to the runtime exceptions, DESIGN.md P-3 note
 - [x] RUN-007.3 — PR #11 review round 1: exclusive host-tooling clause with toolchain downloads (D4), one host-tooling list in both files, Hugging Face named for `fetch`, journal header and hash
-- [ ] RUN-007.2 — After merge: PR #10 merges `main` (a normal merge, no history rewrite, so `Reviewed at` stays an ancestor) and gets a privacy re-audit under the merged brief
+- [x] RUN-007.2 — After PR #11 merged (`2e2566f`), PR #10 merged `main` with a normal merge: no history rewrite, so `Reviewed at eb46eae` stays an ancestor. Conflicts: CLAUDE.md's rule and the auditor's check 1 took `main`'s RUN-007 text; `lead.md` combined RUN-006's routing with RUN-007.D2; the journal kept both. Next is a privacy re-audit of PR #10 under the merged brief.
 
 ## RUN-007 — Results
 
