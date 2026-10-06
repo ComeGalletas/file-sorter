@@ -50,6 +50,10 @@ references or host paths here. Use hashes.
 ## TST-002 — Tasks
 
 - [ ] TST-002.1 — Db-tier fixture: one migrated database per session, a rolled-back transaction per test · #19 · acceptance: `tests/db/test_db_fixture.py`
+  - [x] TST-002.1.1 — `tests/db/db_support.py` (the `DB_DSN` check) and `tests/db/conftest.py` (`db_dsn`, `migrated_db`, `db`)
+  - [ ] TST-002.1.2 — `tests/db/test_db_fixture.py`: head, rollback in one test, ordered pair, missing-DSN message
+  - [ ] TST-002.1.3 — PR #30's migration test and `test_db_reachable.py` take the shared `DB_DSN` check
+  - [ ] TST-002.1.4 — Results
 - [ ] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
 - [ ] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
