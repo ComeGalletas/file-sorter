@@ -39,7 +39,7 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 3. Post the triage block and a short plan as the first issue comment (CLAUDE.md §2.1–§2.2). Wait for the lead's approval.
 4. Build, one commit per subtask (CLAUDE.md §1.6). Tick your own task lines in the journal in the same commit.
 5. `git push -u origin HEAD`; the pre-push gate runs. `gh pr create` with the template filled in.
-6. Write `<AGENT_LOG_ROOT>/<role>/<issue>.md` (plan, steps, test results) as you go.
+6. Write your job log (plan, steps, test results) as you go, to `<issue>.md` in the folder this command prints: `bash -c '. .claude/hooks/common.sh; log_dir'`. It prints the absolute path of `agent-logs/<role>/` in the workspace. Never write it to a relative `../agent-logs`: from inside a worktree that lands in `.agent-office/worktrees/` (RUN-005.D4).
 
 Never edit outside your role's paths; open an issue for the owner instead.
 

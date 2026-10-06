@@ -32,7 +32,7 @@ branch="$(git branch --show-current)"
 acc=""
 if [[ "$branch" =~ ^[a-z]+-[0-9]{3} || "$branch" == office/* ]]; then
   acc="$(task_field acceptance)"
-  [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md §2.2)"
+  [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md section 2.2)"
 fi
 
 echo "pre-push: default tiers (unit + db + integration)"

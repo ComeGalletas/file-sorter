@@ -292,3 +292,66 @@
 **Prompt-induced, not a process gap:** the QA desk pushed without the lead approving its plan, because its first message from the human said to expect the push to be blocked.
 
 **Not yet exercised live:** a role-guard block, and a lint-hook finding. No desk attempted a forbidden action or wrote lint-failing code; the live probe after this PR covers both.
+
+
+---
+
+## RUN-005 — Requirement (human, 2026-10-06)
+
+- **Objective:** Fix four runtime-hygiene problems found after runbook step 6, before M1 starts.
+- **Details:**
+  1. Every worktree test run prints a compose warning about the shared `file-sorter_hf` volume.
+  2. `§` in hook messages reaches the desks as `�`.
+  3. The desks' job logs land in `.agent-office/worktrees/agent-logs/` instead of the workspace's `agent-logs\`.
+  4. The role guard blocked the lead from saving to its own memory, a folder outside the repo.
+- **Constraint:**
+  - The guard must not get weaker inside the repo.
+  - Every behavior change ships its test (CLAUDE.md §3).
+  - The index is the lead's to update (D13, D16). RUN-004 stays reserved for the deferred lockfile (RUN-001.D9), so the lead adds rows for RUN-004 and RUN-005, and Next free becomes RUN-006.
+- **Implements:** RUN-002.D2, D8, D11; CLAUDE.md §2.2.
+
+## RUN-005 — Confirmed reading
+
+- **RUN-005.D1:** **The guard governs the repo tree, not the whole disk.**
+  - Before: for the lead, anything that wasn't `docs/` or `.task` was denied, including paths **outside** the repo: its Claude memory and its own job logs in `agent-logs\lead\`.
+  - Before, for workers: only the index, plans and spec were denied. A worker could write into the **main checkout**, or another desk's worktree, through an absolute path. That's a hole.
+  - Now:
+    - **Lead (main checkout):** inside the main checkout tree, only `docs/` and `.task`. That tree includes `.agent-office/worktrees/`, so worker trees are covered too. Outside it, allowed.
+    - **Worker (linked worktree):** inside its own worktree, the D8 rules. Anywhere else in the main checkout tree (the main checkout itself, or another desk's worktree), **denied**. Outside it, allowed.
+  - Claude Code's own permission system still applies everywhere. The guard only enforces role separation inside the repo.
+- **RUN-005.D2:** **The model volumes are `external: true`.**
+  - Fixed names (RUN-002.D2) made each worktree's compose project warn that `file-sorter_hf` "was created for project file-sorter".
+  - External volumes are shared by design and never claimed by a project.
+  - `make init` creates them, idempotently with `docker volume create`, because compose doesn't create external volumes. The existing volumes keep their data.
+- **RUN-005.D3:** **Hook messages are ASCII.** They say "section 2.2" instead of `§2.2`, because hook stderr reaches Claude in the Windows console code page (as in D11). The files themselves keep `§`.
+- **RUN-005.D4:** **Job logs use the resolved path.** The README said to write `<AGENT_LOG_ROOT>/<role>/<issue>.md`, and `AGENT_LOG_ROOT` is the relative `../agent-logs`, which each desk resolved from inside its worktree. The README now gives the command that prints the absolute folder: `bash -c '. .claude/hooks/common.sh; log_dir'`. The test-runner already uses it. The two misplaced files from step 6 were moved by hand on 2026-10-06.
+
+## RUN-005 — Tasks
+
+- [x] RUN-005.1 — Guard governs the repo tree (D1) + `tests/unit/test_role_guard.py` in a throwaway repo with a real linked worktree
+- [x] RUN-005.2 — External model volumes, created by `make init` (D2); verify that no warning appears in a worktree test run
+- [x] RUN-005.3 — ASCII hook messages (D3) and the resolved job-log path in the roles README (D4)
+
+## RUN-005 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. Behavior changes in the role guard and the compose volumes, plus message and docs fixes. Tests: all default tiers, a new 32-case guard suite, and a worktree compose run. Solo.
+- **Guard (RUN-005.1):** `tests/unit/test_role_guard.py` runs 32 cases (lead, worker, human; edits and commands) in a throwaway repo with a real linked worktree under `.agent-office/worktrees/`. All 32 pass.
+- **Regression check:** run against the old guard from `main`, **exactly the 5 new-behavior cases fail**:
+  - the lead's memory write (the bug the lead hit);
+  - a worker writing into the main checkout;
+  - a worker writing into another desk's tree;
+  - the `..` escape;
+  - the same escape with backslashes.
+
+  The other 27 pass under both versions, so no existing rule regressed.
+- **Volumes (RUN-005.2):** a worktree test run now prints **0** `created for project` warnings (41 passed). The existing volumes kept their data (3.6 GB of HF weights), and the main stack still lists both Ollama models.
+- **Messages and logs (RUN-005.3):**
+  - There's no non-ASCII character left in any hook's `deny`, `fail` or `printf` output.
+  - `log_dir` run from a worktree resolves to the workspace's `agent-logs/<role>`.
+- **Tests:** unit 40/40 (32 new), db 1/1; acceptance `tests/unit/test_role_guard.py` 32/32; ruff check and format clean.
+- **For the lead (index, D13/D16):**
+  - add rows for **RUN-004**: the deferred lockfile (RUN-001.D9), `proposed`;
+  - add a row for **RUN-005**: this work, `done`;
+  - set Next free to **RUN-006**.
+- **Self-rating:** 9/10, proud: yes. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
