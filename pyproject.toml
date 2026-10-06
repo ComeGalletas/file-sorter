@@ -49,6 +49,8 @@ include = ["classifier*"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# agent-office keeps worker worktrees inside the repo folder (RUN-003); lint each in its own tree.
+extend-exclude = [".agent-office"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

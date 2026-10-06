@@ -13,6 +13,9 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+# agent-office data for this floor: worker worktrees, office password, state (RUN-003)
+.agent-office/
+
 # Claude Code: per-machine settings and the per-worktree task file (RUN-002.D4)
 .claude/settings.local.json
 .task

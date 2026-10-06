@@ -122,6 +122,10 @@
   - `.claude/settings.json` applies to everyone: hooks, safe allow-list, and denies for secrets, labels, images, force pushes, `--no-verify` and the purge override.
   - `settings.worker.json` adds `acceptEdits` and denies merging.
   - `settings.lead.json` allows merging and issue management, and denies edits outside `docs/` and tagging `mN-approved` (the human's gate).
+- **RUN-002.D8:** **The roles are enforced by a location-aware PreToolUse guard, not only by per-desk settings files.** agent-office launches every desk with its *own* `--settings` file (its hook bridge; `src/server/providers/claude.ts`), so our `settings.lead.json` and `settings.worker.json` can't be attached to its desks. They stay for desks launched by hand. `.claude/hooks/guard.sh` sits in the shared `settings.json`, which always loads, and acts only when `AGENT_OFFICE_WORKER_ID` is set (agent-office sets it for every desk), so the human's own sessions are never guarded:
+  - **Linked worktree = worker:** no `gh pr merge`, `git merge`, `git tag` or push to `main`; no edits to the index, plans, DESIGN.md or CLAUDE.md.
+  - **Main checkout = lead:** edits only under `docs/` (and `.task`); `gh pr merge` only with `--merge`; no `mN` tags.
+- **RUN-002.D9:** agent-office names its branches `office/*`. The pre-push gate treats them as task branches, so the acceptance test in `.task` is required. Without this, every agent-office branch would have skipped the acceptance check.
 - **RUN-002.D7:** The hooks parse their JSON input with `sed`. `jq` isn't on Git Bash, and host Python isn't a project dependency.
 
 ## RUN-002 — Tasks
@@ -132,6 +136,8 @@
 - [x] RUN-002.4 — GitHub issue and PR templates; `scripts/gate_1.py`–`gate_8.py` stubs that fail → `4b40370`
 - [x] RUN-002.5 — Verify: a lint finding comes back from an edit; a failing test blocks a push; logs land per role
 - [x] RUN-002.6 — CLAUDE.md and DESIGN.md updated for D1–D6 (phase, roles location, `.task`, ALLOW_MAIN_PUSH rule, MSYS note, §9 as built, §10 layout)
+
+- [ ] RUN-002.7 — Role guard (D8), `office/*` task branches (D9), `.agent-office/` git-ignored and excluded from lint; verified on agent-office-style worktrees
 
 ## RUN-002 — Results
 

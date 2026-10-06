@@ -28,7 +28,8 @@ if [ -n "$base" ] && git diff --name-only "$base" HEAD | grep -qE '^(classifier/
 fi
 
 branch="$(git branch --show-current)"
-if [[ "$branch" =~ ^[a-z]+-[0-9]{3} ]]; then
+# Task branches: <sys>-<nnn>... by convention, or office/* when agent-office names them (RUN-003).
+if [[ "$branch" =~ ^[a-z]+-[0-9]{3} || "$branch" == office/* ]]; then
   acc="$(task_field acceptance)"
   [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md §2.2)"
   echo "pre-push: acceptance test $acc"
