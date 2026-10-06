@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from classifier.config import Config, ConfigError, load_config
+from classifier.config import Config, ConfigError, check_roots, load_config
 
 REPO = Path(__file__).resolve().parents[3]
 REAL_CONFIG = REPO / "config.yaml"
@@ -111,3 +111,51 @@ def test_load_rejects_non_mapping(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     file.write_text("- a\n- b\n", encoding="utf-8")
     with pytest.raises(ConfigError, match="mapping"):
         load_config(file)
+
+
+def with_roots(source: str, results: str) -> Config:
+    data = real_data()
+    data["paths"] = {"source_root": source, "results_root": results}
+    return Config.model_validate(data)
+
+
+def test_real_roots_pass_the_check() -> None:
+    check_roots(Config.model_validate(real_data()))
+
+
+@pytest.mark.parametrize(
+    ("source", "results"),
+    [
+        ("/data", "/data"),
+        ("/data", "/data/"),
+        ("/data", "/data/results"),
+        ("/data/source", "/data"),
+        ("/data", "/data/sub/../results"),
+        ("/data/a/..", "/data/results"),
+        ("/data//", "/data/results/"),
+        ("/data/source", "/data/source/../.."),
+    ],
+)
+def test_nested_or_equal_roots_are_refused(source: str, results: str) -> None:
+    with pytest.raises(ConfigError, match="R-FOP-9"):
+        check_roots(with_roots(source, results))
+
+
+@pytest.mark.parametrize(
+    ("source", "results"),
+    [
+        ("/results", "/results2"),
+        ("/data/source", "/data/source-out"),
+        ("/data/a/../source", "/data/results"),
+    ],
+)
+def test_sibling_roots_pass(source: str, results: str) -> None:
+    check_roots(with_roots(source, results))
+
+
+def test_load_config_refuses_nested_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    data["paths"]["results_root"] = "/source/out"
+    with pytest.raises(ConfigError, match="R-FOP-9"):
+        load_config(write_config(tmp_path, data))

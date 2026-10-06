@@ -39,7 +39,7 @@ references or host paths here. Use hashes.
 - [ ] CFG-001.1 — Typed config loader and the R-FOP-9 root check · #13 · acceptance: `tests/unit/config/test_config.py`
   - [x] CFG-001.1.1 — Typed models, unknown keys refused (hash: see Results)
   - [x] CFG-001.1.2 — `load_config` with `CLASSIFIER_CONFIG` and `DB_DSN` (hash: see Results)
-  - [ ] CFG-001.1.3 — `check_roots` (R-FOP-9), called by `load_config`
+  - [x] CFG-001.1.3 — `check_roots` (R-FOP-9), called by `load_config` (hash: see Results)
 
 ## CFG-001 — Results
 

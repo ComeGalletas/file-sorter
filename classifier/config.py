@@ -6,7 +6,8 @@ is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1
 """
 
 import os
-from pathlib import Path
+import posixpath
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
@@ -126,6 +127,25 @@ class Config(_Section):
     db: DbConfig
 
 
+def _normalised(path: str) -> PurePosixPath:
+    return PurePosixPath(posixpath.normpath(path))
+
+
+def check_roots(config: Config) -> None:
+    """Refuse when the roots are equal or one is inside the other (R-FOP-9).
+
+    Pure path comparison: trailing slashes, `//` and `..` segments are normalised first,
+    and nothing on disk is touched.
+    """
+    source = _normalised(config.paths.source_root)
+    results = _normalised(config.paths.results_root)
+    if source == results or source in results.parents or results in source.parents:
+        raise ConfigError(
+            f"source_root ({source}) and results_root ({results}) must not be the same "
+            "or nested in one another (R-FOP-9)"
+        )
+
+
 def load_config(path: str | Path | None = None) -> Config:
     """Load the config once: `path`, else `$CLASSIFIER_CONFIG`; the DSN comes from `$DB_DSN`."""
     source = path if path is not None else os.environ.get(CONFIG_ENV)
@@ -138,6 +158,7 @@ def load_config(path: str | Path | None = None) -> Config:
     if not isinstance(data, dict):
         raise ConfigError(f"config file is not a mapping: {file}")
     config = Config.model_validate(data)
+    check_roots(config)
     dsn = config.db.dsn or os.environ.get(DSN_ENV)
     if not dsn:
         raise ConfigError(f"no database DSN: set {DSN_ENV}")
