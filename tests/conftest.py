@@ -10,7 +10,13 @@ from pathlib import Path
 import pytest
 
 TESTS = Path(__file__).resolve().parent
-TIER_BY_DIR = {"unit": "unit", "db": "db", "integration": "integration", "gpu": "gpu", "gate": "gate"}
+TIER_BY_DIR = {
+    "unit": "unit",
+    "db": "db",
+    "integration": "integration",
+    "gpu": "gpu",
+    "gate": "gate",
+}
 
 
 def tier_of(path: Path) -> str:
