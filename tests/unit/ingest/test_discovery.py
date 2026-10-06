@@ -6,6 +6,7 @@ import struct
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pillow_heif
 import pytest
 from PIL import Image
 
@@ -213,6 +214,22 @@ class TestProbeImage:
     def test_heic_decodes_through_pillow_heif(self, tmp_path: Path) -> None:
         path = tmp_path / "pic.heic"
         Image.new("RGB", (16, 16), (200, 30, 30)).save(path, format="HEIF")
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.width, result.height, result.animated) == (16, 16, False)
+
+    def test_multi_image_heic_reads_first_image_and_is_not_animated(self, tmp_path: Path) -> None:
+        # R-ING-6 / R-ING-9, ING-001.D3 / DOC-006.D1: a HEIC holding several images is read
+        # from its first image only, and is never animated
+        path = tmp_path / "multi.heic"
+        first = Image.new("RGB", (16, 16), (200, 30, 30))
+        second = Image.new("RGB", (32, 8), (30, 30, 200))
+        first.save(path, format="HEIF", save_all=True, append_images=[second])
+        stored = [image.size for image in pillow_heif.open_heif(path)]
+        assert stored == [(16, 16), (32, 8)], (
+            "pillow-heif can't write a multi-image HEIC in this image, so this test can't "
+            f"set up its input (it stored {stored}); report it on issue #34"
+        )
         result = probe_image(path)
         assert isinstance(result, Probe)
         assert (result.width, result.height, result.animated) == (16, 16, False)

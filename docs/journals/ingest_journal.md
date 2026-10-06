@@ -107,3 +107,16 @@ references or host paths here. Use hashes.
   - **Not regular files** (a FIFO or device inside the source) would block `hash_file`. Not reachable on a folder of images. Severity: low.
   - **One transaction per run.** A crash loses the run's rows, and the re-run redoes the hashing; it stays idempotent. Batched commits can come with the graph wiring (PIPE).
   - Thumbnails (R-ING-5) wait for M2 (ING-001.D1).
+
+### ING-001.3 (worker: qa)
+
+- **Status:** DONE. ING-001.3.1 landed in the commit that carries this subsection (hash filled in by the lead's index PR or the next commit).
+- **Triage:** small, solo. One new test, no product behavior change.
+- **Tests:**
+  - **Acceptance:** `tests/unit/ingest/test_discovery.py` went from 42 to 43 tests, all passing. The new test, `test_multi_image_heic_reads_first_image_and_is_not_animated`, generates a two-image HEIC in code (two sizes), checks with `pillow_heif.open_heif` that both images were stored, then asserts `probe_image` returns the first image's size and `animated == False`. If pillow-heif can't store both, it fails with a message naming that and issue #34; it never skips.
+  - **Default tiers:** `make test` shows 255 passed. `make lint` is clean.
+  - **Mutation check 1 (`"HEIF"` added to `_ANIMATED_FORMATS`):** the new test failed on its final assertion: `assert (16, 16, True) == (16, 16, False)`, index 2. Reverted with `git checkout`.
+  - **Mutation check 2 (`probe_image` seeks to the second image before `load()`):** the new test failed on the same assertion: `assert (32, 8, False) == (16, 16, False)`, index 0. Reverted with `git checkout`; `git status` then showed only the test file and this journal changed.
+- **Self-rating:** 10/10, proud: yes. Nothing is left against the issue's acceptance test, R-ING-6 or R-ING-9, and both regressions it guards were shown to fail the test.
+- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Deferred:** nothing. Note: an unrelated `make test-gpu` call ran by mistake inside the first mutation command; its output was discarded and it changed no files.
