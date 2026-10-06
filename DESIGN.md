@@ -35,7 +35,7 @@ The source folder is **read-only**: the bot never moves, modifies or deletes an 
 | --- | --- |
 | P-1 | **Non-destructive, read-only source.** No sorting step ever writes to, moves, modifies or deletes anything in `source_root`; it is mounted read-only. Sorted copies are written to `results_root`. Deletion exists only as `purge-sources` and `delete`, which are separate, explicit CLI commands, **disabled by default** (`deletion.enabled: false`). |
 | P-2 | **Sanitize first.** No classification, captioning or naming model sees unredacted metadata or filenames. |
-| P-3 | **Local first.** No egress by default except SearXNG (outbound search) and model pulls. Every remote backend is opt-in by config. |
+| P-3 | **Local first.** No egress by default except SearXNG (outbound search) and model pulls. Every remote backend is opt-in by config. This governs the app runtime. Host-side process tooling (hooks, host scripts, the desks' `gh` use) is limited by CLAUDE.md's hard rule to GitHub metadata, plus download-only, build-time access to a fixed list of registries (RUN-007.D1, D5). |
 | P-4 | **Idempotent and resumable.** The ledger is the checkpoint. A known hash is skipped, and a crash resumes from the last recorded status. |
 | P-5 | **Config over code.** Categories, prompts, templates and rules are editable from the CLI or YAML without a code change. |
 | P-6 | **Unrecognized is an outcome, not a guess.** A format below threshold → `Unsorted/`, flagged for review. A topic below threshold → no topic (`General/<Format>/`). |
