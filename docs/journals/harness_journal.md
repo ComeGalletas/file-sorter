@@ -1,7 +1,7 @@
 # Harness dry run — journal
 
-**ID:** CLI-001 · **Systems:** CLI (+ TST, RUN) · **Type:** feature, process · **Status:** proposed · **Milestone:** — (runbook step 6) ·
-**Issues:** opened after the plan PR merges · **Branch:** per task, named by agent-office (`office/*`)
+**ID:** CLI-001 · **Systems:** CLI (+ TST, RUN) · **Type:** feature, process · **Status:** CLI-001 done; TST-001 blocked by design (TST-001.D1) · **Milestone:** — (runbook step 6) ·
+**Issues:** #2 (CLI-001.1, closed by PR #5), #3 (TST-001.1, open) · **Branch:** `office/nibble-2cb1` (CLI-001.1), `office/sprocket-0819` (TST-001.1, local only)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -38,7 +38,7 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
 ## CLI-001 — Tasks
 
 - [x] CLI-001.1 — `classifier --version` prints the package version · #2 (pipeline) · acceptance: `tests/unit/cli/test_version_option.py`
-  - [x] CLI-001.1.1 — eager `--version` callback option + acceptance test (hash in Results)
+  - [x] CLI-001.1.1 — eager `--version` callback option + acceptance test → `7be8d25`
 
 ## CLI-001 — Results
 
@@ -48,7 +48,10 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
 - **Triage:** medium: a behavior change inside one package (lead corrected it from small on #2). Tiers: unit + lint; the pre-push gate runs the default tiers and the acceptance test. Solo.
 - **Tests:** `make test`: 5 passed (unit 4, db 1; no integration tests exist yet), including the acceptance test `tests/unit/cli/test_version_option.py` (2 passed) and `tests/unit/test_smoke.py` (2 passed, CLI-001.D2). `make lint`: clean. In the container, the installed entry point `classifier --version` printed the version and exited 0.
 - **Self-rating:** pass 1: 9/10, proud: yes. Gap (−1): the test pins `--version` on its own but not when it is combined with a subcommand (e.g. `--version version` should print once and exit). The acceptance test doesn't require that and Click's eager handling covers it, so I left it out rather than widen the scope. No second pass needed.
-- **Review:**
+- **Review:** PR #5, merged as `77a897c`, closing #2.
+  - The lead ran both subagents before merging: Reviewer APPROVE, Privacy auditor PASS.
+  - Those verdicts live only in the lead's session transcript. RUN-002.D14, which puts verdicts on the PR, came later, so PR #5 shows none on GitHub.
+  - The Reviewer's one minor finding, the commit hash missing from the task line, was fixed by the lead's reconciliation PR #8, not at merge time.
 - **Deferred:** none.
 
 ---
@@ -79,14 +82,21 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
 
 ## TST-001 — Tasks
 
-- [ ] TST-001.1 — Deliberately failing probe test; the push must be rejected · issue (qa) · acceptance: `tests/unit/test_harness_probe.py` (expected to fail)
+- [x] TST-001.1 — Deliberately failing probe test; the push must be rejected · #3 (qa) · acceptance: `tests/unit/test_harness_probe.py` (expected to fail) → push rejected
+  - [x] TST-001.1.1 — the failing probe, committed locally only → `a5a5524` (never pushed, never on `main`)
 
 ## TST-001 — Results
 
 ### TST-001.1 (worker: qa)
 
-- **Status:**
-- **Triage:**
-- **Gate output:**
-- **Self-rating:**
-- **Review:** none expected (no PR can exist)
+Recorded by the lead from the worker's report on #3 (2026-10-06), per RUN-002.D13.
+
+- **Status:** BLOCKED, by design (TST-001.D1). Success for this task is the rejected push, so #3 stays open with the `blocked` label.
+- **Triage:** small · unit tier through the pre-push gate · solo.
+- **Gate output:** `git push -u origin HEAD` exited 1 with `pre-push BLOCKED: default test tiers failed`. The default tiers ran 1 failed and 3 passed; the failure was the probe's plain `AssertionError` (TST-001.D2). The gate stopped at the default tiers, so the acceptance step never ran, as the Confirmed reading predicted. Afterwards, `git ls-remote` showed no remote branch and `gh pr list` showed no PR. No `--no-verify` was used.
+- **Notes:**
+  - The ruff hook flagged `assert False` as B011. The worker kept the assertion and added `# noqa: B011`; the test still fails plainly.
+  - Compose warns that the shared volume `file-sorter_hf` was created for another project. It is shared on purpose (RUN-002.D2); marking it `external: true` would silence the warning. That is the RUN owner's call; not filed yet.
+- **Self-rating:** 9/10, proud: yes. Gap: the issue's exact assertion needed a lint suppression.
+- **Review:** none, as expected: no PR can exist.
+- **Deferred:** `send_home` for the desk discards the branch and worktree (TST-001.D3).
