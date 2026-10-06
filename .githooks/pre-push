@@ -16,11 +16,15 @@ cd "$(git rev-parse --show-toplevel)"
 
 fail() { printf 'pre-push BLOCKED: %s\n' "$*" >&2; exit 1; }
 
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+only_deletes=1
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   if [ "$remote_ref" = "refs/heads/main" ] && [ "${ALLOW_MAIN_PUSH:-0}" != "1" ]; then
     fail "direct pushes to main are not allowed; open a PR (main changes only through gh pr merge)"
   fi
+  [[ "$local_sha" =~ ^0+$ ]] || only_deletes=0
 done
+# RUN-002.D15: deleting a remote branch publishes no code, so it needs no test run.
+if [ "$only_deletes" = 1 ]; then echo "pre-push: branch deletion only, nothing to test"; exit 0; fi
 
 [ -f .env ] || fail "no .env in $(basename "$PWD"); run 'make init' here first (it copies .env from the main checkout)"
 
