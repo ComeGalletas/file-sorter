@@ -5,9 +5,19 @@ is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1
 `classify.*.default_min_score` values (calibrated in M3).
 """
 
+import os
+from pathlib import Path
 from typing import Literal
 
+import yaml
 from pydantic import BaseModel, ConfigDict
+
+CONFIG_ENV = "CLASSIFIER_CONFIG"
+DSN_ENV = "DB_DSN"
+
+
+class ConfigError(Exception):
+    """The configuration cannot be loaded or is not allowed."""
 
 
 class _Section(BaseModel):
@@ -114,3 +124,22 @@ class Config(_Section):
     deletion: DeletionConfig = DeletionConfig()
     api: ApiConfig
     db: DbConfig
+
+
+def load_config(path: str | Path | None = None) -> Config:
+    """Load the config once: `path`, else `$CLASSIFIER_CONFIG`; the DSN comes from `$DB_DSN`."""
+    source = path if path is not None else os.environ.get(CONFIG_ENV)
+    if not source:
+        raise ConfigError(f"no config file: pass a path or set {CONFIG_ENV}")
+    file = Path(source)
+    if not file.is_file():
+        raise ConfigError(f"config file not found: {file}")
+    data = yaml.safe_load(file.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ConfigError(f"config file is not a mapping: {file}")
+    config = Config.model_validate(data)
+    dsn = config.db.dsn or os.environ.get(DSN_ENV)
+    if not dsn:
+        raise ConfigError(f"no database DSN: set {DSN_ENV}")
+    config.db.dsn = dsn
+    return config
