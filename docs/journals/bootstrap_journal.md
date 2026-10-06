@@ -57,7 +57,7 @@
 - [x] RUN-001.3 — `Makefile` and `scripts/fetch_models.py`
 - [x] RUN-001.4 — Test tiers by path (`tests/conftest.py`), a smoke test and a db-reachability test
 - [x] RUN-001.5 — Verify `make up` and `make test` in Docker
-- [ ] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes
+- [x] RUN-001.6 — `make models`: Ollama tags and HF weights into volumes
 - [ ] RUN-001.7 — README; privacy check; public GitHub repo; push
 
 ## RUN-001 — Results
@@ -85,7 +85,10 @@
 - **RUN-002.D1:** **Desk role briefs live in `.claude/roles/`, not `.claude/agents/`** (a deviation from the plan's runbook step 4). Anything in `.claude/agents/` is a subagent any session may delegate to. A lead delegating a code task to a "pipeline-engineer" subagent would edit code in the lead's own tree, which breaks "the lead writes no code" and the one-worktree-per-task rule. Only the three read-only subagents (reviewer, privacy-auditor, test-runner) are in `.claude/agents/`.
 - **RUN-002.D2:** **Each linked worktree gets its own compose project** (`file-sorter-<worktree>`), so parallel test runs never share `db-test`. The `ollama` and `hf` volumes have fixed names, so every project shares the downloaded models. `pgdata` stays per project.
 - **RUN-002.D3:** `make init` in a linked worktree copies `.env` and `sanitize.yaml` from the main checkout. Compose needs the `.env` values to parse at all, and a worktree only has tracked files.
-- **RUN-002.D4:** A task branch (`<sys>-<nnn>…`) must have a git-ignored `.acceptance` file naming its acceptance test (a pytest path or `scripts/gate_N.py`). The pre-push hook runs it and blocks the push without it. This is how the hook knows "the task's acceptance test" without calling GitHub.
+- **RUN-002.D4:** Every worktree has a git-ignored `.task` file with `key=value` lines: `role=`, `issue=`, `acceptance=` (a pytest path or `scripts/gate_N.py`).
+  - On a task branch (`<sys>-<nnn>…`), the pre-push hook runs the acceptance test, and blocks the push if none is named.
+  - The log hooks read the role and issue from the same file. A desk can't set environment variables for its own hooks, and this avoids calling GitHub from a hook.
+  - It replaced a first draft that used a `.acceptance` file.
 - **RUN-002.D5:** The pre-push hook blocks direct pushes to `main` unless `ALLOW_MAIN_PUSH=1` is set. Only the bootstrap uses it; afterwards `main` changes only through `gh pr merge`.
 - **RUN-002.D6:** Three settings layers:
   - `.claude/settings.json` applies to everyone: hooks, safe allow-list, and denies for secrets, labels, images, force pushes, `--no-verify` and the purge override.
