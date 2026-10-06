@@ -390,3 +390,64 @@
   - add a row for **RUN-005**: this work, `done`;
   - set Next free to **RUN-006**.
 - **Self-rating:** 9/10, proud: yes (after round 1). Round 1 rightly caught two bypasses that my first 32 cases missed. Gap: Bash-based writes, like `echo > file`, are outside the guard by design. It covers Claude's file tools and the merge, tag and push commands, not every shell command.
+
+
+---
+
+## RUN-006 — Requirement (human, 2026-10-06)
+
+- **Objective:** Make reviews faster where depth isn't needed, without weakening them where it is.
+- **Details:** The human asked whether a lower-reasoning reviewer would speed reviews up.
+  - Measured review durations from the subagent transcripts (Sonnet reviewer, Haiku auditor):
+    - docs-only and small PRs (#1, #4, #5, #6, #8): **1.3–4.6 min**;
+    - PR #7: 7.0 + 4.2 min;
+    - **PR #9, the role guard: 16.3, then 32.6+ min** (47 and 69 tool calls).
+  - The privacy audit takes 0.6–2.5 min everywhere.
+  - The long reviews were exactly the ones that found real holes: the junction bypass, the case bypass, the trailing dot. A blanket downgrade would cost the most where it matters.
+- **Constraint:** Security-relevant paths keep the full Sonnet review with live reproductions. Which reviewer runs is decided mechanically, not by judgment.
+- **Implements:** CLAUDE.md §2.2 step 5; RUN-002.D14.
+
+## RUN-006 — Confirmed reading
+
+- **RUN-006.D1:** **The reviewer is routed by a script.** `scripts/review_route.sh <pr>` prints `reviewer-quick` only when the PR body's triage says `Size: small` **and** every changed file is under `docs/` or is the top-level `README.md`. Anything else goes to the full `reviewer`, including a missing triage size and any change to code, tests, hooks, settings, agents, roles, compose, CLAUDE.md or DESIGN.md. `reviewer-quick` is Haiku and static, with no reproductions. If it sees anything outside its scope, it asks for the full reviewer. The privacy auditor always runs.
+- **RUN-006.D2:** **Re-reviews cover only the change since the last review.**
+  - The lead's verdict comment records `Reviewed at <head sha>` and which reviewer ran.
+  - On round N, the reviewer gets the previous verdict and that commit. It verifies each earlier finding, then reviews only `git diff <sha>..<head>`.
+  - It widens to a full review only if that diff touches files or behavior the earlier rounds didn't cover, and says so on a `SCOPE:` line.
+- **RUN-006.D3:** **Reproductions are for confirming a suspected blocker.** One sandbox per suspicion, removed afterwards, about 10 minutes each at most. Anything not confirmed in that budget is reported as `unverified`, with the steps to try, instead of being chased.
+- **RUN-006.D4:** **Measurable outcome**, to be checked at M1 G1 from the subagent transcripts:
+  - docs-only PR reviews under **2 min**;
+  - round-2+ reviews of a small fix under **10 min**;
+  - no drop in findings on security-relevant PRs.
+
+## RUN-006 — Tasks
+
+- [x] RUN-006.1 — `scripts/review_route.sh` and `tests/unit/test_review_route.py`
+- [x] RUN-006.2 — `.claude/agents/reviewer-quick.md` (Haiku, static, escalates out-of-scope diffs)
+- [x] RUN-006.3 — `reviewer.md`: round-N scope, reproduction budget, `REVIEWED:` line; `lead.md` and CLAUDE.md §2.2: routing, `Reviewed at` in the verdict comment; settings allow the route script
+
+## RUN-006 — Results
+
+- **Status:** DONE. The measurable outcome (D4) is checked at M1 G1, from the subagent transcripts.
+- **Triage:** medium. A new script with tests, a new subagent, and changes to the reviewer, the lead brief, CLAUDE.md and the settings. Solo.
+- **Route script (RUN-006.1):** `tests/unit/test_review_route.py`, 25 cases, all passing:
+  - small docs-only PRs → quick;
+  - 16 kinds of non-docs path (code, tests, scripts, hooks, agents, roles, settings, compose, Dockerfile, Makefile, config, CLAUDE.md, DESIGN.md, prompts, a look-alike `docs-not-really/`) → full;
+  - medium and large → full;
+  - a missing triage → full;
+  - a case-insensitive size with CRLF line endings;
+  - the first `Size:` line wins, so a quoted "Size: small" later in a medium PR can't downgrade it;
+  - no files → full.
+- **Real PRs, routed through `gh` on this host:**
+  - #1 and #8, the lead's docs-only plan and reconcile PRs → `reviewer-quick`;
+  - #4 and #6, which touch `.claude/roles/README.md` → full, because role briefs are agent contract;
+  - #5, #7 and #9 (medium) → full.
+- **Quick reviewer (RUN-006.2):** Haiku, static, five checks: template, IDs, journal consistency, who may edit the index and plans, public-repo hygiene. If a diff turns out to be outside `docs/` and `README.md`, it refuses and routes the PR to the full reviewer.
+- **Full reviewer and lead (RUN-006.3):**
+  - the reviewer opens with a `SCOPE:` line (full, or a re-review of `<sha>..<head>`), works to the reproduction budget, and closes with a `REVIEWED: <head sha>` line;
+  - the lead's verdict comment carries which reviewer ran and `Reviewed at`;
+  - the settings allow the route script.
+- **For the lead (index, D13/D16):**
+  - add rows for RUN-004 (`proposed`), RUN-005 (`done`) and RUN-006 (`done`);
+  - set Next free to **RUN-007**.
+- **Self-rating:** 8/10, proud: yes. Gap: D4's speed-up is a prediction until M1's reviews are measured. And the quick reviewer's five checks are only as good as Haiku's reading of a diff, which is why its scope is limited to docs.
