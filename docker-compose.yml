@@ -135,8 +135,12 @@ networks:
 
 volumes:
   pgdata:
-  # RUN-002.D2: fixed names so every worktree's compose project shares the downloaded models.
+  # RUN-002.D2 + RUN-005.D2: shared by every worktree's compose project, owned by none.
+  # External, so no project claims them (no 'created for project' warning); `make init`
+  # creates them, because compose never creates external volumes.
   ollama:
     name: file-sorter_ollama
+    external: true
   hf:
     name: file-sorter_hf
+    external: true
