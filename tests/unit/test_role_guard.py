@@ -227,3 +227,50 @@ def test_image_folders_are_matched_case_insensitively(sandbox: dict[str, Path]) 
 
 def test_human_may_still_touch_the_image_folders(sandbox: dict[str, Path]) -> None:
     assert guard(sandbox, "repo", edit(sandbox["images"] / "a.png"), desk=False) == 0
+
+
+# ---- RUN-005.5: Win32 name tricks (PR #9 review round 2, findings 1-2) ----
+
+PROTECTED = ["CLAUDE.md", "DESIGN.md", "docs/journals/INDEX.md"]
+
+
+@pytest.mark.parametrize("name", PROTECTED)
+@pytest.mark.parametrize("suffix", [".", " ", ". .", "..", " . "])
+def test_trailing_dots_and_spaces_reach_the_protected_file(
+    sandbox: dict[str, Path], name: str, suffix: str
+) -> None:
+    # Round 2, finding 1: Win32 strips trailing dots/spaces, so "CLAUDE.md." IS CLAUDE.md.
+    assert guard(sandbox, "wt", edit(str(sandbox["wt"] / name) + suffix)) == 2
+
+
+@pytest.mark.parametrize("name", PROTECTED)
+@pytest.mark.parametrize("stream", [":hidden", ":hidden:$DATA", "::$DATA"])
+def test_alternate_data_streams_are_refused(
+    sandbox: dict[str, Path], name: str, stream: str
+) -> None:
+    # Round 2, finding 2, decided by the human: block streams (RUN-005.D7).
+    assert guard(sandbox, "wt", edit(str(sandbox["wt"] / name) + stream)) == 2
+
+
+def test_streams_are_refused_for_the_lead_too(sandbox: dict[str, Path]) -> None:
+    assert guard(sandbox, "repo", edit(str(sandbox["repo"] / "docs" / "x.md") + ":hidden")) == 2
+
+
+def test_trailing_dot_on_a_folder_segment_is_normalized(sandbox: dict[str, Path]) -> None:
+    # "docs./journals./INDEX.md" is docs/journals/INDEX.md on Windows.
+    assert guard(sandbox, "wt", edit(sandbox["wt"] / "docs." / "journals." / "INDEX.md")) == 2
+
+
+@pytest.mark.parametrize(
+    ("where", "rel"),
+    [
+        ("wt", "classifier/a.b.c.py"),  # inner dots are untouched
+        ("wt", "classifier/./cli/x.py"),  # a lone "." segment is untouched
+        ("repo", "docs/journals/x.md"),
+        ("repo", "docs/journals/x.md."),  # normalizes to an allowed docs/ file
+    ],
+)
+def test_normalization_leaves_ordinary_names_alone(
+    sandbox: dict[str, Path], where: str, rel: str
+) -> None:
+    assert guard(sandbox, where, edit(f"{sandbox[where]}/{rel}")) == 0

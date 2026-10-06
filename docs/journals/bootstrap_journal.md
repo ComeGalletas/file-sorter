@@ -332,6 +332,12 @@
     - this tree and the main checkout are resolved the same way;
     - every comparison is case-insensitive.
 - **RUN-005.D5:** **No desk writes under `SOURCE_ROOT` or `RESULTS_ROOT`.** Review finding 3 noted that once the guard stopped governing paths outside the repo, the human's image folders were protected only by the containers' `:ro` mount (R-FOP-8) and the hard rule, not on the host. The guard now reads both roots from the main checkout's local, git-ignored `.env` (so no host path is committed) and denies every desk's write under them. Only the app writes there, through Docker. The human's own sessions are unaffected.
+- **RUN-005.D6:** **Trailing dots and spaces are normalized away, the way Win32 does** (PR #9 review round 2, finding 1).
+  - Win32 silently strips them from every path segment, so an Edit on `CLAUDE.md.` or `CLAUDE.md ` writes the real `CLAUDE.md`. This was reproduced on this host with a Windows tool.
+  - Under MSYS, `[ -e ]` is false for such a name, so the guard matched the unresolved `claude.md.` and allowed it, on all three protected files.
+  - The guard now strips trailing dots and spaces from each segment before any check. Lone `.` segments are kept, and `..` stays refused.
+- **RUN-005.D7:** **Alternate data streams are refused** (round 2, finding 2; decided by the human on 2026-10-06). A `:` after the drive letter is denied in every desk write. The project never needs streams, and allowing them would let hidden content be attached to any file, protected or not.
+- **RUN-005 note, 8.3 short names** (round 2, finding 3, info): short names like `CLAUDE~1.MD` aren't expanded. That's not exploitable today, because every protected name already fits 8.3 and so has no separate short alias. If a protected name ever grows past 8.3, resolve short names before matching.
 - **RUN-005.D4:** **Job logs use the resolved path.** The README said to write `<AGENT_LOG_ROOT>/<role>/<issue>.md`, and `AGENT_LOG_ROOT` is the relative `../agent-logs`, which each desk resolved from inside its worktree. The README now gives the command that prints the absolute folder: `bash -c '. .claude/hooks/common.sh; log_dir'`. The test-runner already uses it. The two misplaced files from step 6 were moved by hand on 2026-10-06.
 
 ## RUN-005 — Tasks
@@ -339,11 +345,12 @@
 - [x] RUN-005.1 — Guard governs the repo tree (D1) + `tests/unit/test_role_guard.py` in a throwaway repo with a real linked worktree
 - [x] RUN-005.2 — External model volumes, created by `make init` (D2); verify that no warning appears in a worktree test run
 - [x] RUN-005.3 — ASCII hook messages (D3) and the resolved job-log path in the roles README (D4)
+- [x] RUN-005.5 — PR #9 review round 2: trailing dot/space normalization (D6), alternate data streams refused (D7), 8.3 note; 30 new tests; Win32 behavior checked on the host
 - [x] RUN-005.4 — PR #9 review round 1: real-path resolution and case-insensitive matching (D1 amended), image folders protected (D5); 13 new tests; real NTFS junction checked on the host
 
 ## RUN-005 — Results
 
-- **Status:** DONE (after review round 1 → RUN-005.4).
+- **Status:** DONE (after review rounds 1 and 2 → RUN-005.4, RUN-005.5).
 - **Triage:** medium. Behavior changes in the role guard and the compose volumes, plus message and docs fixes. Tests: all default tiers, a new 32-case guard suite, and a worktree compose run. Solo.
 - **Guard (RUN-005.1):** `tests/unit/test_role_guard.py` runs 32 cases (lead, worker, human; edits and commands) in a throwaway repo with a real linked worktree under `.agent-office/worktrees/`. All 32 pass.
 - **Regression check:** run against the old guard from `main`, **exactly the 5 new-behavior cases fail**:
@@ -367,6 +374,16 @@
   - **On this host:**
     - **NTFS junction:** a real `mklink /J escape <main checkout>` inside a worktree. With the new guard, the junction write, `CLAUDE.md`, `claude.md` and `docs/journals/index.md` all exit 2.
     - **Real `.env` paths** (7 probes): the source with backslashes and a space, a lowercase drive, and the results root are all blocked. A sibling folder that only shares a prefix, the lead's memory and the lead's journal are allowed. The lead's code edit is blocked.
+- **Review round 2 (PR #9):** Reviewer REQUEST_CHANGES, Privacy auditor PASS. Round-1 findings 1 and 3 were confirmed resolved and finding 2 partly. New findings:
+  1. trailing dot or space bypass (blocker);
+  2. alternate data streams (minor);
+  3. 8.3 short names (info).
+
+  Findings 1 and 2 were reproduced on this host before fixing: `.`, ` `, `. .` and `:hidden` were all allowed on `CLAUDE.md`, `DESIGN.md` and `docs/journals/INDEX.md`.
+- **RUN-005.5 tests:**
+  - **Suite:** `tests/unit/test_role_guard.py` now has **75 cases**, all passing; the full default tiers pass 84/84. The 30 new ones cover 5 trailing-dot/space suffixes × 3 protected files, 3 stream forms × 3 files, the lead's stream, a dotted folder segment, and 4 controls (inner dots, a lone `.` segment, the lead's `docs/` with and without a trailing dot).
+  - **Regression:** against the round-2 guard, **exactly the 26 attack cases fail**; the 49 others pass under both.
+  - **On this host, fixed guard:** all 15 attack paths exit 2. A Windows write to `CLAUDE.md.` still lands in the real file, which is why the guard must normalize. The earlier junction reproduction and the 7 real-`.env` probes are unchanged.
   - **Hardlinks:** out of scope. They can't be told apart from ordinary files, and creating one needs a shell command, which the guard doesn't path-check by design.
 - **For the lead (index, D13/D16):**
   - add rows for **RUN-004**: the deferred lockfile (RUN-001.D9), `proposed`;

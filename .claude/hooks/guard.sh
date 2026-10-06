@@ -68,6 +68,15 @@ under() { case "$(lower "$1")" in "$(lower "$2")"|"$(lower "$2")"/*) return 0 ;;
 where() {
   local f="$1" real top main root
   f="${f//\\\\//}"; f="${f//\\//}"
+  # RUN-005.D7: no NTFS alternate data streams (CLAUDE.md:hidden); a ':' is allowed only
+  # as the drive letter's.
+  case "${f#[A-Za-z]:}" in
+    *:*) deny "alternate data streams are not allowed in desk writes (RUN-005.D7)" ;;
+  esac
+  # RUN-005.D6: Win32 silently drops trailing dots and spaces from every path segment, so
+  # "CLAUDE.md." and "CLAUDE.md " ARE CLAUDE.md. Normalize the same way before any check.
+  # Lone "." and ".." segments are left as they are ('..' is refused just below).
+  f="$(printf '%s' "$f" | sed -E 's#([^/. ])[. ]+(/|$)#\1\2#g')"
   case "/$f/" in
     */../*) deny "use a normalized path without '..' segments (RUN-005.D1)" ;;
   esac

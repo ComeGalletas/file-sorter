@@ -274,6 +274,7 @@ Every worker also edits its own task lines and Results subsection in the journal
   - a linked worktree is a worker: no merging, tagging or pushing to `main`; no edits to the index, plans, DESIGN.md or CLAUDE.md; and no edits anywhere else in the repo tree, whether the main checkout or another desk's worktree (RUN-005.D1);
   - paths outside the repo tree (Claude memory, the workspace's `agent-logs\`) aren't the guard's concern, and paths with `..` segments are refused;
   - every path is resolved to its real location first (links and NTFS junctions followed) and compared case-insensitively, so neither a junction nor `claude.md` gets around a rule (RUN-005.4);
+  - trailing dots and spaces are stripped from each path segment, the way Windows does, so `CLAUDE.md.` is treated as `CLAUDE.md`. NTFS alternate data streams (`CLAUDE.md:hidden`) are refused outright (RUN-005.D6, D7);
   - **no desk writes under `SOURCE_ROOT` or `RESULTS_ROOT`** (read from the local `.env`). Only the app writes there, through Docker (RUN-005.D5).
   - The settings layers `.claude/settings.lead.json` and `.claude/settings.worker.json` apply only to desks launched by hand.
 - **Subagents** are only the read-only reviewers: `reviewer`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
