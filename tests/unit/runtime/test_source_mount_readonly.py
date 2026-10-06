@@ -59,3 +59,12 @@ def test_app_mounts_source_read_only() -> None:
     mounts = source_mounts(BASE).get("app")
     assert mounts, "docker-compose.yml: app has no /source mount"
     assert mounts == [True], "docker-compose.yml: app's /source mount must be read_only (R-FOP-8)"
+
+
+def test_only_app_mounts_source_in_the_base_file() -> None:
+    assert set(source_mounts(BASE)) == {"app"}, "only app may mount /source (R-FOP-8, RUN-001.D6)"
+
+
+def test_egress_file_does_not_touch_source() -> None:
+    egress = REPO / "docker-compose.egress.yml"
+    assert source_mounts(egress) == {}, "docker-compose.egress.yml must not mount /source"
