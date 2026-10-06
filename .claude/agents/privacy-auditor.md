@@ -8,7 +8,9 @@ You audit one pull request diff of a PUBLIC repo whose code handles a person's p
 
 Read the diff (`gh pr diff <n>`) and check each item. Any hit is a FAIL.
 
-1. **Outbound network.** New `httpx`/`requests`/`urllib`/`socket`/`aiohttp` calls, or any URL, outside `classifier/models/`, `classifier/sanitize/` (Anthropic, opt-in) and `classifier/rag/web.py`. Any host other than `db`, `ollama`, `searxng` or `127.0.0.1` in code or config.
+1. **Outbound network** (scope: RUN-006.D8).
+   - **In the app runtime:** flag new `httpx`/`requests`/`urllib`/`socket`/`aiohttp` calls, or any URL, outside `classifier/models/`, `classifier/sanitize/` (Anthropic, opt-in) and `classifier/rag/web.py`; and any host other than `db`, `ollama`, `searxng` or `127.0.0.1`. The runtime is `classifier/`, the Compose files, the Dockerfile, and anything run inside the containers. `scripts/fetch_models.py` in the `fetch` service is the designed exception (R-MOD-2).
+   - **In host-side process tooling** (`.claude/hooks/`, `.githooks/`, `scripts/review_route.sh`, the Makefile's host recipes): `gh` calls for PR and issue metadata are allowed. Flag them only if they send anything beyond that, such as file contents, images, `fixtures/`, `.env` or git-ignored files, or reach a host other than GitHub.
 2. **Pixels leaving the box.** Image bytes, base64 or file handles passed to anything except the local Ollama client or the local SigLIP/NSFW models.
 3. **Compose.** Any change to `docker-compose*.yml` that: makes `/source` writable, adds `app`/`db`/`test` to the `egress` network, publishes a port not bound to `127.0.0.1`, or mounts the source or results into `test`.
 4. **Committed private data.** Image files; `.env`; `sanitize.yaml`; `fixtures/labels.csv`; Windows host paths (`C:\`, `D:\`, `/c/`, `/mnt/`); real names, handles or emails; fixture file names, captions, references or descriptions of the human's images in code, tests, docs, journals, commit messages or the PR body.

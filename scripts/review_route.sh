@@ -29,6 +29,7 @@ else
   [ -n "$pr" ] || { echo "usage: bash scripts/review_route.sh <pr-number>" >&2; exit 64; }
   changed="$(gh pr view "$pr" --json changedFiles --jq '.changedFiles' 2>/dev/null)" \
     || full "could not read PR $pr"
+  [[ "$changed" =~ ^[0-9]+$ ]] || full "could not read the changedFiles count of PR $pr"
   body="$(gh pr view "$pr" --json body --jq '.body' 2>/dev/null)" || full "could not read PR $pr"
   # Paginated and rename-aware: gh pr view --json files stops at 100 and shows new names only.
   listing="$(gh api --paginate "repos/{owner}/{repo}/pulls/$pr/files" \

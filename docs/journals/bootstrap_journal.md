@@ -424,6 +424,11 @@
   - The quick reviewer's first step is the route script itself; unless it prints `reviewer-quick`, it refuses.
   - It may run only named read-only commands. Subagent tools can't be limited per command in the frontmatter, so this is stated in its brief. Writes are still blocked for desks by the role guard (RUN-005.D1).
 - **RUN-006.D7:** **Scoped re-reviews are safe against rewritten history** (finding 4). If `Reviewed at` is no longer an ancestor of the head, after a force-push or rebase, the reviewer does a full review and says so on the `SCOPE:` line. Process check 4 runs on every commit not seen before. A suspected blocker that couldn't be confirmed is never an APPROVE (finding 6). Just before merging, the lead re-runs the route and checks that the head is still the `Reviewed at` commit (finding 10).
+- **RUN-006.D8:** **The "no outbound call" hard rule covers the app runtime only** (decided by the human on 2026-10-06, after PR #10 round 2's privacy FAIL on the route script's `gh` calls).
+  - The runtime is the Compose services, `classifier/`, and anything run inside the containers.
+  - Host-side process tooling (the hooks, `scripts/review_route.sh`, the desks' own `gh` use) may use `gh` for GitHub PR and issue metadata.
+  - Nothing may ever send image data, `fixtures/`, `.env` or other git-ignored files anywhere.
+  - CLAUDE.md's hard rule and the privacy auditor's check 1 now say so. Before this, the rule's wording would also have forbidden the `gh` workflow itself.
 - **RUN-006.D4:** **Measurable outcome**, to be checked at M1 G1 from the subagent transcripts:
   - docs-only PR reviews under **2 min**;
   - round-2+ reviews of a small fix under **10 min**;
@@ -433,8 +438,9 @@
 
 - [x] RUN-006.1 — `scripts/review_route.sh` and `tests/unit/test_review_route.py`
 - [x] RUN-006.2 — `.claude/agents/reviewer-quick.md` (Haiku, static, escalates out-of-scope diffs)
-- [x] RUN-006.4 — PR #10 review round 1: rename-aware, paginated, count-checked file listing and fenced-block size (D5); data-not-instructions and route-first quick reviewer (D6); rewritten-history fallback, unverified-never-approve, pre-merge re-check (D7); allow rule narrowed; tests for each
 - [x] RUN-006.3 — `reviewer.md`: round-N scope, reproduction budget, `REVIEWED:` line; `lead.md` and CLAUDE.md §2.2: routing, `Reviewed at` in the verdict comment; settings allow the route script
+- [x] RUN-006.4 — PR #10 review round 1: rename-aware, paginated, count-checked file listing and fenced-block size (D5); data-not-instructions and route-first quick reviewer (D6); rewritten-history fallback, unverified-never-approve, pre-merge re-check (D7); allow rule narrowed; tests for each
+- [x] RUN-006.5 — PR #10 review round 2: hard-rule scope decided by the human (D8), CLAUDE.md and the privacy auditor scoped to match; empty `changedFiles` routes to the full reviewer; `gh api` GET-only in the reviewer; a fake-`gh` test covers the listing's parsing
 
 ## RUN-006 — Results
 
@@ -472,6 +478,15 @@
   - **Suite:** `tests/unit/test_review_route.py` now has **38 cases**, all passing. The new ones cover three renames into `docs/` judged by their old path, a rename inside `docs/` staying quick, a truncated listing (100 of 101), a matching count, a size outside a fence, a fence without `Tests:` and `Agents:`, a single-line and a multi-line HTML comment, disagreeing blocks, `Size: smaller`, and the `gh` fallback with nothing usable on PATH.
   - **Regression:** against the round-1 script, **exactly 10 fail**, the ones for findings 1, 2, 3 and 7. The 28 others pass under both (`smaller` was already handled).
   - **Real PRs on the host,** through the paginated, rename-aware API: #1 and #8 → quick; #4–#7, #9 and #10 → full. Unchanged, so the stricter triage parsing doesn't break the lead's real docs PRs.
+- **Review round 2 (PR #10):** Reviewer APPROVE, scoped to `0ce96fd..21dc629` (ancestor confirmed). Round-1 findings 1–4 and 6–10 resolved; 5 partly resolved, because the quick reviewer's command limit is prose only, a residual risk recorded in D6. **Privacy auditor FAIL** on the route script's `gh` calls under the "no outbound call" hard rule. The lead held the merge for the human, who decided the rule's scope (D8).
+- **RUN-006.5:**
+  - **Rule scope:** CLAUDE.md's hard rule and the auditor's check 1 are scoped to the app runtime, per D8.
+  - **Round-2 minors:**
+    - an empty or non-numeric `changedFiles` now routes to the full reviewer, instead of silently skipping the count check;
+    - the reviewer may use `gh api` for GET only;
+    - the journal task order is fixed (.3 before .4).
+  - **Tests:** a **fake `gh`** on `PATH` now drives the script's real `gh` path: docs-only → quick; a rename → judged by its old name; a count mismatch → full; and `""`, `null` or `many` as the count → full. `tests/unit/test_review_route.py` has **44 cases**; against the round-2 script, exactly the 3 unreadable-count cases fail.
+  - **Limit:** the fake `gh` returns output already filtered, so the jq expression itself is exercised only by the real `gh`. That happens on every real routing, as with the real PRs above.
 - **Watcher note (this session's tooling, not the repo):** the PR watchers had an invalid jq escape (`\*`) and hid their errors, so they never reported comments on #9 or #10. They were fixed to print "N new comment(s)" before extracting details, without hiding errors.
 - **For the lead (index, D13/D16):**
   - add rows for RUN-004 (`proposed`), RUN-005 (`done`) and RUN-006 (`done`);

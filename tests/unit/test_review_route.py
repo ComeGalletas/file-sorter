@@ -177,3 +177,63 @@ def test_gh_failure_falls_back_to_the_full_reviewer(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert result.stdout.strip() == "reviewer (could not read PR 10)"
+
+
+# ---- the real gh path, through a fake gh on PATH (PR #10 review round 2) ----
+
+FAKE_GH = """#!/bin/bash
+# Stands in for gh: answers the three calls review_route.sh makes, with canned output
+# already in the shape the real --jq filters produce.
+case "$*" in
+  *"--json changedFiles"*) cat "$FAKE_DIR/changed" ;;
+  *"--json body"*) cat "$FAKE_DIR/body" ;;
+  api*) cat "$FAKE_DIR/listing" ;;
+  *) exit 1 ;;
+esac
+"""
+
+
+def route_via_gh(tmp_path: Path, listing: list[str], body: str, changed: str) -> str:
+    """listing lines are 'F<TAB>path' or 'P<TAB>previous path', like the real jq output."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    gh = bin_dir / "gh"
+    gh.write_text(FAKE_GH)
+    gh.chmod(0o755)
+    (tmp_path / "listing").write_text("\n".join(listing) + "\n")
+    (tmp_path / "body").write_text(body)
+    (tmp_path / "changed").write_text(changed)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("REVIEW_ROUTE_")} | {
+        "PATH": f"{bin_dir}:{os.environ['PATH']}",
+        "FAKE_DIR": str(tmp_path),
+    }
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "7"], capture_output=True, text=True, env=env, timeout=30, check=True
+    )
+    return result.stdout.strip()
+
+
+def test_gh_path_docs_only_is_quick(tmp_path: Path) -> None:
+    listing = ["F\tdocs/a.md", "F\tdocs/b.md"]
+    assert route_via_gh(tmp_path, listing, triage("small"), "2") == (
+        "reviewer-quick (small, docs only)"
+    )
+
+
+def test_gh_path_rename_is_judged_by_its_old_name(tmp_path: Path) -> None:
+    listing = ["F\tdocs/moved.md", "P\tCLAUDE.md"]
+    assert route_via_gh(tmp_path, listing, triage("small"), "1") == "reviewer (touches CLAUDE.md)"
+
+
+def test_gh_path_count_mismatch_is_full(tmp_path: Path) -> None:
+    listing = ["F\tdocs/a.md", "F\tdocs/b.md"]
+    assert route_via_gh(tmp_path, listing, triage("small"), "3") == (
+        "reviewer (listed 2 of 3 changed files)"
+    )
+
+
+@pytest.mark.parametrize("changed", ["", "null", "many"])
+def test_gh_path_unreadable_changed_count_is_full(tmp_path: Path, changed: str) -> None:
+    # Round 2: an empty changedFiles must not silently skip the count check.
+    out = route_via_gh(tmp_path, ["F\tdocs/a.md"], triage("small"), changed)
+    assert out == "reviewer (could not read the changedFiles count of PR 7)"
