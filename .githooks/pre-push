@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # The hard gate (C-17, RUN-002). Enabled by `make init` (core.hooksPath = .githooks).
-# Blocks the push unless:
-#   1. it doesn't push to main, or ALLOW_MAIN_PUSH=1 is set (bootstrap only, RUN-002.D5);
-#   2. the default tiers pass (unit + db + integration);
-#   3. the gpu tier passes when classifier/models/ or prompts/ changed;
-#   4. on a task branch, the acceptance test named in .task (acceptance=...) passes (RUN-002.D4).
+# Cheap checks first, so a push fails fast with the real reason:
+#   1. no push to main unless ALLOW_MAIN_PUSH=1 (bootstrap only, RUN-002.D5);
+#   2. .env exists (a worktree needs `make init`, RUN-002.D3);
+#   3. a task branch (<sys>-<nnn>... or agent-office's office/*) names its acceptance test
+#      in .task (RUN-002.D4, D9);
+# then the slow ones:
+#   4. the default tiers pass (unit + db + integration);
+#   5. the gpu tier passes when classifier/models/ or prompts/ changed;
+#   6. the acceptance test passes.
 # Never bypass it with --no-verify (CLAUDE.md "Hard rules").
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
@@ -18,6 +22,15 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
   fi
 done
 
+[ -f .env ] || fail "no .env in $(basename "$PWD"); run 'make init' here first (it copies .env from the main checkout)"
+
+branch="$(git branch --show-current)"
+acc=""
+if [[ "$branch" =~ ^[a-z]+-[0-9]{3} || "$branch" == office/* ]]; then
+  acc="$(task_field acceptance)"
+  [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md §2.2)"
+fi
+
 echo "pre-push: default tiers (unit + db + integration)"
 compose_test pytest -q || fail "default test tiers failed"
 
@@ -27,11 +40,7 @@ if [ -n "$base" ] && git diff --name-only "$base" HEAD | grep -qE '^(classifier/
   compose_test pytest -q -m gpu || fail "gpu tier failed"
 fi
 
-branch="$(git branch --show-current)"
-# Task branches: <sys>-<nnn>... by convention, or office/* when agent-office names them (RUN-003).
-if [[ "$branch" =~ ^[a-z]+-[0-9]{3} || "$branch" == office/* ]]; then
-  acc="$(task_field acceptance)"
-  [ -n "$acc" ] || fail "task branch '$branch' has no acceptance=... line in .task (CLAUDE.md §2.2)"
+if [ -n "$acc" ]; then
   echo "pre-push: acceptance test $acc"
   case "$acc" in
     scripts/gate_*.py) compose_test python "$acc" || fail "acceptance gate $acc failed" ;;
