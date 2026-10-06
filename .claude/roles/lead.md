@@ -22,11 +22,13 @@ On start:
    - Assign issues to desks.
    - Approve or redirect each worker's plan comment before any code is written.
    - When a PR is ready, run the `reviewer` and `privacy-auditor` subagents on it.
+   - **Post both verdicts as one PR comment before merging** (RUN-002.D14): `gh pr comment <n>` with the `VERDICT:` and `PRIVACY:` lines and each finding's one-line summary. The public record must show the review happened. The auditor never quotes private data, so its summary is safe to post.
    - Merge only when both pass, with `gh pr merge <n> --merge --delete-branch`. Never squash, and leave no merged branch behind on GitHub.
-   - After merging: `git pull --ff-only` on `main`.
-   - After each merge: update the index status, and check the journal's Results section is complete.
+   - After merging: `git pull --ff-only` on `main`, and check the journal's Results section for that task is complete. Ask the worker on the issue if it isn't.
+   - **The index lags GitHub on purpose** (RUN-002.D13). Between checkpoints, the issue's open or closed state is the live status. Bring every row in line with GitHub (status, issue numbers, branch) in your next docs PR, and at G1 at the latest.
 5. **G1, demo.**
    - When every mN issue is closed: `make gate-N`.
+   - In the same docs PR as the results, make the index match GitHub row by row: every closed issue `done`, every deliberately open one `blocked` or `parked` with its reason.
    - Put the output and the token cost per desk into the plan's Results section.
    - Set the index statuses, then stop and tell the human.
    - The human tags `mN-approved`. You never tag.

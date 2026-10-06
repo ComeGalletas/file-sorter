@@ -83,7 +83,8 @@ Journals live in `docs/journals/<feature>_journal.md`; copy `docs/journals/TEMPL
 
 `docs/journals/INDEX.md` lists every work ID: title, systems, type, status, milestone, issues, journal, branch, date. It also maps plans and design documents to the IDs they serve.
 
-- **Only the lead edits it.** The lead adds the row when the ID is allocated, and updates the status at G0, at merge and at G1: `proposed → in progress → done`, or `parked` / `superseded by <ID>`.
+- **Only the lead edits it.** The lead adds the row when the ID is allocated: `proposed → in progress → done`, or `blocked` / `parked` / `superseded by <ID>`.
+- **The index lags GitHub on purpose** (RUN-002.D13). Workers can't edit it, and the lead must stay on `main` (RUN-002.D10), so it can't be updated at every merge. Between checkpoints, the issue's state on GitHub is the live status. The lead brings the rows in line in its next docs PR, at G1 at the latest, and the G1 check requires them to match.
 - Before allocating an ID, read the **Next free** line, and update it in the same commit.
 - Search by ID with `git log --grep CLS-004`, or grep it across `docs/`.
 
@@ -160,8 +161,8 @@ Branch: <branch> in <worktree path>
 2. **Worker:** works in its own worktree. It runs `make init` there (which copies `.env` and `sanitize.yaml` from the main checkout), and writes the git-ignored `.task` file (`role=`, `issue=`, `acceptance=`; see `.claude/roles/README.md`). Then it posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
 3. **Worker:** implements, committing one subtask at a time (§1.6). The `PostToolUse` hook runs ruff on the edited file. The `Stop` hook runs the touched tests.
 4. **Worker:** opens the PR. The pre-push hook (`.githooks/pre-push`) runs the default tiers, plus `gpu` when `classifier/models/` or `prompts/` changed, plus the acceptance test named in `.task`. A non-zero exit blocks the push, and so does a task branch without `acceptance=`.
-5. **Lead:** runs the Reviewer and Privacy auditor subagents on the PR diff. Blocking findings → PR comment or a new issue.
-6. **Lead:** merges (§1.6), closes the issue, updates the index, and checks that the journal's Results section is complete.
+5. **Lead:** runs the Reviewer and Privacy auditor subagents on the PR diff, and posts both verdicts as one PR comment before merging (RUN-002.D14). Blocking findings → the same comment, or a new issue.
+6. **Lead:** merges (§1.6), which closes the issue through `Closes #n`, and checks that the journal's Results section is complete. The index catches up with GitHub in the lead's next docs PR, at G1 at the latest (RUN-002.D13).
 
 **Agent logs (local only, never committed).** Each role logs its own work under `$AGENT_LOG_ROOT/<role>/`. The default is `../agent-logs/`, the workspace's `agent-logs\` folder next to this repo.
 
