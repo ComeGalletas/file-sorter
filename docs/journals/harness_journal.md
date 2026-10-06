@@ -37,18 +37,19 @@ This is runbook step 6 (docs/PLAN.md, "Harness dry run"): one trivial task that 
 
 ## CLI-001 — Tasks
 
-- [ ] CLI-001.1 — `classifier --version` prints the package version · issue (pipeline) · acceptance: `tests/unit/cli/test_version_option.py`
+- [x] CLI-001.1 — `classifier --version` prints the package version · #2 (pipeline) · acceptance: `tests/unit/cli/test_version_option.py`
+  - [x] CLI-001.1.1 — eager `--version` callback option + acceptance test (hash in Results)
 
 ## CLI-001 — Results
 
 ### CLI-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
+- **Status:** DONE
+- **Triage:** medium: a behavior change inside one package (lead corrected it from small on #2). Tiers: unit + lint; the pre-push gate runs the default tiers and the acceptance test. Solo.
+- **Tests:** `make test`: 5 passed (unit 4, db 1; no integration tests exist yet), including the acceptance test `tests/unit/cli/test_version_option.py` (2 passed) and `tests/unit/test_smoke.py` (2 passed, CLI-001.D2). `make lint`: clean. In the container, the installed entry point `classifier --version` printed the version and exited 0.
+- **Self-rating:** pass 1: 9/10, proud: yes. Gap (−1): the test pins `--version` on its own but not when it is combined with a subcommand (e.g. `--version version` should print once and exit). The acceptance test doesn't require that and Click's eager handling covers it, so I left it out rather than widen the scope. No second pass needed.
 - **Review:**
-- **Deferred:**
+- **Deferred:** none.
 
 ---
 
