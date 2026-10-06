@@ -17,6 +17,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 
+# importlib mode puts no test dir on sys.path; `tests` imports as a namespace package.
 from tests.db.db_support import require_db_dsn
 
 INI = Path(__file__).resolve().parents[2] / "classifier" / "db" / "alembic.ini"
@@ -56,7 +57,11 @@ def migrated_db(db_dsn: str) -> Iterator[str]:
 
 @pytest.fixture
 def db(migrated_db: str) -> Iterator[psycopg.Connection]:
-    """A connection inside an outer transaction that is rolled back at teardown."""
+    """A connection inside an outer transaction that is rolled back at teardown.
+
+    A `commit()` on it persists its rows in the session schema until session end, when
+    the schema is dropped; only uncommitted work is undone at teardown.
+    """
     with psycopg.connect(migrated_db) as conn:
         try:
             yield conn

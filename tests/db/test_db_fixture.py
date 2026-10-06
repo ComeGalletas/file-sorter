@@ -2,7 +2,10 @@
 
 import psycopg
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
+from tests.db.conftest import INI
 from tests.db.db_support import require_db_dsn
 
 INSERT = (
@@ -15,8 +18,10 @@ FIRST_HASH = "f" * 64
 
 
 def test_session_is_migrated_to_the_single_head(db: psycopg.Connection) -> None:
+    heads = ScriptDirectory.from_config(Config(str(INI))).get_heads()
+    assert len(heads) == 1
     assert db.execute("select to_regclass('files') is not null").fetchone() == (True,)
-    assert db.execute("select version_num from alembic_version").fetchall() == [("0001",)]
+    assert db.execute("select version_num from alembic_version").fetchall() == [(heads[0],)]
 
 
 def test_rollback_inside_one_test(migrated_db: str) -> None:
