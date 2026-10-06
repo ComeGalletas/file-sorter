@@ -161,7 +161,7 @@
   - [x] RUN-002.10.5 — Review findings 1–2: index edits withdrawn (the lead reconciles them, D13); RUN-002.10 Results entry; RUN-003.2 ticked, RUN-003 done
   - [x] RUN-002.10.6 — Review finding 3: human-side PRs documented (CLAUDE.md "Sources of truth" item 5, D16)
 
-- [x] RUN-002.11 — Stale lines after the bootstrap: CLAUDE.md's "Current phase" (steps 5–6 and RUN-005 to RUN-007 are done; next is M1 G0), and `reviewer-quick` (RUN-006) added to the subagent lists in CLAUDE.md, DESIGN.md §10 and the roles README. DESIGN.md §10 also lists `scripts/review_route.sh`.
+- [x] RUN-002.11 — Stale lines after the bootstrap: CLAUDE.md's "Current phase" (steps 5–6 and RUN-005 to RUN-007 are done; next is M1 G0), and `reviewer-quick` (RUN-006) added to the subagent lists in CLAUDE.md, DESIGN.md §10 and §12, and the roles README. DESIGN.md §10 also lists `scripts/review_route.sh`.
 
 ## RUN-002 — Results
 
@@ -218,7 +218,7 @@
   - **The hooks and the role guard are now verified in live agent-office desks.**
 - **Self-rating:** 9/10, proud: yes. Every hook and gate has now fired in a live desk. Remaining gap: the D14 verdict comment isn't enforced mechanically.
 - **RUN-002.11, DONE:**
-  - Triage: small, docs only (CLAUDE.md, DESIGN.md §10, the roles README, this journal). No behavior change, no rule change: status lines and lists brought in line with what's on `main`.
+  - Triage: small, docs only (CLAUDE.md, DESIGN.md §10 and §12, the roles README, this journal). No behavior change, no rule change: status lines and lists brought in line with what's on `main`.
   - Tests: the default tiers and the acceptance `tests/unit/test_smoke.py`, run by the pre-push gate; counts in the PR body.
   - Self-rating: 9/10, proud: yes. Gap: the phase line goes stale again at each milestone; the lead's G1 report is the natural place to flag it to the human.
 

@@ -408,7 +408,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
   - Data/RAG: `rag/` plus `references*` migrations.
   - API/UI: `api/ ui/`.
   - QA: `tests/ fixtures/ scripts/`.
-  - Reviewer (Sonnet), Privacy auditor (Haiku) and Test runner (Sonnet) are read-only subagents in `.claude/agents/`. The six desk roles are briefs in `.claude/roles/`, never subagents (RUN-002.D1).
+  - Reviewer (Sonnet), quick Reviewer (Haiku, small docs-only PRs, RUN-006), Privacy auditor (Haiku) and Test runner (Sonnet) are read-only subagents in `.claude/agents/`. The six desk roles are briefs in `.claude/roles/`, never subagents (RUN-002.D1).
 - **Human gates.**
   - G0: you set `status: approved` in `docs/plans/mN.md`.
   - G1: you review `make gate-N` and the UI, then create the tag `mN-approved`.
