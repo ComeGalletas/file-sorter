@@ -56,22 +56,22 @@ references or host paths here. Use hashes.
 
 ## ING-001 — Tasks
 
-- [ ] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
+- [x] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
   - [x] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: d096c44
   - [x] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped · commit: fa0d4b1
-  - [x] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime` · commit: (next commit)
+  - [x] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime` · commit: 000f57c
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
 
 ## ING-001 — Results
 
 ### ING-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
-- **Deferred:**
+- **Status:** DONE_WITH_CONCERNS. The one concern is ING-001.D3, which the human hasn't confirmed yet. The default (a multi-page TIFF is not animated) is in the code and has its own test. If the human decides otherwise, the change is one line in `_ANIMATED_FORMATS` plus that test.
+- **Triage:** medium, solo. New behavior inside `classifier/graph/`, pure functions, no schema or contract change.
+- **Tests:** unit tier. The acceptance test `tests/unit/ingest/test_discovery.py` has 27 tests (4 for `hash_file`, 8 for `discover`, 15 for `probe_image`), all passing. `make test` (unit + db + integration) shows 155 passed. `make lint` is clean. Images are synthetic and generated in code: GIF, WebP and APNG with 2 frames, a 3-page TIFF, a HEIC, a truncated PNG, a text file named `.png`, an empty file and a missing file.
+- **Self-rating:** 9/10, proud: yes (first pass, from a fresh read of the diff). The point below 10 is the gap against R-ING-9: whether a multi-page TIFF counts as animated rests on ING-001.D3, still unconfirmed. Nothing else is open against the acceptance test or R-ING-1, 3, 4, 6, 8, 9.
+- **Review:** pending (Reviewer and Privacy auditor, run by the lead).
+- **Deferred:** the ledger node (ING-001.2, #16). Thumbnails (R-ING-5) wait for M2 (ING-001.D1). A HEIC with several images is read as a still, the first image only; that has no test, since no requirement covers it.
 
 ### ING-001.2 (worker: pipeline)
 
