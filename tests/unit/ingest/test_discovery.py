@@ -1,9 +1,22 @@
 """ING-001.1: hashing, discovery and frame probing. Synthetic data only, generated here."""
 
 import hashlib
+import os
+from datetime import UTC, datetime
 from pathlib import Path
 
-from classifier.graph.ingest_files import IMAGE_EXTENSIONS, Candidate, Skipped, discover, hash_file
+import pytest
+from PIL import Image
+
+from classifier.graph.ingest_files import (
+    IMAGE_EXTENSIONS,
+    Candidate,
+    Probe,
+    Skipped,
+    discover,
+    hash_file,
+    probe_image,
+)
 
 
 class TestHashFile:
@@ -90,3 +103,108 @@ class TestDiscover:
         before = sorted(p.name for p in tmp_path.rglob("*"))
         list(discover(tmp_path))
         assert sorted(p.name for p in tmp_path.rglob("*")) == before
+
+
+def _frames(count: int, size: tuple[int, int] = (8, 6)) -> list[Image.Image]:
+    return [Image.new("RGB", size, (40 * i % 256, 90, 160)) for i in range(count)]
+
+
+def _save_multi(path: Path, count: int, **kwargs: object) -> None:
+    first, *rest = _frames(count)
+    first.save(path, save_all=True, append_images=rest, **kwargs)
+
+
+class TestProbeImage:
+    def test_still_png(self, tmp_path: Path) -> None:
+        path = tmp_path / "still.png"
+        Image.new("RGB", (8, 6)).save(path)
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.width, result.height, result.format, result.animated) == (8, 6, "PNG", False)
+
+    def test_jpeg_and_bmp_are_decoded(self, tmp_path: Path) -> None:
+        Image.new("RGB", (5, 4)).save(tmp_path / "a.jpg")
+        Image.new("RGB", (5, 4)).save(tmp_path / "a.bmp")
+        formats = [probe_image(tmp_path / n) for n in ("a.jpg", "a.bmp")]
+        assert [r.format for r in formats if isinstance(r, Probe)] == ["JPEG", "BMP"]
+
+    @pytest.mark.parametrize(
+        ("name", "fmt"), [("two.gif", "GIF"), ("two.webp", "WEBP"), ("two.png", "PNG")]
+    )
+    def test_two_frames_are_animated(self, tmp_path: Path, name: str, fmt: str) -> None:
+        path = tmp_path / name  # the PNG case is an APNG
+        _save_multi(path, 2, duration=50, loop=0, **({"lossless": True} if fmt == "WEBP" else {}))
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.format, result.animated) == (fmt, True)
+        assert (result.width, result.height) == (8, 6)  # the first frame's size
+
+    @pytest.mark.parametrize("name", ["one.gif", "one.webp"])
+    def test_single_frame_is_not_animated(self, tmp_path: Path, name: str) -> None:
+        path = tmp_path / name
+        Image.new("RGB", (8, 6)).save(path)
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert result.animated is False
+
+    def test_multi_page_tiff_is_not_animated_and_uses_the_first_page(self, tmp_path: Path) -> None:
+        # ING-001.D3 (default, for the human to confirm)
+        path = tmp_path / "pages.tiff"
+        first, *rest = [Image.new("RGB", (10 + i, 7)) for i in range(3)]
+        first.save(path, save_all=True, append_images=rest)
+        assert Image.open(path).n_frames == 3
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.format, result.animated, result.width) == ("TIFF", False, 10)
+
+    def test_heic_decodes_through_pillow_heif(self, tmp_path: Path) -> None:
+        path = tmp_path / "pic.heic"
+        Image.new("RGB", (16, 16), (200, 30, 30)).save(path, format="HEIF")
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert (result.width, result.height, result.animated) == (16, 16, False)
+
+    def test_truncated_png_is_skipped(self, tmp_path: Path) -> None:
+        good = tmp_path / "good.png"
+        Image.effect_noise((64, 64), 80).convert("RGB").save(good)
+        data = good.read_bytes()
+        bad = tmp_path / "bad.png"
+        bad.write_bytes(data[: len(data) // 2])
+        result = probe_image(bad)
+        assert isinstance(result, Skipped)
+        assert result.path == bad
+        assert result.reason.startswith("undecodable image")
+
+    def test_text_file_named_png_is_skipped(self, tmp_path: Path) -> None:
+        path = tmp_path / "fake.png"
+        path.write_text("not an image")
+        assert isinstance(probe_image(path), Skipped)
+
+    def test_empty_file_and_missing_file_are_skipped_not_raised(self, tmp_path: Path) -> None:
+        (tmp_path / "empty.png").write_bytes(b"")
+        assert isinstance(probe_image(tmp_path / "empty.png"), Skipped)
+        assert isinstance(probe_image(tmp_path / "missing.png"), Skipped)
+
+    def test_skip_reason_never_contains_the_path(self, tmp_path: Path) -> None:
+        path = tmp_path / "secret-name-xyz.png"
+        path.write_text("nope")
+        result = probe_image(path)
+        assert isinstance(result, Skipped)
+        assert "secret-name-xyz" not in result.reason
+        assert str(tmp_path) not in result.reason
+
+    def test_mtime_is_the_source_mtime_in_utc(self, tmp_path: Path) -> None:
+        path = tmp_path / "dated.png"
+        Image.new("RGB", (4, 4)).save(path)
+        stamp = datetime(2021, 3, 4, 5, 6, 7, tzinfo=UTC).timestamp()
+        os.utime(path, (stamp, stamp))
+        result = probe_image(path)
+        assert isinstance(result, Probe)
+        assert result.mtime == datetime(2021, 3, 4, 5, 6, 7, tzinfo=UTC)
+
+    def test_probe_leaves_the_file_untouched(self, tmp_path: Path) -> None:
+        path = tmp_path / "keep.png"
+        Image.new("RGB", (4, 4)).save(path)
+        before = (path.read_bytes(), path.stat().st_mtime_ns)
+        probe_image(path)
+        assert (path.read_bytes(), path.stat().st_mtime_ns) == before

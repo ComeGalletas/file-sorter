@@ -7,8 +7,14 @@ prints or logs a path or a file name (CLAUDE.md "Hard rules").
 import hashlib
 import os
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
+
+from PIL import Image
+from pillow_heif import register_heif_opener
+
+register_heif_opener()  # R-ING-6: HEIC decodes through Pillow
 
 _CHUNK = 1024 * 1024
 SHORT_HASH_LEN = 8  # R-ING-1
@@ -68,3 +74,41 @@ def discover(root: Path) -> Iterator[Candidate | Skipped]:
                 yield Candidate(path)
             else:
                 yield Skipped(path, NOT_AN_IMAGE_TYPE)
+
+
+# R-ING-9 / ING-001.D3: only these formats can be animated. A multi-page TIFF is not.
+_ANIMATED_FORMATS = frozenset({"GIF", "WEBP", "PNG"})
+
+
+class Probe(NamedTuple):
+    """What decoding the first frame or page told us about a file."""
+
+    width: int
+    height: int
+    format: str
+    animated: bool
+    mtime: datetime  # source mtime, UTC (R-ING-4)
+
+
+def probe_image(path: Path) -> Probe | Skipped:
+    """Decode the first frame or page (R-ING-6) and derive `animated` (R-ING-9).
+
+    The sole judge of decodability: a file that can't be decoded, or is truncated, comes
+    back as `Skipped` (R-ING-3) and never raises. The reason carries the exception type
+    only, because Pillow's messages can contain the path.
+    """
+    try:
+        with Image.open(path) as image:
+            image.load()  # first frame or page; raises on a truncated file
+            frames = getattr(image, "n_frames", 1)
+            animated = image.format in _ANIMATED_FORMATS and frames > 1
+            probe = Probe(
+                width=image.width,
+                height=image.height,
+                format=image.format or "",
+                animated=animated,
+                mtime=datetime.fromtimestamp(path.stat().st_mtime, tz=UTC),
+            )
+    except Exception as exc:  # Pillow raises OSError, SyntaxError, ValueError, ...
+        return Skipped(path, f"undecodable image ({type(exc).__name__})")
+    return probe
