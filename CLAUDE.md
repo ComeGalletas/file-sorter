@@ -8,6 +8,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 2. **`docs/journals/INDEX.md`** lists every work ID (`CLS-004`) with its status, journal, issues and branch. Each journal is the plan, todo list and record for its work (§1).
 3. **`docs/PLAN.md`** holds the rationale and narrative (a copy of the original plan, archived at the workspace root). DESIGN.md is confirmed: where the two disagree, DESIGN.md wins (its §13 lists every deviation).
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
+5. **The human's changes come as PRs from the human's own session** (RUN-002.D16). That is the human, or Claude working in the human's session, from any branch or worktree. They may touch DESIGN.md, CLAUDE.md, `.claude/` and the hooks. The role guard doesn't apply to them, because it only acts on agent-office desks. Like every PR, they get the reviewer and the privacy auditor, and the lead merges them. They never edit `docs/journals/INDEX.md`: the lead reconciles the index (RUN-002.D13).
 
 **Current phase:** bootstrapped. Runbook steps 1–4 are done (DOC-003, RUN-001, RUN-002): the repo, the Docker runtime, the models, the hooks and the settings layers. Next: agent-office (RUN-003, step 5), the harness dry run (step 6), then M1 G0. DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
