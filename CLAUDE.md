@@ -266,7 +266,11 @@ Edit only the folders your role owns. Need a change elsewhere? Open an issue for
 Every worker also edits its own task lines and Results subsection in the journal (§1.3). The repo bootstrap (runbook steps 3–4) was the one exception to ownership.
 
 **Where the roles live (RUN-002.D1):**
-- **Desk briefs** are in `.claude/roles/`, one per desk, with launch commands in `README.md`. Each desk runs with a settings layer: `.claude/settings.lead.json` or `.claude/settings.worker.json`, on top of the shared `.claude/settings.json`.
+- **Desk briefs** are in `.claude/roles/`, one per desk, with launch commands in `README.md`.
+- **Under agent-office**, the roles are enforced by the role guard (`.claude/hooks/guard.sh`, RUN-002.D8), decided by location:
+  - the main checkout is the lead: edits only under `docs/`, merges only with `--merge`, never tags;
+  - a linked worktree is a worker: no merging, tagging or pushing to `main`, and no edits to the index, plans, DESIGN.md or CLAUDE.md.
+  - The settings layers `.claude/settings.lead.json` and `.claude/settings.worker.json` apply only to desks launched by hand.
 - **Subagents** are only the read-only reviewers: `reviewer`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
 
 **Migrations:** Alembic keeps one head. A task that adds a migration rebases on `main` and fixes `down_revision` before merge.
@@ -304,7 +308,9 @@ Milestones M3–M6 run in **dry-run only**. Before M7, `results_root` gets empty
 - **Image folders:** source and results are Windows-drive bind mounts (`/source` read-only, `/results`); their paths are only in the local `.env`. Bind-mount I/O is slower than native. `watch` and dev auto-reload must poll, because file events don't propagate. Paths contain spaces, so always quote them.
 - **GPU stack:** the RTX 5080 (Blackwell) needs PyTorch built for CUDA 12.8+ (`cu128`+).
 - Remote backends (`sanitizer.backend: claude`, `rag.web_backend: brave|claude`) need `docker-compose.egress.yml` and stay off by default.
-- agent-office comes from the fork `https://github.com/ComeGalletas/agent-office`, built from source in `file-sorter-full\agent-office`. Its `install.sh` and `install.ps1` download upstream releases, so never use them.
+- agent-office comes from the fork `https://github.com/ComeGalletas/agent-office`, built from source in `file-sorter-full\agent-office` and linked globally (`npm install -g .`). Its `install.sh` and `install.ps1` download upstream releases, so never use them.
+  - Start it with this repo as its `[dir]`, so this checkout becomes the floor (RUN-003.D1).
+  - It keeps its data and the workers' worktrees in `.agent-office/`, which is git-ignored, and names worker branches `office/*`.
 - The adult VLM tag (`models.vlm_nsfw`) is intentionally unset until M5. Never pick one; the M5 G0 plan asks the human.
 
 ## Keeping this file honest

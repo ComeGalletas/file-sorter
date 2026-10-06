@@ -394,6 +394,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 - **Team surface.**
   - agent-office desks (one Claude Code session per desk), GitHub issues as the task queue, PRs as review. The native agent-teams fallback is dropped, because it needs tmux (DOC-003.D9).
   - **Install from the fork `https://github.com/ComeGalletas/agent-office`, cloned into `file-sorter-full\agent-office` and built from source per its README.** Do not use the plan's `curl … install.sh | bash`: the fork's `install.sh` hard-codes `REPO="AgentSystemLabs/agent-office"` and downloads upstream release tarballs, and the fork publishes no releases. As of 2026-10-05 the fork is identical to upstream `main`. Once it diverges, only a source build runs the fork's code.
+  - **As built (RUN-003):** `npm install -g .` links the fork globally. `agent-office <repo>` adopts this checkout as the floor, with no second clone, and keeps its data and worker worktrees in the git-ignored `.agent-office/`. Its desks run with agent-office's own `--settings`, so the roles are enforced by the location-aware guard hook (RUN-002.D8).
 - **Process standard (DOC-001, full rules in CLAUDE.md §1–§3).**
   - Work IDs `<SYS>-<NNN>` per requirement, using the system codes of this spec's R-prefixes.
   - Task `.n` = one issue = one PR. Subtask `.n.n` = one commit. Decision `.Dn`.

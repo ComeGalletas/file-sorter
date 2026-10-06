@@ -24,7 +24,7 @@
 - **DOC-003.D2:** Workspace layout:
   - `file-sorter-full\` contains `agent-office\` (the fork, built from source), `agent-logs\<role>\` (local logs) and `file-sorter\` (the repo).
   - The original plan is archived at the workspace root.
-- **DOC-003.D3:** The repo path is fixed. If agent-office can't adopt an existing clone, use a directory junction (`mklink /J`). Never a second clone. (human, 2026-10-05)
+- **DOC-003.D3:** The repo path is fixed. If agent-office can't adopt an existing clone, use a directory junction (`mklink /J`). Never a second clone. (human, 2026-10-05) **Resolved (RUN-003.3):** `agent-office <dir>` adopts the existing clone as its floor, so no junction is needed.
 - **DOC-003.D4:** `make` comes from `winget install ezwinports.make`. The Makefile sets `SHELL := bash`, with Git Bash on `PATH`. (human, 2026-10-05)
 - **DOC-003.D5:** agent-office is installed from the fork's source. Verified: the fork's `install.sh` hard-codes `REPO="AgentSystemLabs/agent-office"` and downloads upstream releases, and the fork has no releases. On 2026-10-05 the fork was identical to upstream `main`.
 - **DOC-003.D6:** Host paths live only in the git-ignored `.env`, as forward-slash Windows paths, quoted. Inside the containers the source is `/source` (read-only) and the results are `/results`.

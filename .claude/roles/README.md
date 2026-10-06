@@ -13,6 +13,12 @@ One file per agent-office desk. These are **briefs for whole Claude Code session
 
 ## Starting a desk
 
+**Through agent-office (the normal way, RUN-003):**
+- Start the office with `agent-office "<workspace>/file-sorter" --projects "<workspace>" --max-workers 4`.
+- Hire the **lead without a worktree**, so it sits in the main checkout. Hire every **worker with its own worktree**; agent-office puts them in `.agent-office/worktrees/` on `office/*` branches.
+- agent-office passes its own `--settings` to each desk, so the per-desk layers below don't apply there. The role guard (`.claude/hooks/guard.sh`, RUN-002.D8) enforces the same rules by location for every agent-office desk.
+
+**By hand (without agent-office), the settings layers apply:**
 - Lead: `claude --settings .claude/settings.lead.json`
 - Worker: `claude --worktree <task-id>-<slug> --settings .claude/settings.worker.json`
 
