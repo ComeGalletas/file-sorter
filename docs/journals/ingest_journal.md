@@ -55,6 +55,9 @@ references or host paths here. Use hashes.
 ## ING-001 — Tasks
 
 - [ ] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
+  - [ ] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: (next commit)
+  - [ ] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped
+  - [ ] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime`
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
 
 ## ING-001 — Results
