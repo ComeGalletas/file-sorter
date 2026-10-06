@@ -308,6 +308,12 @@ db:
 - **R-RUN-2** `app` has no internet route by default. The opt-in remote backends (`sanitizer.backend: claude`, `rag.web_backend: brave|claude`) require the override file `docker-compose.egress.yml`. Without that override they fail fast with a clear error.
 - **R-RUN-4** `app` mounts `source_root` as `:ro` and `results_root` as read-write. Only `docker-compose.purge.yml` remounts the source read-write, and only for `purge-sources`.
 - **R-RUN-3** Images, Postgres data and model weights are volumes and are never baked into images. `fixtures/` is the only image folder mounted into `test`.
+- **As built (RUN-001):**
+  - **Networks:** `internal` has no internet route (`app`, `db`, `test`). Only `ollama` and `searxng` also join `egress`.
+  - **Model downloads:** Hugging Face weights come through a one-off `fetch` service (profile `tools`), the only app-image container with internet.
+  - **UI port:** Docker can't publish ports for internal-only containers, so the UI port waits for M4's localhost-only proxy (RUN-001.D5).
+  - **`test`:** has no `/source` or `/results` mount at all (RUN-001.D6).
+  - **Pins:** see the RUN-001 journal.
 - **R-RUN-5** The RTX 5080 is Blackwell (sm_120). The `app` image must use PyTorch wheels built for **CUDA 12.8 or newer** (`cu128`+); `cu124` builds don't support the card. The `ollama/ollama` image is pinned to a version with qwen3vl support.
 
 ### 9a. Host and workspace (Windows-native)
@@ -359,7 +365,13 @@ docs/journals/{INDEX,TEMPLATE}.md  docs/journals/<feature>_journal.md   # work I
 config.yaml  sanitize.example.yaml  .env.example        # sanitize.yaml and .env are git-ignored
 docker-compose.yml  docker-compose.egress.yml  docker-compose.purge.yml  Dockerfile  Makefile  pyproject.toml  .gitattributes  .gitignore
 fixtures/labels.example.csv                           # labels.csv and images/ are git-ignored
-.claude/agents/*.md  .claude/settings.json  .github/
+.claude/agents/{reviewer,privacy-auditor,test-runner}.md   # read-only subagents only (RUN-002.D1)
+.claude/roles/{README,lead,pipeline,ml,rag,api-ui,qa}.md    # desk briefs
+.claude/settings.json  .claude/settings.{lead,worker}.json   # shared + per-desk layers (RUN-002.D6)
+.claude/hooks/   .githooks/pre-push                         # lint, stop tests, logs; the push gate
+docker/searxng/settings.yml  scripts/{fetch_models.py,init_local_files.sh,gate_1..8.py}
+.github/ISSUE_TEMPLATE/task.md  .github/pull_request_template.md
+.task                                                       # git-ignored per worktree: role, issue, acceptance
 ```
 
 ## 11. Milestones and gates
@@ -395,7 +407,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
   - Data/RAG: `rag/` plus `references*` migrations.
   - API/UI: `api/ ui/`.
   - QA: `tests/ fixtures/ scripts/`.
-  - Reviewer (Sonnet) and Privacy auditor (Haiku) are read-only subagents.
+  - Reviewer (Sonnet), Privacy auditor (Haiku) and Test runner (Sonnet) are read-only subagents in `.claude/agents/`. The six desk roles are briefs in `.claude/roles/`, never subagents (RUN-002.D1).
 - **Human gates.**
   - G0: you set `status: approved` in `docs/plans/mN.md`.
   - G1: you review `make gate-N` and the UI, then create the tag `mN-approved`.

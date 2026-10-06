@@ -9,7 +9,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 3. **`docs/PLAN.md`** holds the rationale and narrative (a copy of the original plan, archived at the workspace root). DESIGN.md is confirmed: where the two disagree, DESIGN.md wins (its §13 lists every deviation).
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
 
-**Current phase:** pre-bootstrap. Runbook steps 1 (host) and 2 (fixtures) belong to the human. The first agent action is runbook step 3 (repo bootstrap). DESIGN.md §14 lists the open questions; ask the human, don't assume.
+**Current phase:** bootstrapped. Runbook steps 1–4 are done (DOC-003, RUN-001, RUN-002): the repo, the Docker runtime, the models, the hooks and the settings layers. Next: agent-office (RUN-003, step 5), the harness dry run (step 6), then M1 G0. DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
 ## Hard rules — never
 
@@ -23,6 +23,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 - Install packages on the host or touch the host GPU directly. Every build, test and run goes through `docker compose`.
 - Start milestone N before `docs/plans/mN.md` has `status: approved`. Plan milestone N+1 before the git tag `mN-approved` exists.
 - Skip a hook (`--no-verify`), skip a test to make it green, or commit a red task as done.
+- Set `ALLOW_MAIN_PUSH=1`. It exists only for the bootstrap push; afterwards `main` changes only through `gh pr merge` (RUN-002.D5).
 
 ---
 
@@ -156,9 +157,9 @@ Branch: <branch> in <worktree path>
 1. **Lead (G0):**
    - Allocates the IDs, writes the journal sections and index rows, and lists them in `docs/plans/mN.md`.
    - Opens one GitHub issue per task. The issue title is `<task ID>: <summary>`. The issue names its acceptance test (a pytest path or `scripts/gate_N.py`) and the cited R-IDs, and carries the labels `mN` and `role:<role>`.
-2. **Worker:** works in its own worktree and posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
+2. **Worker:** works in its own worktree. It runs `make init` there (which copies `.env` and `sanitize.yaml` from the main checkout), and writes the git-ignored `.task` file (`role=`, `issue=`, `acceptance=`; see `.claude/roles/README.md`). Then it posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
 3. **Worker:** implements, committing one subtask at a time (§1.6). The `PostToolUse` hook runs ruff on the edited file. The `Stop` hook runs the touched tests.
-4. **Worker:** opens the PR. The pre-push hook runs the default tiers, plus `gpu` when `classifier/models/` or `prompts/` changed, plus the task's acceptance test. A non-zero exit blocks the push.
+4. **Worker:** opens the PR. The pre-push hook (`.githooks/pre-push`) runs the default tiers, plus `gpu` when `classifier/models/` or `prompts/` changed, plus the acceptance test named in `.task`. A non-zero exit blocks the push, and so does a task branch without `acceptance=`.
 5. **Lead:** runs the Reviewer and Privacy auditor subagents on the PR diff. Blocking findings → PR comment or a new issue.
 6. **Lead:** merges (§1.6), closes the issue, updates the index, and checks that the journal's Results section is complete.
 
@@ -230,9 +231,11 @@ Rate the work before the final commit, from a fresh read of the diff and the run
 ## Commands (all via Docker)
 
 ```bash
-make init          # create .env and sanitize.yaml from their .example files if missing
+make init          # .env + sanitize.yaml (copied from the main checkout in a worktree), secrets, git hooks
+make build         # build the app/test image (CUDA PyTorch; ~7 min cold)
 make up            # docker compose up -d db ollama searxng app
-make models        # pull Ollama tags + HF weights (SigLIP, NSFW) into volumes
+make down          # stop everything; volumes are kept
+make models        # pull Ollama tags + HF weights (SigLIP, NSFW) into the shared volumes
 make test          # unit + db + integration in the test profile
 make test-gpu      # gpu tier (real models) in the test profile
 make lint          # ruff check + ruff format --check inside the app image
@@ -240,7 +243,9 @@ make gate-N        # docker compose --profile test run --rm test python scripts/
 docker compose run --rm app classifier <command>   # e.g. dry-run, categories list
 ```
 
-The UI is at `http://127.0.0.1:8000` (`classifier serve`).
+The UI will be at `http://127.0.0.1:8000` from M4. `app` sits on an internal-only network, so the port is published through a localhost-only proxy that M4 adds (RUN-001.D5). Never add `app` to the `egress` network to expose it.
+
+In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2).
 
 ## Roles and file ownership
 
@@ -258,7 +263,11 @@ Edit only the folders your role owns. Need a change elsewhere? Open an issue for
 | Privacy auditor | Haiku subagent, read-only | — |
 | Test runner | Sonnet subagent | writes only `$AGENT_LOG_ROOT/qa/test-history.md` |
 
-Every worker also edits its own task lines and Results subsection in the journal (§1.3). The repo bootstrap (runbook steps 3–4) is the one exception to ownership: the lead session generates the scaffolding.
+Every worker also edits its own task lines and Results subsection in the journal (§1.3). The repo bootstrap (runbook steps 3–4) was the one exception to ownership.
+
+**Where the roles live (RUN-002.D1):**
+- **Desk briefs** are in `.claude/roles/`, one per desk, with launch commands in `README.md`. Each desk runs with a settings layer: `.claude/settings.lead.json` or `.claude/settings.worker.json`, on top of the shared `.claude/settings.json`.
+- **Subagents** are only the read-only reviewers: `reviewer`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
 
 **Migrations:** Alembic keeps one head. A task that adds a migration rebases on `main` and fixes `down_revision` before merge.
 
@@ -289,6 +298,8 @@ Milestones M3–M6 run in **dry-run only**. Before M7, `results_root` gets empty
   - The repo path is fixed. Never clone it a second time.
   - Don't edit `agent-office\` from this project.
 - **Shell:** hooks and Makefile recipes are POSIX shell run by Git Bash (`SHELL := bash`). Don't use Linux-only tools, and don't use PowerShell in hooks.
+  - Prefix `docker run` with `MSYS_NO_PATHCONV=1` whenever an argument is a container path (`-w /io`). Otherwise Git Bash rewrites it into a Windows path.
+  - Parse hook JSON with `sed`: `jq` isn't available.
 - **Line endings:** LF everywhere, enforced by `.gitattributes`. Never commit CRLF shell scripts or Dockerfiles.
 - **Image folders:** source and results are Windows-drive bind mounts (`/source` read-only, `/results`); their paths are only in the local `.env`. Bind-mount I/O is slower than native. `watch` and dev auto-reload must poll, because file events don't propagate. Paths contain spaces, so always quote them.
 - **GPU stack:** the RTX 5080 (Blackwell) needs PyTorch built for CUDA 12.8+ (`cu128`+).
