@@ -46,6 +46,8 @@ references or host paths here. Use hashes.
   - Logs, console and test output, issues, PRs and journals carry hashes only. Host paths are never stored.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
   - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
+- **ING-001.D3** — **A multi-page TIFF is not animated** (default, for the human to confirm). R-ING-9 lists GIF, WebP and APNG, so only those with more than one frame set `animated`. Its "more than one frame" wording could also be read to include TIFF; the lead has flagged it to the human.
+- **ING-001.1.2 alias:** `tif` is accepted as an alias of `tiff`, beside the MVP types in DESIGN.md §1. Extensions are matched case-insensitively, and `discover` filters by extension only: `probe_image` is the sole judge of decodability (R-ING-3).
 
 ## ING-001 — Plan
 
@@ -55,8 +57,8 @@ references or host paths here. Use hashes.
 ## ING-001 — Tasks
 
 - [ ] ING-001.1 — Hashing, discovery and frame probing (pure functions) · #15 · acceptance: `tests/unit/ingest/test_discovery.py`
-  - [ ] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: (next commit)
-  - [ ] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped
+  - [x] ING-001.1.1 — `hash_file`: `source_hash` and `short_hash` · commit: d096c44
+  - [x] ING-001.1.2 — `discover(root)`: extension filter, OS metadata dropped · commit: (next commit)
   - [ ] ING-001.1.3 — `probe_image(path)`: first frame or page, `animated`, `mtime`
 - [ ] ING-001.2 — Ingest node: ledger writes, known-hash skip, duplicate paths · #16 · acceptance: `tests/db/ingest/test_ingest_ledger.py`
 
