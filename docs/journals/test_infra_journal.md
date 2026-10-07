@@ -182,16 +182,31 @@ references or host paths here. Use hashes.
 ## TST-004 — Confirmed reading
 
 - Not in M1's plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): gate 2 is the first M2 code to read the real fixtures, so the audit should guard the other tiers before it lands. **Confirmed into M2 by the human, 2026-10-07.**
+- **TST-004.D1** — **A pinned exemption registry for modules that name the real fixtures without reading them** (QA, chosen by the lead on #54, 2026-10-07). Two `unit` modules name the path legitimately: `tests/unit/gate/test_gate_1_verdict.py` matches gate 1's error text, and `tests/unit/runtime/test_fixtures_mount.py` (RUN-009) asserts the compose mount and `make init`'s output and builds a tmp sandbox repo. `NAMES_FIXTURES_WITHOUT_READING` in the audit lists each such module with a one-line reason, pinned to the exact source text of every reference it may make, once per occurrence. A new reference in a listed module still fails, and so does a pin or an entry the tree no longer has. It is central and reviewed by QA; there is still no per-line escape hatch. Rejected: exempting whole modules (a later read would get through), and rewriting the two tests to dodge the literal (evasion).
+- **Scope** (lead, on #54): `fixtures/labels.csv` is covered too, by the same scanner and registry, because the labels are as private as the images. The committed `fixtures/labels.example.csv` stays legal. Only `test_fixtures_mount.py` names the labels file (five references), so no follow-up is needed.
 
 ## TST-004 — Tasks
 
 - [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py`
+  - [x] TST-004.1.1 — `scan_fixture_refs`: string constants (f-string parts included) and path joins naming `fixtures/images` or `fixtures/labels.csv`, with the exact source text; synthetic self-tests · `0716374`
+  - [x] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree · `a6c0859`
+  - [x] TST-004.1.3 — Results
+  - [x] TST-004.1.4 — A pin covers one occurrence even when an identical reference repeats on the same line (found in the self-rating: the scanner deduplicated them); regression test · `fefdc13`
 
 ## TST-004 — Results
 
 ### TST-004.1 (worker: qa)
 
-- **Status:**
+- **Status:** DONE.
+- **What landed:** `tests/devtools/test_tier_audit.py` gains `scan_fixture_refs`, a static (`ast`) scan for `fixtures/images` and `fixtures/labels.csv`. It catches string constants (f-string parts, bytes and implicit literal concatenation included; case-insensitive; either slash; whole path segments only, so `labels.example.csv` stays legal) and path joins (`/` chains, `Path(...)`, `os.path.join`, `.joinpath`). Docstrings are prose and don't count. `audit()` applies it to every module whose tier isn't `gate` or `gpu`, `conftest.py`, `__init__.py` and helper modules included. Each message names the module, line, tier and fix: synthetic data under `tmp_path` first, then the move to `tests/gpu/`. The unit-only db, model, Ollama and HTTP checks are unchanged; the real-tree test is renamed `test_every_test_module_stays_in_its_tier`.
+- **TST-004.D1 registry:** two modules, ten pinned references (see Confirmed reading). A new or repeated reference in a pinned module fails, and so does a stale pin or entry.
+- **Tests:** the module went from 36 to 69 tests (+33: 16 flagged forms, 10 clean forms and 1 source-text check for the scanner, 5 audit tests on synthetic `tmp_path` trees, 1 `fix_for` test). `make test` (unit + db + integration): 546 → 579 passed, 2 deselected. `make lint` clean. The audit never opens a fixture.
+  - **Mutation checks on the real tree:** two references injected into an integration module are both reported; dropping one pin from the registry reports that line; with the old same-line dedup, the TST-004.1.4 regression case reports 0 instead of 1.
+- **Self-rating:**
+  - Pass 1: 8/10, proud: no. Gap: identical references on one line were merged, so a pin counted once covered two (against D1's "once per occurrence"). Fixed in TST-004.1.4.
+  - Pass 2: 9/10, proud: yes. Gap: a static scan can't see a path built from variables, by runtime concatenation, or from an env var or config (named in the docstring). Pins are exact source text, so reformatting a pinned line makes the entry stale; it fails loudly and QA re-pins it.
+- **Review:** (the lead's verdict comment on the PR)
+- **Deferred:** none.
 
 ---
 
