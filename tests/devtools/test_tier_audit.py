@@ -84,6 +84,7 @@ class FixtureRef:
     line: int
     target: str  # fixtures/images | fixtures/labels.csv
     text: str  # the exact source text, which NAMES_FIXTURES_WITHOUT_READING pins
+    col: int = 0  # keeps two identical references on one line apart
 
 
 @dataclass(frozen=True)
@@ -161,7 +162,7 @@ def scan_fixture_refs(source: str) -> list[FixtureRef]:
 
     def add(node: ast.AST, target: str) -> None:
         text = ast.get_source_segment(source, node) or ""
-        found.append(FixtureRef(node.lineno, target, text))
+        found.append(FixtureRef(node.lineno, target, text, node.col_offset))
 
     for node in ast.walk(tree):
         if isinstance(node, ast.JoinedStr):
@@ -188,7 +189,7 @@ def scan_fixture_refs(source: str) -> list[FixtureRef]:
             for first, second in zip(node.args, node.args[1:], strict=False):
                 if target := _joined_fixture(first, second):
                     add(node, target)
-    return sorted(set(found), key=lambda r: (r.line, r.target, r.text))
+    return sorted(found, key=lambda r: (r.line, r.col))
 
 
 def _load_conftest():
@@ -572,6 +573,12 @@ def test_pinned_references_pass_and_a_new_one_fails(tmp_path: Path) -> None:
         "tests/unit/test_mount.py:2",  # the same text again: pinned once, so the copy fails
         "tests/unit/test_mount.py:4",
     ]
+
+
+def test_a_pin_covers_one_occurrence_even_on_the_same_line(tmp_path: Path) -> None:
+    pinned = {"unit/test_mount.py": Exemption("names it", (f"'{F}/images'",))}
+    root = _tree(tmp_path, {"unit/test_mount.py": f"P, Q = '{F}/images', '{F}/images'\n"})
+    assert [p.split(" ")[0] for p in audit(root, pinned)] == ["tests/unit/test_mount.py:1"]
 
 
 def test_stale_pins_and_entries_fail(tmp_path: Path) -> None:

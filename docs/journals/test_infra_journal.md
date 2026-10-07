@@ -189,8 +189,9 @@ references or host paths here. Use hashes.
 
 - [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py`
   - [x] TST-004.1.1 — `scan_fixture_refs`: string constants (f-string parts included) and path joins naming `fixtures/images` or `fixtures/labels.csv`, with the exact source text; synthetic self-tests · `0716374`
-  - [x] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree
+  - [x] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree · `a6c0859`
   - [ ] TST-004.1.3 — Results
+  - [x] TST-004.1.4 — A pin covers one occurrence even when an identical reference repeats on the same line (found in the self-rating: the scanner deduplicated them); regression test
 
 ## TST-004 — Results
 
