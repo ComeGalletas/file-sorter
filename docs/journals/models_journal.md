@@ -64,7 +64,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`, 18 files. They landed in .2.3's commit (27cf267) because the acceptance test checks every live answer against its recording and is red without them, and were re-made in .2.4's (24b68cf) when the prompt changed.
   - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed · e2304f1
   - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original (hash in Results)
-  - [ ] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings
+  - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) (hash in Results)
   - [ ] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval
 
 ## MOD-001 — Results
