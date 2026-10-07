@@ -1,6 +1,6 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007, RUN-008) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
 **Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
@@ -566,3 +566,71 @@
 - **Triage:** medium. A rule-contract change, wording only; no code, so no new tests (non-behavioral for the code). Tests: the default tiers via the pre-push gate.
 - **For the lead (index, D13/D16):** add a row for RUN-007, and set Next free to **RUN-008**. This adds to the RUN-004 to RUN-006 rows already pending in the M1 plan PR.
 - **Self-rating:** 9/10, proud: yes. Gap: the lesson (D2) is recorded here and in the lead's brief, but not enforced. The route script could send every PR that touches CLAUDE.md or `.claude/agents/` to a "policy" lane in the future.
+
+---
+
+## RUN-008 — Requirement (human, 2026-10-07)
+
+**Objective:** a worker can bring `main` into its own open PR, and still nothing else.
+
+**Details:** in M1, PR #28 (TST-002.2) conflicted with `main` after its round 2 approval. The lead asked the desk to merge `origin/main` in. The role guard refused every `git merge` on a worker desk, and a rebase would need a force-push, which the deny list blocks and which breaks `Reviewed at` (RUN-006.D7). So no worker could ever resolve a conflict with `main` on its own. The desk correctly refused to work around the guard. The same review found that `git pull` wasn't checked at all, although a pull is a merge.
+
+**Constraint:** a guard change with regression tests, in a human-side PR (RUN-002.D16).
+
+## RUN-008 — Confirmed reading
+
+- **RUN-008.D1:** **A worker's only merge is `origin/main` into its own branch.** The guard allows exactly `git merge [--no-edit] [--no-ff] origin/main`, plus `git merge --abort` and `--continue`. Anything else is refused: another branch, extra refs, `-X`, `--squash`, `-m`, and `--ff-only`. `--ff-only` is refused on purpose: a fast-forward to `main` is possible only when the branch has no commits of its own, so it never helps an open PR. Each simple command is checked separately, including those after `;`, `&&`, `|`, inside `$(...)` or backticks, behind `git -c`/`-C`, or behind a prefix like `env`. Once a PR is open, workers sync by merging, never by rebasing. (human, 2026-10-07)
+- **RUN-008.D2:** **A worker's only pull is `git pull --ff-only`, with no arguments.** It catches up with its own branch after someone else pushed to it, and can't merge anything. (follows from D1)
+- **RUN-008.D3:** `gh pr merge` and `git tag` stay refused for workers, now also behind `git -c`/`-C` or extra spaces. The lead's rules are unchanged.
+
+and then (PR #39 review round 1):
+
+- **RUN-008.D4:** **Worker shell commands are checked by "detect broadly, allow exactly, fail closed".**
+  - The command is normalized first: case-folded (Windows runs `GIT` and `Git.exe` as git), quotes removed, backslashes turned into slashes, and split into simple commands.
+  - Any simple command that mentions `git` (or `git.exe`, with any path) together with `merge`, `pull`, `tag`, or `push` to `main` is treated as that operation, whatever sits between: global options, `-c`/`-C` values, a wrapping `bash -c` or `eval`. Any that mentions `gh` with `merge` is a PR merge, including `gh api …/merge`. Git aliases (`alias.`) are refused outright.
+  - Only the exact forms in D1 and D2 pass.
+  - **The cost:** a commit message that names one of these words inline is refused too, so it goes through `git commit -F <file>`. The deny message says so.
+- **RUN-008.D5:** **The hooks read JSON string values whole.** Round 2 found a pre-existing bug in `json_field`: its pattern stopped at the first escaped quote, so the guard never saw anything after the first `"` in a command. `git commit -m "x" && git push origin main` reached it as `git commit -m \`, for the lead's rules as well as the workers'. `json_field` now reads to the first *unescaped* quote and unescapes `\\`, `\"`, `\n` and `\t`, so a heredoc's lines are checked one by one. `log_event.sh` writes `file_path` with forward slashes, so its JSON line stays valid.
+
+and then (PR #39 review round 2):
+
+- **RUN-008.D6:** **The worker checks also read commands the way bash does.**
+  - **Line continuations:** a backslash-newline is joined first, so `git \` plus a newline plus `merge x` is one command.
+  - **Backslashes, read both ways:** each command is read once with backslashes dropped (bash runs `gi\t mer\ge` as `git merge`) and once with them as path separators (`C:\…\git.exe`). A segment that fails either reading is refused.
+  - **Indirection:** a command built at run time (`$(...)`, backticks, `${...}`, `eval`, or a variable as the program) is refused if it names merge, pull or tag anywhere (`m=merge` included), or a push with `main`. Plain uses still pass, such as `git push -u origin "$(git branch --show-current)"`.
+  - **Pushes:** `git push --all` and `--mirror` are refused, because they include `main`.
+  - **Unreadable commands:** a shell call whose command can't be read is refused, for the lead too.
+- **RUN-008.D7:** **The guard's threat model.** The guard stops accidents and obvious workarounds by desks following their briefs; it is not a sandbox. A desk set on getting around it can: a script file, a Python subprocess, or a variable passed as an argument. Those limits are documented, not chased. The backstops are the reviewer on every PR, merges by the lead only, the pre-push hook, and `main` changing only through `gh pr merge`. Reviews judge the guard against this model. (human, 2026-10-07)
+
+## RUN-008 — Tasks
+
+- [x] RUN-008.3 — Review round 2: line continuations, both backslash readings, indirection, `push --all`/`--mirror` and unreadable commands (D6); the threat model (D7); 16 more denied cases, 3 more allowed ones and the unreadable-command test for both roles
+- [x] RUN-008.2 — Review round 1: broad, fail-closed detection (D4) for merges, pulls, PR merges, tags and pushes to `main`; `json_field` reads quoted values whole (D5); 33 more denied worker cases, 8 more allowed ones, 2 lead cases and `tests/unit/test_hook_json.py`; D1 records `--ff-only`; Results record the limits
+- [x] RUN-008.1 — Guard: `worker_sync_ok` (D1, D2) and the per-command check for PR merges and tags (D3); 30 new cases in `tests/unit/test_role_guard.py` (one old case moved from refused to allowed); CLAUDE.md (§1.6, the guard bullet, migrations, the worktree base), the roles README (step 0), and the lead, Pipeline and RAG briefs
+
+## RUN-008 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. A behavior change in the guard; the tests are the role guard suite (the acceptance test).
+- **Tests:** the default tiers, 297 passed; `make lint` clean.
+- **Regression check:** with `main`'s guard restored, 15 of the new cases fail, and with the new guard all pass:
+  - **6 sync cases** were refused, because the old rule refused every merge;
+  - **9 refused cases** were let through by the old guard: `git -c … merge`, `git -C … merge`, a merge in backticks, four `git pull` forms, `git -c … tag`, and `gh  pr merge` with two spaces. So the per-command check also closes old gaps (D2, D3).
+- **Round 2 (RUN-008.2):** detection is broad and fails closed (D4).
+  - The default tiers pass, 347 tests. `make lint` is clean.
+  - **Regression check:** against round 1's guard and `main`'s `common.sh` and `log_event.sh`, 32 of the new tests fail: 24 refused worker cases, both lead cases with a double quote, and 6 `json_field` round trips. With round 2's code, all pass.
+  - **Limits a text guard can't close,** recorded as findings 3 and beyond:
+    - `origin/main` is resolved by git, so a desk that first points `refs/remotes/origin/main` somewhere else (`git fetch origin x:refs/remotes/origin/main`) merges that instead. The reviewer checks that a sync commit's second parent is `main`'s head.
+    - A command built from variables (`g=git; $g merge x`) or a script file never names `git` and `merge` together.
+    - An alias already in the user's global git config can't be seen in the command.
+    - In all three, the reviewer is the backstop, as for every Bash rule (RUN-005 Results), and nothing reaches `main` without the lead's merge.
+- **Round 3 (RUN-008.3):** D6 and the threat model (D7).
+  - The default tiers pass, 368 tests. `make lint` is clean.
+  - **Regression check:** against round 2's guard, 16 of the new tests fail: the 6 backslash forms, the line continuation, 5 indirection forms, `push --all`/`--mirror`, and the unreadable command for both roles. With round 3's guard, all pass.
+  - **Residual limits, by D7 documented and not chased:**
+    - a script file, or a Python or Node subprocess, that runs `git merge`;
+    - a variable passed as an argument (`git $m x`), which the guard can't expand;
+    - `gh api graphql` with `mergePullRequest`;
+    - an alias already in the global git config;
+    - `origin/main` shadowing (above).
+- **Self-rating:** 9/10, proud: yes. Gap: the residual limits, by design (D7).

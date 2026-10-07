@@ -1,6 +1,6 @@
 # Pipeline engineer (Sonnet)
 
-**Owns:** `classifier/graph/`, `classifier/naming/`, `classifier/fileops/`, `classifier/db/` (Alembic: one head, rebase and fix `down_revision` before merge), `classifier/cli/`, `classifier/sanitize/`, `classifier/config.py` (DOC-004.D2), and the tests of your own tasks under `tests/<tier>/<package>/` (DOC-004.D1).
+**Owns:** `classifier/graph/`, `classifier/naming/`, `classifier/fileops/`, `classifier/db/` (Alembic: one head; merge `origin/main` in and fix `down_revision` before merge), `classifier/cli/`, `classifier/sanitize/`, `classifier/config.py` (DOC-004.D2), and the tests of your own tasks under `tests/<tier>/<package>/` (DOC-004.D1).
 
 **Responsibility:** the LangGraph nodes and their batch execution (R-PIPE), the ledger and its status checkpoint (DESIGN §5), sanitization (R-SAN), naming templates and tokens (R-NAME), the copy → results transaction and `watch` (R-FOP), and the CLI (§7).
 

@@ -110,7 +110,7 @@ Journals live in `docs/journals/<feature>_journal.md`; copy `docs/journals/TEMPL
   - the triage block (§2.1);
   - which tiers and acceptance test ran, with their counts;
   - the completion status (§2.3) and the self-rating (§2.4).
-- **Merging:** the lead merges with a merge commit (`gh pr merge --merge --delete-branch`), so each subtask commit and its ID stay in `main`'s history and no merged branch is left behind. Workers never merge.
+- **Merging:** the lead merges with a merge commit (`gh pr merge --merge --delete-branch`), so each subtask commit and its ID stay in `main`'s history and no merged branch is left behind. Workers never merge a PR. A worker whose open PR falls behind or conflicts with `main` runs `git fetch && git merge --no-edit origin/main` in its own branch, resolves any conflict, and pushes normally: never a rebase or force-push once the PR is open, so `Reviewed at` stays in the history (RUN-008.D1, RUN-006.D7).
 
 ### 1.7 Hand-tuned values — flag and ask
 
@@ -272,7 +272,7 @@ Every worker also edits its own task lines and Results subsection in the journal
 - **Desk briefs** are in `.claude/roles/`, one per desk, with launch commands in `README.md`.
 - **Under agent-office**, the roles are enforced by the role guard (`.claude/hooks/guard.sh`, RUN-002.D8), decided by location:
   - the main checkout is the lead: inside the repo it edits only under `docs/` (and `.task`), merges only with `--merge`, never tags;
-  - a linked worktree is a worker: no merging, tagging or pushing to `main`; no edits to the index, plans, DESIGN.md or CLAUDE.md; and no edits anywhere else in the repo tree, whether the main checkout or another desk's worktree (RUN-005.D1);
+  - a linked worktree is a worker: no PR merges, tags or pushes to `main`. Its only merge is `git merge [--no-edit] origin/main` into its own branch (plus `--abort` and `--continue`), and its only pull is `git pull --ff-only` (RUN-008.D1, D2). Shell commands are matched broadly and fail closed, so a commit message that names `merge`, `pull` or `tag` inline is refused: write it to a file and use `git commit -F <file>` (RUN-008.D4). The guard stops accidents and obvious workarounds; it is not a sandbox, and the reviewer, the lead's merge and the pre-push hook are the backstops (RUN-008.D7); no edits to the index, plans, DESIGN.md or CLAUDE.md; and no edits anywhere else in the repo tree, whether the main checkout or another desk's worktree (RUN-005.D1);
   - paths outside the repo tree (Claude memory, the workspace's `agent-logs\`) aren't the guard's concern, and paths with `..` segments are refused;
   - every path is resolved to its real location first (links and NTFS junctions followed) and compared case-insensitively, so neither a junction nor `claude.md` gets around a rule (RUN-005.4);
   - trailing dots and spaces are stripped from each path segment, the way Windows does, so `CLAUDE.md.` is treated as `CLAUDE.md`. NTFS alternate data streams (`CLAUDE.md:hidden`) are refused outright (RUN-005.D6, D7);
@@ -280,7 +280,7 @@ Every worker also edits its own task lines and Results subsection in the journal
   - The settings layers `.claude/settings.lead.json` and `.claude/settings.worker.json` apply only to desks launched by hand.
 - **Subagents** are only the read-only reviewers: `reviewer`, `reviewer-quick`, `privacy-auditor` and `test-runner`, in `.claude/agents/`. Never add a role as a subagent: a session would then delegate code edits into its own tree.
 
-**Migrations:** Alembic keeps one head. A task that adds a migration rebases on `main` and fixes `down_revision` before merge.
+**Migrations:** Alembic keeps one head. A task that adds a migration merges `origin/main` into its branch and fixes `down_revision` before merge.
 
 ## Milestone gates
 
@@ -315,7 +315,7 @@ Milestones M3–M6 run in **dry-run only**. Before M7, `results_root` gets empty
 - **Worktree base (RUN-002.D10):**
   - agent-office branches every worker worktree from whatever branch the main checkout is on.
   - The lead switches back to `main` right after pushing any docs branch.
-  - Every worker starts its task with `git fetch && git rebase origin/main`.
+  - Every worker starts its task with `git fetch && git rebase origin/main`, before its first push. Once its PR is open, it syncs with `git merge --no-edit origin/main` instead (RUN-008.D1).
 - **Line endings:** LF everywhere, enforced by `.gitattributes`. Never commit CRLF shell scripts or Dockerfiles.
 - **Image folders:** source and results are Windows-drive bind mounts (`/source` read-only, `/results`); their paths are only in the local `.env`. Bind-mount I/O is slower than native. `watch` and dev auto-reload must poll, because file events don't propagate. Paths contain spaces, so always quote them.
 - **GPU stack:** the RTX 5080 (Blackwell) needs PyTorch built for CUDA 12.8+ (`cu128`+).

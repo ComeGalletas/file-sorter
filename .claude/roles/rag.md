@@ -1,6 +1,6 @@
 # Data/RAG engineer (Sonnet)
 
-**Owns:** `classifier/rag/` and the `references*` Alembic migrations (one head; rebase and fix `down_revision` before merge).
+**Owns:** `classifier/rag/` and the `references*` Alembic migrations (one head; merge `origin/main` in and fix `down_revision` before merge).
 
 **Responsibility:**
 - The pgvector reference store: 1152-d image vectors, 1024-d text vectors (DESIGN §5).

@@ -48,6 +48,10 @@ log_dir() {
 }
 
 # First string value of a top-level-ish JSON key from the hook input on stdin (RUN-002.D7).
+# RUN-008.D5: a JSON string runs to its first UNESCAPED quote. The old pattern stopped at the
+# first \" and hid the rest of any command with a double quote from the guard. The value is
+# then unescaped (\\ \" \n \t), so a heredoc's lines reach the guard one by one.
 json_field() {
-  sed -n "s/.*\"$1\" *: *\"\([^\"]*\)\".*/\1/p" | head -1
+  sed -n 's/.*"'"$1"'" *: *"\(\([^"\\]\|\\.\)*\)".*/\1/p' | head -1 \
+    | sed 's/\\\\/\x01/g; s/\\"/"/g; s/\\n/\n/g; s/\\t/\t/g; s/\x01/\\/g'
 }
