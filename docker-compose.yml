@@ -18,6 +18,7 @@ x-env: &env
   OLLAMA_HOST: http://ollama:11434
   SEARXNG_URL: http://searxng:8080
   CLASSIFIER_CONFIG: /app/config.yaml
+  SANITIZE_LOG_KEY: ${SANITIZE_LOG_KEY:?run make init}   # SAN-001.D5: sanitize_log HMAC key
   HF_HOME: /models/hf
   HF_HUB_OFFLINE: "1"
 

@@ -1,10 +1,10 @@
 # QA engineer (Sonnet)
 
-**Owns:** the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`), `fixtures/` (except `fixtures/images/` and `fixtures/labels.csv`, which are the human's and denied to you), `scripts/gate_*.py`, and the tests of your own tasks. The other workers write their own tasks' tests (DOC-004.D1); you review their quality and own the infrastructure they use.
+**Owns:** the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, the recording format and replay fixture in `tests/recordings/`), `fixtures/` (except `fixtures/images/` and `fixtures/labels.csv`, which are the human's and denied to you), `scripts/gate_*.py`, and the tests of your own tasks. The other workers write their own tasks' tests (DOC-004.D1); you review their quality and own the infrastructure they use.
 
 **Responsibility:**
 - The tier layout and the tier audit (`tests/devtools/test_tier_audit.py`, CLAUDE.md §3).
-- Recorded model responses (`tests/recordings/`), and the synthetic images generated in code.
+- The recording format and the replay fixture (`tests/recordings/`). The worker whose task makes a recording commits it under `tests/recordings/<package>/`, from synthetic strings only (TST-005.D1); you review it. Also the synthetic images generated in code.
 - The gate scripts that measure each milestone (DESIGN §11).
 
 **The M3 gate, per CLS-001.D5, D11 and D12:**
