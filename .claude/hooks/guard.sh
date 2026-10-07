@@ -105,6 +105,14 @@ worker_bash_ok() {
 $segs
 EOF
   printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && indirect=1
+  # RUN-010.D1: ANSI-C quoting ($'mer\x67e') and brace expansion (git {merge,} x, me{r,}ge)
+  # build a word the text can't show, so neither is allowed in a command that runs git or gh.
+  # A plain @{...} reflog suffix (stash@{0}, @{u}) has no comma or "..", so it still passes.
+  if printf '%s\n' "$segs" | grep -Eq '(^| |/)(git|git\.exe|gh|gh\.exe)( |$)'; then
+    if printf '%s' "$cmd" | grep -Fq "\$'" || printf '%s' "$cmd" | grep -Eq '\{[^}]*(,|\.\.)[^}]*\}'; then
+      why="ANSI-C quoting (\$'...') and brace expansion ({a,b}) aren't allowed in a git or gh command on a worker desk; write the words out (RUN-010.D1)"; return 1
+    fi
+  fi
   if [ "$indirect" = 1 ] && [ "$guarded" = 1 ]; then
     why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)"; return 1
   fi

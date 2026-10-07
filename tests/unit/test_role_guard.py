@@ -301,6 +301,9 @@ def test_normalization_leaves_ordinary_names_alone(
         'git push -u origin "$(git branch --show-current)"',
         'git commit -m "$(cat msg.txt)"',
         "git log --oneline -3 $(git merge-base HEAD origin/main)..HEAD",
+        "git stash drop stash@{0}",
+        "git commit --amend -F msg.txt",
+        "git log --oneline @{u}..HEAD",
     ],
 )
 def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> None:
@@ -384,6 +387,13 @@ def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> No
         # round 2, finding 5: pushes that include main
         "git push --all origin",
         "git push --mirror origin",
+        # RUN-010.D1: ANSI-C quoting and brace expansion
+        "git $'merge' office/other-desk",
+        r"git $'mer\x67e' office/other-desk",
+        "git {merge,} office/other-desk",
+        "git me{r,}ge office/other-desk",
+        "gh pr {merge,} 5",
+        "git ta{g,} v1",
     ],
 )
 def test_worker_other_merges_pulls_and_tags_are_refused(

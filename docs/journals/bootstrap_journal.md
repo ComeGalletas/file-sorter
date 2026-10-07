@@ -676,10 +676,27 @@ and then (PR #39 review round 2):
 - **Constraint:** These are human-side changes (RUN-002.D16): the guard, CLAUDE.md and compose. The lead only records them.
 - **Implements:** RUN-008, RUN-009.
 
+and then (human, 2026-10-07, scheduled after `m1-approved`): also bring CLAUDE.md's "Current phase" up to date, and stop leftover test databases from using up Docker's network pools. This happened twice in M1: one push failed with "all predefined address pools have been fully subnetted".
+
+## RUN-010 — Confirmed reading
+
+- **RUN-010.D1 (item 1):** **ANSI-C quoting and brace expansion are refused, not just documented.** Neither can be read from the text (`$'mer\x67e'`, `me{r,}ge`), so a worker command that runs `git` or `gh` may contain neither `$'` nor a `{…,…}` or `{…..…}` brace expression. A plain reflog suffix (`stash@{0}`, `@{u}`) has no comma or `..`, so it still passes. This is cheap, and nothing a desk needs breaks.
+- **RUN-010.D2 (item 2):** **CLAUDE.md names the real backstops:** the reviewer on every PR, and `main` changing only through the lead's `gh pr merge`. The pre-push hook only refuses a direct push to `main`; it runs tests and doesn't inspect merges. This corrects the wording of D7's summary line, not its substance.
+- **RUN-010.D3 (item 3):** **The fixtures mount keeps `create_host_path: true`.** With `false`, `docker compose run test` fails outright on any checkout without the git-ignored fixtures, so every tier breaks, not just the gates. With `true`, Docker creates an empty, git-ignored folder, and gate 1 already fails on a missing *or* empty `fixtures/images/` with a message naming it (TST-002.4). Only the wording differs ("empty" rather than "missing"), and both fail.
+- **RUN-010.D4 (item 4):** **Merge commits on task branches carry the task ID**, on human-side branches too. Workers can only run `git merge --no-edit origin/main` (RUN-008.D1), so the subject is set afterwards and before the push: `git commit --amend -F <file>`, with `<task ID>: Merge origin/main`. Writing the message to a file keeps the guard from reading it as a merge command (RUN-008.D4).
+- **RUN-010.D5:** **`make init` prunes leftover test projects.** Each worktree tests in its own compose project (RUN-002.D2). The test container goes with `--rm`, but `db-test` and the project network stay up after the desk's worktree is deleted. `scripts/prune_test_projects.sh` shuts down every `file-sorter-<x>` project with no live worktree `<x>`, using the same name slug as the Makefile. It leaves the main checkout's own project and every live desk alone. `db-test` is tmpfs, so nothing is lost. Every desk runs `make init` at the start of a task, so the leftovers never pile up, and `make prune-test` runs it by hand. Never failing `init` is part of the contract.
+
 ## RUN-010 — Tasks
 
-- [ ] RUN-010.1 — The four follow-ups above · human-side PR, when the human schedules it
+- [x] RUN-010.1 — The four follow-ups above: the guard's ANSI-C and brace checks (D1), CLAUDE.md's backstops (D2), the `create_host_path` decision (D3), and merge-commit IDs in CLAUDE.md §1.6 and the roles README (D4) · human-side PR
+- [x] RUN-010.2 — CLAUDE.md's "Current phase": M1 approved, next M2 G0
+- [x] RUN-010.3 — `scripts/prune_test_projects.sh`, run by `make init` and `make prune-test` (D5); `tests/unit/runtime/test_prune_test_projects.py`
 
 ## RUN-010 — Results
 
-- **Status:** proposed.
+- **Status:** DONE.
+- **Triage:** medium. A guard behavior change and a new init step, plus docs.
+- **Tests:** the default tiers, 453 passed; `make lint` clean. New: 6 refused guard cases (D1), 3 allowed ones (`stash@{0}`, `@{u}`, `git commit --amend -F`), and `tests/unit/runtime/test_prune_test_projects.py` (2 tests: only a missing worktree's project goes down, with the Makefile's slug; a failing `docker` never fails `init`).
+- **Regression check:** against `main`'s guard, exactly the 6 new D1 cases fail.
+- **Live check:** run on the box, the prune script shut down 5 leftover test projects whose worktrees were gone (three M1 desks and two merged human-side branches). Docker went from 12 networks to 6, and the main checkout's project and the live worktree's were untouched.
+- **Self-rating:** 9/10, proud: yes. Gap: pruning happens at `make init`, so leftovers from desks that finish between inits wait for the next desk (or `make prune-test`). That's fine at 3–4 desks per milestone.
