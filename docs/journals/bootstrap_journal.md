@@ -676,10 +676,44 @@ and then (PR #39 review round 2):
 - **Constraint:** These are human-side changes (RUN-002.D16): the guard, CLAUDE.md and compose. The lead only records them.
 - **Implements:** RUN-008, RUN-009.
 
+and then (human, 2026-10-07, scheduled after `m1-approved`): also bring CLAUDE.md's "Current phase" up to date, and stop leftover test databases from using up Docker's network pools. This happened twice in M1: one push failed with "all predefined address pools have been fully subnetted".
+
+## RUN-010 — Confirmed reading
+
+- **RUN-010.D1 (item 1):** **ANSI-C quoting and brace expansion are refused, not just documented.** Neither can be read from the text (`$'mer\x67e'`, `me{r,}ge`), so a worker command that runs `git` or `gh` may contain neither `$'` nor a `{…,…}` or `{…..…}` brace expression. A plain reflog suffix (`stash@{0}`, `@{u}`) has no comma or `..`, so it still passes. This is cheap, and nothing a desk needs breaks.
+- **RUN-010.D2 (item 2):** **CLAUDE.md names the real backstops:** the reviewer on every PR, and `main` changing only through the lead's `gh pr merge`. The pre-push hook only refuses a direct push to `main`; it runs tests and doesn't inspect merges. This corrects the wording of D7's summary line, not its substance.
+- **RUN-010.D3 (item 3):** **The fixtures mount keeps `create_host_path: true`.** With `false`, `docker compose run test` fails outright on any checkout without the git-ignored fixtures, so every tier breaks, not just the gates. With `true`, Docker creates an empty, git-ignored folder, and gate 1 already fails on a missing *or* empty `fixtures/images/` with a message naming it (TST-002.4). Only the wording differs ("empty" rather than "missing"), and both fail.
+- **RUN-010.D4 (item 4):** **Merge commits on task branches carry the task ID**, on human-side branches too. Workers can only run `git merge --no-edit origin/main` (RUN-008.D1), so the subject is set afterwards and before the push: `git commit --amend -F <file>`, with `<task ID>: Merge origin/main`. Writing the message to a file keeps the guard from reading it as a merge command (RUN-008.D4).
+- **RUN-010.D5:** **`make init` prunes leftover test projects.** Each worktree tests in its own compose project (RUN-002.D2). The test container goes with `--rm`, but `db-test` and the project network stay up after the desk's worktree is deleted. `scripts/prune_test_projects.sh` shuts down every `file-sorter-<x>` project with no live worktree `<x>`, using the same name slug as the Makefile. It leaves the main checkout's own project and every live desk alone. `db-test` is tmpfs, so nothing is lost. Every desk runs `make init` at the start of a task, so the leftovers never pile up, and `make prune-test` runs it by hand. Never failing `init` is part of the contract.
+
+and then (PR #43 review round 1):
+
+- **RUN-010.D6:** **D1 applies to every worker command, not only to ones that show `git` or `gh`.** An expansion can build the program name itself: `g{i,}t merge x`, `g$'i't merge x`. So `$'` is refused anywhere in a worker's command, and so is any **unquoted** brace expression with a comma or `..`. Bash never expands braces inside quotes, so quoted text is dropped before the brace check. A jq object such as `--jq '{a: .x, b: .y}'` passes, and so do reflog suffixes. The cost: an unquoted `{a,b}` in any worker command, even one unrelated to git, is refused. That fits D7's "fail closed".
+- **RUN-010.D7:** **The prune script prunes nothing when `git worktree list` can't be read.** The list always holds the main checkout, so an empty list means failure, not "no desks"; without the check, every live desk's project would look gone.
+
+and then (PR #43 review round 2):
+
+- **RUN-010.D8:** **The "is it quoted?" reading follows bash's quote rules.** Round 1 dropped quoted spans with a regex, which a quote inside the other kind (`echo 'say "hi' ; g{i,}t merge x ; echo 'x"'`) or an escaped quote (`echo \"; g{i,}t merge x; echo \"`) could fool. The guard now scans left to right: a backslash escapes the next character outside single quotes, `'…'` ends only at `'`, and `"…"` ends only at an unescaped `"`. A brace expression left unquoted is refused. When a command has a brace expression and its quotes are left open (for example, an apostrophe in a heredoc body), the reading is unsure, so it is refused too. A heredoc commit without braces is unaffected.
+
 ## RUN-010 — Tasks
 
-- [ ] RUN-010.1 — The four follow-ups above · human-side PR, when the human schedules it
+- [x] RUN-010.1 — The four follow-ups above: the guard's ANSI-C and brace checks (D1), CLAUDE.md's backstops (D2), the `create_host_path` decision (D3), and merge-commit IDs in CLAUDE.md §1.6 and the roles README (D4) · human-side PR
+- [x] RUN-010.2 — CLAUDE.md's "Current phase": M1 approved, next M2 G0
+- [x] RUN-010.3 — `scripts/prune_test_projects.sh`, run by `make init` and `make prune-test` (D5); `tests/unit/runtime/test_prune_test_projects.py`
+- [x] RUN-010.5 — Review round 2 (PR #43): a quote-aware scan before the brace check (D8); 4 more refused cases and 2 more allowed ones
+- [x] RUN-010.4 — Review round 1 (PR #43): D1 applies to the whole command, not just to git/gh words (D6); quoted braces pass; the prune script stops when the worktree list can't be read
 
 ## RUN-010 — Results
 
-- **Status:** proposed.
+- **Status:** DONE.
+- **Triage:** medium. A guard behavior change and a new init step, plus docs.
+- **Tests:** the default tiers, 453 passed; `make lint` clean. New: 6 refused guard cases (D1), 3 allowed ones (`stash@{0}`, `@{u}`, `git commit --amend -F`), and `tests/unit/runtime/test_prune_test_projects.py` (2 tests: only a missing worktree's project goes down, with the Makefile's slug; a failing `docker` never fails `init`).
+- **Regression check:** against `main`'s guard, exactly the 6 new D1 cases fail.
+- **Live check:** run on the box, the prune script shut down 5 leftover test projects whose worktrees were gone (three M1 desks and two merged human-side branches). Docker went from 12 networks to 6, and the main checkout's project and the live worktree's were untouched.
+- **Round 2 (RUN-010.4):** the default tiers pass, 460 tests; `make lint` clean.
+  - **Regression check:** against round 1's guard and prune script, 7 of the new tests fail: the 4 expansions that build the program name, the 2 quoted jq objects that round 1 wrongly refused, and the unreadable worktree list.
+  - **Live check, in a linked worktree, as a worker:** round 1's guard allowed `g{i,}t merge office/x` and `g$'i't merge office/x` (exit 0) and refused a quoted jq object. Round 2's guard refuses both repros (exit 2) and allows the jq object.
+- **Round 3 (RUN-010.5):** the default tiers pass, 466 tests; `make lint` clean.
+  - **Regression check:** against round 2's guard, exactly the reviewer's two quote-confusion repros fail.
+  - **Live check on the host's Git Bash, as a worker:** both repros and `g{i,}t merge` are refused. A quoted jq object, a heredoc commit with an apostrophe and `stash@{0}` are allowed. The tests also run the same scan in the Debian test container.
+- **Self-rating:** 9/10, proud: yes. Gap: pruning happens at `make init`, so leftovers from desks that finish between inits wait for the next desk (or `make prune-test`).

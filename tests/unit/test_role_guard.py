@@ -301,6 +301,14 @@ def test_normalization_leaves_ordinary_names_alone(
         'git push -u origin "$(git branch --show-current)"',
         'git commit -m "$(cat msg.txt)"',
         "git log --oneline -3 $(git merge-base HEAD origin/main)..HEAD",
+        "git stash drop stash@{0}",
+        "git commit --amend -F msg.txt",
+        # round 1, finding 2: braces inside quotes are never expanded
+        "gh pr view 5 --json number,title --jq '{n: .number, t: .title}'",
+        'gh pr list --json number,title --jq ".[] | {n: .number, t: .title}"',
+        'gh pr view 5 --jq \'{n: .number, t: "a \\" b"}\'',
+        "git commit -F - <<EOF\nX.1: Don't stop at the first quote\nEOF",
+        "git log --oneline @{u}..HEAD",
     ],
 )
 def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> None:
@@ -384,6 +392,23 @@ def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> No
         # round 2, finding 5: pushes that include main
         "git push --all origin",
         "git push --mirror origin",
+        # RUN-010.D1: ANSI-C quoting and brace expansion
+        "git $'merge' office/other-desk",
+        r"git $'mer\x67e' office/other-desk",
+        "git {merge,} office/other-desk",
+        "git me{r,}ge office/other-desk",
+        "gh pr {merge,} 5",
+        "git ta{g,} v1",
+        # PR #43 round 1, finding 1: the expansion builds the program name itself
+        "g{i,}t merge office/other-desk",
+        r"g$'\x69't merge office/other-desk",
+        "{g,}it merge office/other-desk",
+        "echo {1..3} && g{h,}h pr merge 5",
+        # PR #43 round 2, finding 1: quote confusion
+        "echo 'say \"hi' ; g{i,}t merge office/other-desk ; echo 'x\"'",
+        'echo \\"; g{i,}t merge office/other-desk; echo \\"',
+        'echo "it\'s" ; g{i,}t merge office/other-desk',
+        "echo 'unclosed ; g{i,}t merge office/other-desk",
     ],
 )
 def test_worker_other_merges_pulls_and_tags_are_refused(

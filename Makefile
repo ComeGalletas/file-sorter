@@ -13,7 +13,7 @@ TEST := $(if $(WT_NAME),FIXTURE_IMAGES="$(MAIN_CHECKOUT)/fixtures/images" )$(COM
 RUFF := MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
 OLLAMA_MODELS := qwen3-vl:8b bge-m3   # the adult VLM is not pulled until Q-1 is decided (M5)
 
-.PHONY: help init up down ps logs build models test test-gpu lint format
+.PHONY: help init prune-test up down ps logs build models test test-gpu lint format
 
 help: ## List the targets
 	@grep -E '^[a-zA-Z0-9_%-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | expand -t 14
@@ -25,7 +25,11 @@ init: ## Create .env and sanitize.yaml from the examples, generate secrets, enab
 	@grep -q '^SANITIZE_LOG_KEY=.' .env || echo "SANITIZE_LOG_KEY=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env   # SAN-001.D5
 	@git config core.hooksPath .githooks
 	@for v in file-sorter_ollama file-sorter_hf; do docker volume inspect "$$v" >/dev/null 2>&1 || docker volume create "$$v" >/dev/null; done   # RUN-005.D2
+	@bash scripts/prune_test_projects.sh   # RUN-010.D5
 	@echo "init done"
+
+prune-test: ## Shut down the test projects of worktrees that no longer exist (RUN-010.D5)
+	@bash scripts/prune_test_projects.sh
 
 build: ## Build the app/test image
 	$(COMPOSE) build app

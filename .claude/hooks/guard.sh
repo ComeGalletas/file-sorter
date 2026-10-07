@@ -105,6 +105,39 @@ worker_bash_ok() {
 $segs
 EOF
   printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && indirect=1
+  # RUN-010.D1: ANSI-C quoting ($'mer\x67e', g$'\x69't) and brace expansion (git {merge,} x,
+  # g{i,}t) build a word, even the program name, that the text can't show. So neither is
+  # allowed anywhere in a worker's command. Bash never expands braces inside quotes, so quoted
+  # text is dropped before the brace check: a jq object (--jq '{a: .x, b: .y}') still passes,
+  # and so does a plain reflog suffix (stash@{0}, @{u}), which has no comma or "..".
+  if printf '%s' "$cmd" | grep -Fq "\$'"; then
+    why="ANSI-C quoting (\$'...') isn't allowed in a worker's command; write the words out (RUN-010.D1)"; return 1
+  fi
+  if printf '%s' "$cmd" | grep -Eq '\{[^}]*(,|\.\.)[^}]*\}'; then
+    # RUN-010.D8: what bash leaves unquoted is found by scanning with bash's own quote rules
+    # (a backslash escapes the next character outside single quotes; '...' ends only at ';
+    # "..." ends only at an unescaped "), not by pairing quotes with a regex, which a
+    # quote inside the other kind ('a "b') or an escaped quote (\") could fool. Quotes left
+    # open at the end (a heredoc body with an apostrophe, say) make the reading unsure, so
+    # the command is refused then too: this branch only runs when a brace expression is there.
+    local bare
+    bare="$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' -v bs='\\' 'BEGIN { RS = "\001" } {
+      s = $0; out = ""; q = ""; n = length(s)
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (q == sq) { if (c == sq) q = ""; continue }
+        if (c == bs) { i++; continue }
+        if (q == dq) { if (c == dq) q = ""; continue }
+        if (c == sq || c == dq) { q = c; continue }
+        out = out c
+      }
+      if (q != "") out = out " {open,quote} "
+      printf "%s", out
+    }')"
+    if printf '%s' "$bare" | grep -Eq '\{[^}]*(,|\.\.)[^}]*\}'; then
+      why="unquoted brace expansion ({a,b}, {1..3}) isn't allowed in a worker's command, and neither are braces with quotes left open; write the words out (RUN-010.D1, D8)"; return 1
+    fi
+  fi
   if [ "$indirect" = 1 ] && [ "$guarded" = 1 ]; then
     why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)"; return 1
   fi
