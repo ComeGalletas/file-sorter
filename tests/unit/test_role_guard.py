@@ -163,7 +163,6 @@ def test_backslash_paths_are_normalized(sandbox: dict[str, Path]) -> None:
     ("command", "expected"),
     [
         ("gh pr merge 3 --merge", 2),
-        ("git fetch && git merge origin/main", 2),
         ("git push origin main", 2),
         ("git push origin HEAD:main", 2),
         ("git tag v1", 2),
@@ -274,3 +273,60 @@ def test_normalization_leaves_ordinary_names_alone(
     sandbox: dict[str, Path], where: str, rel: str
 ) -> None:
     assert guard(sandbox, where, edit(f"{sandbox[where]}/{rel}")) == 0
+
+
+# ---- RUN-008: a worker brings main into its own branch, and nothing else ----
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git merge origin/main",
+        "git fetch && git merge origin/main",
+        "git fetch origin && git merge --no-edit origin/main",
+        "git merge --no-ff --no-edit origin/main",
+        "git merge --abort",
+        "git merge --continue",
+        "git pull --ff-only",
+        "git merge-base --is-ancestor abc HEAD",
+        "git log --merges",
+    ],
+)
+def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> None:
+    assert guard(sandbox, "wt", bash(command)) == 0
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git merge office/other-desk",
+        "git merge main",
+        "git merge origin/main origin/office/other-desk",
+        "git merge -X theirs origin/main",
+        "git merge --squash origin/main",
+        "git merge -m sync origin/main",
+        "git merge origin/main; git merge office/other-desk",
+        "git merge origin/main && git merge office/other-desk",
+        "git -c core.editor=true merge office/other-desk",
+        "git -C ../other merge origin/main",
+        "env GIT_EDITOR=true git merge office/other-desk",
+        "echo $(git merge office/other-desk)",
+        "echo `git merge office/other-desk`",
+        "(git merge office/other-desk)",
+        "git pull",
+        "git pull origin main",
+        "git pull --rebase",
+        "git pull --ff-only origin office/other-desk",
+        "git -c x=y tag v1",
+        "gh  pr merge 3 --merge",
+    ],
+)
+def test_worker_other_merges_pulls_and_tags_are_refused(
+    sandbox: dict[str, Path], command: str
+) -> None:
+    assert guard(sandbox, "wt", bash(command)) == 2
+
+
+def test_lead_merges_are_unchanged_by_the_worker_rule(sandbox: dict[str, Path]) -> None:
+    assert guard(sandbox, "repo", bash("git merge --no-edit origin/main")) == 0
+    assert guard(sandbox, "repo", bash("gh pr merge 5 --squash")) == 2

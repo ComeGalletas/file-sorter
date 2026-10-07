@@ -1,6 +1,6 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007, RUN-008) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
 **Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
@@ -566,3 +566,33 @@
 - **Triage:** medium. A rule-contract change, wording only; no code, so no new tests (non-behavioral for the code). Tests: the default tiers via the pre-push gate.
 - **For the lead (index, D13/D16):** add a row for RUN-007, and set Next free to **RUN-008**. This adds to the RUN-004 to RUN-006 rows already pending in the M1 plan PR.
 - **Self-rating:** 9/10, proud: yes. Gap: the lesson (D2) is recorded here and in the lead's brief, but not enforced. The route script could send every PR that touches CLAUDE.md or `.claude/agents/` to a "policy" lane in the future.
+
+---
+
+## RUN-008 — Requirement (human, 2026-10-07)
+
+**Objective:** a worker can bring `main` into its own open PR, and still nothing else.
+
+**Details:** in M1, PR #28 (TST-002.2) conflicted with `main` after its round 2 approval. The lead asked the desk to merge `origin/main` in. The role guard refused every `git merge` on a worker desk, and a rebase would need a force-push, which the deny list blocks and which breaks `Reviewed at` (RUN-006.D7). So no worker could ever resolve a conflict with `main` on its own. The desk correctly refused to work around the guard. The same review found that `git pull` wasn't checked at all, although a pull is a merge.
+
+**Constraint:** a guard change with regression tests, in a human-side PR (RUN-002.D16).
+
+## RUN-008 — Confirmed reading
+
+- **RUN-008.D1:** **A worker's only merge is `origin/main` into its own branch.** The guard allows exactly `git merge [--no-edit] [--no-ff] origin/main`, plus `git merge --abort` and `--continue`. Anything else is refused: another branch, extra refs, `-X`, `--squash` or `-m`. Each simple command is checked separately, including those after `;`, `&&`, `|`, inside `$(...)` or backticks, behind `git -c`/`-C`, or behind a prefix like `env`. Once a PR is open, workers sync by merging, never by rebasing. (human, 2026-10-07)
+- **RUN-008.D2:** **A worker's only pull is `git pull --ff-only`, with no arguments.** It catches up with its own branch after someone else pushed to it, and can't merge anything. (follows from D1)
+- **RUN-008.D3:** `gh pr merge` and `git tag` stay refused for workers, now also behind `git -c`/`-C` or extra spaces. The lead's rules are unchanged.
+
+## RUN-008 — Tasks
+
+- [x] RUN-008.1 — Guard: `worker_sync_ok` (D1, D2) and the per-command check for PR merges and tags (D3); 30 new cases in `tests/unit/test_role_guard.py` (one old case moved from refused to allowed); CLAUDE.md (§1.6, the guard bullet, migrations, the worktree base), the roles README (step 0), and the lead, Pipeline and RAG briefs
+
+## RUN-008 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. A behavior change in the guard; the tests are the role guard suite (the acceptance test).
+- **Tests:** the default tiers, 297 passed; `make lint` clean.
+- **Regression check:** with `main`'s guard restored, 15 of the new cases fail, and with the new guard all pass:
+  - **6 sync cases** were refused, because the old rule refused every merge;
+  - **9 refused cases** were let through by the old guard: `git -c … merge`, `git -C … merge`, a merge in backticks, four `git pull` forms, `git -c … tag`, and `gh  pr merge` with two spaces. So the per-command check also closes old gaps (D2, D3).
+- **Self-rating:** 9/10, proud: yes. Gap: the guard checks command text, not git's behavior. A merge started some way the patterns don't name would get through, and the reviewer is the backstop, as for every Bash rule (RUN-005 Results).

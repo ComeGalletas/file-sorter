@@ -26,7 +26,7 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 
 ## Every worker task starts like this
 
-0. **Start from the latest `main`:** `git fetch && git rebase origin/main`. agent-office creates your worktree from whatever branch the main checkout was on, which may be behind or on someone else's branch (RUN-002.D10).
+0. **Start from the latest `main`:** `git fetch && git rebase origin/main`. agent-office creates your worktree from whatever branch the main checkout was on, which may be behind or on someone else's branch (RUN-002.D10). Rebase only before your first push. **Once your PR is open**, bring `main` in with `git fetch && git merge --no-edit origin/main`, resolve any conflict, then `git add` and `git commit --no-edit` (or `git merge --continue`), and push normally. Never rebase or force-push an open PR: it breaks `Reviewed at` (RUN-006.D7). That merge is the only one the guard lets you run (RUN-008.D1).
 1. In the worktree: `make init` (copies `.env` and `sanitize.yaml` from the main checkout, RUN-002.D3).
 2. Write `.task` at the worktree root (git-ignored, RUN-002.D4):
 

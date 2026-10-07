@@ -15,7 +15,8 @@
 #   main checkout   -> lead:   inside the tree, edits only docs/ and .task;
 #                              merge only with --merge; no mN tags
 #   linked worktree -> worker: own tree minus index/plans/spec; never "repo";
-#                              no merge, no tag, no push to main
+#                              no tag, no push to main; the only merge is origin/main
+#                              into its own branch, and the only pull is --ff-only (RUN-008)
 # Shell commands are not path-checked: the guard covers Claude's file tools and the
 # merge/tag/push commands (RUN-005 Results). The human's own sessions are not guarded
 # (RUN-002.D16). Messages are ASCII on purpose (RUN-005.D3). Exit 2 blocks the tool call.
@@ -64,6 +65,35 @@ env_root() {
 
 under() { case "$(lower "$1")" in "$(lower "$2")"|"$(lower "$2")"/*) return 0 ;; esac; return 1; }
 
+# The shell command split into simple commands: one per line, trimmed. Splits on ; & | ( )
+# and backticks, so a merge inside $(...), a subshell or a pipe is still seen on its own.
+segments() { printf '%s\n' "$cmd" | tr ';&|()`' '\n\n\n\n\n\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
+
+# A git subcommand anywhere in a segment, also behind global options (git -c k=v merge,
+# git -C dir merge) or a prefix (env X=1 git merge).
+GIT_SUB='(^|[[:space:]])git([[:space:]]+-[cC][[:space:]]+[^[:space:]]+)*[[:space:]]+'
+
+# RUN-008.D1, D2: a worker may bring main into its own branch, finish or abort that merge,
+# and fast-forward its own branch. Every other merge or pull is refused. Each segment that
+# runs `git merge` or `git pull` must be exactly one of the allowed forms.
+worker_sync_ok() {
+  local seg
+  while IFS= read -r seg; do
+    if printf '%s' "$seg" | grep -Eq "${GIT_SUB}merge( |\$)"; then
+      printf '%s' "$seg" | grep -Eq '^git +merge( +--no-edit| +--no-ff)* +origin/main$' && continue
+      printf '%s' "$seg" | grep -Eq '^git +merge +--(abort|continue)$' && continue
+      return 1
+    fi
+    if printf '%s' "$seg" | grep -Eq "${GIT_SUB}pull( |\$)"; then
+      printf '%s' "$seg" | grep -Eq '^git +pull +--ff-only$' && continue
+      return 1
+    fi
+  done <<EOF
+$(segments)
+EOF
+  return 0
+}
+
 # Classify a write target: images | own:<lowercased path relative to this tree> | repo | outside
 where() {
   local f="$1" real top main root
@@ -98,8 +128,9 @@ where() {
 if in_linked_worktree; then
   case "$tool" in
     Bash)
-      printf '%s' "$cmd" | grep -Eq '(^|[;&|( ])(gh pr merge|git merge|git tag)( |$)' \
-        && deny "workers never merge or tag; the lead merges (CLAUDE.md section 1.6)"
+      segments | grep -Eq "(^|[[:space:]])gh +pr +merge( |\$)|${GIT_SUB}tag( |\$)" \
+        && deny "workers never merge a PR or tag; the lead merges (CLAUDE.md section 1.6)"
+      worker_sync_ok || deny "the only merge a worker runs is 'git merge [--no-edit] origin/main' into its own branch (or --abort/--continue), and the only pull is 'git pull --ff-only' (RUN-008.D1, D2)"
       printf '%s' "$cmd" | grep -Eq 'git push.*([ :]main( |$)|HEAD:main)' \
         && deny "workers never push to main; push your task branch and open a PR"
       ;;
