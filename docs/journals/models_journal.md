@@ -60,7 +60,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests · 74a5cd4
   - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests · 283671b
   - [x] MOD-001.2.3 — The `gpu` acceptance test on synthetic strings, with the recorder (hash in Results)
-  - [ ] MOD-001.2.4 — The eval (D3) on fictional names in `eval/`
+  - [x] MOD-001.2.4 — The eval (D3) on fictional names in `eval/`, the prompt rules it drove, and the recordings re-made for the new prompt (hash in Results)
   - [x] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`: 18 files, landed in .2.3's commit because the acceptance test checks every live answer against its recording and is red without them
   - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed · bbbf298
 
@@ -77,4 +77,18 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 ### MOD-001.2 (worker: ml)
 
+- **Eval (D3):** `python eval/entity_eval.py` in the `test` container, `sanitize_entity_v1`, `qwen3-vl:8b`, temperature 0, seed 7. The cases are filename-shaped strings built from the fictional lists in `eval/data/entity_synthetic.yaml` (12 patterns, 5 separators including CamelCase), plus 30 plain names with no entity. **Recall** is the share of seeded entities with every letter covered by a returned span (nothing would survive redaction). **Exact** means one span with the right label. **Spurious** is the share of returned spans touching no seeded entity. **False redaction** is the share of plain names with any span returned.
+
+  | Run | Recall | Exact | Spurious | False redaction | Errors | Per call |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | raw, first prompt draft, seed 20311, n 50 | 92.0% | 73.3% | 0.0% | 0.0% | 0.0% | 0.3 s |
+  | raw, final prompt, seed 20311, n 50 (tuning draw) | 100.0% | 61.3% | 2.1% | 0.0% | 0.0% | 0.2 s |
+  | raw, final prompt, seed 1, n 150 (used for the last rule) | 99.1% | 60.9% | 1.0% | 0.0% | 0.0% | 0.3 s |
+  | **raw, final prompt, seed 2, n 150 (held out)** | **98.2%** | 61.8% | 0.3% | **0.0%** | 0.0% | 0.3 s |
+  | thinking path (D5's alternative), final prompt, seed 20311, n 12 + 6 plain | 33.3% | 33.3% | 0.0% | 0.0% | 38.9% | 21.1 s |
+
+  - Two prompt rules came from the misses: keep a generic word that belongs to a name ("<Name> Works"), and check every capitalised word, including a lone one before "trip". The examples in the prompt are placeholders, not eval names.
+  - The remaining misses share one shape: a one-word place at the start of "<Place> trip <year> - <Person>".
+  - "Exact" fell because the model now splits some multi-word names into word spans. Redaction coverage is unchanged by that.
+  - In the thinking run, errors are answers cut off at the length limit (they fail closed in the app), and they count as misses. It shared the GPU with a recording run, so its per-call time is high.
 - **Status:**

@@ -43,6 +43,10 @@ Entity types to find, and only these:
 Rules:
 - Copy each entity exactly as it appears in the text, with the same characters, case and separators. Never correct, translate or expand it.
 - Words may be joined by underscores, hyphens, dots or no separator at all. An entity can span several of them, e.g. a first and last name joined by an underscore.
+- Report the whole name. A generic word that is part of a name belongs to it, e.g. the Works in a company called "<Name> Works", or the Bay in a place called "<Name> Bay".
+- Read the text from start to end and report every entity in it. One text can hold several, of the same or different types, at the start, the middle or the end.
+- Check every capitalised word on its own, even a single one. A lone capitalised word before an ordinary word such as trip, visit, holiday or weekend is usually a place, and it is an entity even when a person's name follows later in the text.
+- An unfamiliar or invented-looking word in a capitalised name is still a name. When unsure whether such a word is a person, an organisation or a place, report it with the most likely type rather than leave it out.
 - Do not report dates, times, numbers, counters, camera prefixes (IMG, DSC, PXL, VID), file extensions, resolutions, or common words such as holiday, beach, birthday, screenshot, edit, copy, final.
 - If there is no entity, return an empty list.
 
