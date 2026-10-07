@@ -64,6 +64,10 @@ Decisions:
 - **SAN-001.D9** — **One file is all or nothing** (lead, 2026-10-07). Per file, the node makes the working copy (FOP-001), strips and checks its metadata, redacts the name, writes the thumbnail (ING-002) and its `sanitize_log` rows, then sets `sanitized`. Any failure sets `error` with a fixed reason and writes no log rows for that file. The node never commits; `run` commits once per node (PIPE-001.D3).
 - **SAN-001.D10** — **Recordings never hold real data** (lead, 2026-10-07). Recorded LLM responses (TST-005) are made only from synthetic strings in the `gpu` tier. The gate's entity calls on the human's values are never recorded or printed.
 - **SAN-001.D11** — **The `exif_field` rule's shape** (lead, 2026-10-07, on #47). `{id, type: exif_field, fields: [<tag>, …]}`: the tags SAN-001.2 always removes (D3). `sanitize.example.yaml` gains a placeholder rule only if SAN-001.2 needs one.
+- **SAN-001.D12** — **Rule ids of metadata rows** (lead, 2026-10-07, on #48). A tag removed by the keep-list strip logs `rule_id = exif-strip-all`; a tag removed by an `exif_field` rule logs that rule's own id.
+- **SAN-001.D13** — **Adobe APP14 is a file-structure tag, like ICC** (lead, 2026-10-07, on #48). `DCTEncodeVersion`, `APP14Flags0/1` and `ColorTransform` decide how an Adobe CMYK/YCCK JPEG decodes, so the strip keeps them. JFIF, which can carry a thumbnail, is still removed.
+- **SAN-001.D14** — **Tag names read from a file are free text** (lead, 2026-10-07, on #48). A PNG text keyword or an unknown XMP namespace becomes exiftool's tag or group name. So `field = exif:<group0>:<tag>` only when `<tag>` is in exiftool's own known-tag list (`exiftool -list`), else `exif:<group0>:unknown`; it fits DB-002.D1's check. Exceptions and `repr` never carry a tag name read from a file.
+- **SAN-001.D15** — **An `exif_field` rule beats the keep list, never the structure or ICC tags** (lead, 2026-10-07, on #48). Removing a structure tag (a TIFF's `ImageWidth` or `StripOffsets`) corrupts the image.
 
 ## SAN-001 — Plan
 
@@ -76,6 +80,9 @@ Decisions:
 
 - [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
+  - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14)
+  - [ ] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops
+  - [ ] SAN-001.2.3 — Results
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
