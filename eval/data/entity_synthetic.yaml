@@ -1,20 +1,21 @@
 # Fictional names for the entity eval (MOD-001.D3) and gate 2's third source (TST-005.D2).
 # Every value is invented: no real person, organisation, brand or place, and nothing that
-# could be read as the human's (SAN-001.D10). Add only invented names.
-version: 1
+# could be read as the human's (SAN-001.D10). Add only invented names: no real given name,
+# surname, place, venue, company or brand, even as one part of a longer name (PR #72 round 1).
+version: 2
 
 people:
-  first: [Zorvane, Mirelda, Oskarth, Tamsin, Velric, Ysolde, Brannoch, Quenna, Darvik, Elowyn,
-          Thessaly, Corvin, Ilsabet, Morrow, Fenwyck, Sarvela]
-  last: [Quillby, Toskan, Venmire, Druvel, Ashgrove, Pellumbra, Kestrand, Oruvane, Haldric,
-         Wintermoss, Delvane, Scorrin, Tavernack, Brightwell, Morcaster, Ulvenhold]
+  first: [Zorvane, Mirelda, Oskarth, Tavrelle, Velric, Yselvane, Brannoch, Quenna, Darvik,
+          Elsquorra, Quorvenna, Drevalt, Ilsabet, Ilvarro, Fenwyck, Sarvela]
+  last: [Quillby, Toskan, Venmire, Druvel, Pemberquill, Pellumbra, Kestrand, Oruvane, Haldric,
+         Wintermoss, Delvane, Scorrin, Tavernack, Vostrelle, Morcaster, Ulvenhold]
 
 orgs: [Quillfen Robotics, Durnhollow Athletic Club, Brakmoor Works, Ostrela Freight,
-       Venmark Studios, Hollowpine Academy, Saltreach Rowing Club, Krellwick Bakery,
-       Emberfall Records, Thornquist Labs, Glimmerdeep Theatre, Pallisade Mutual]
+       Vexmarrow Studios, Hollowpine Academy, Saltreach Rowing Club, Krellwick Bakery,
+       Ombrequist Records, Thrennick Labs, Glimmerdeep Theatre, Pallisade Mutual]
 
 places: [Brakmoor Harbour, Velkarra, Ostrela Bay, Dunmarrow, Saltreach, Kestrel Fells,
-         Orvane Valley, Thistledown, Corrowmere, Ashenford, Lyrravale, Murkwater Bridge]
+         Orvane Valley, Quelmarsh Reach, Corrowmere, Ostrevane, Lyrravale, Murkwater Bridge]
 
 # Filename-shaped patterns. {person}, {org}, {place} are the seeded entities; {date},
 # {year} and {n} are plain values that must never be redacted.

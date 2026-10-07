@@ -65,7 +65,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed · e2304f1
   - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original (hash in Results)
   - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) (hash in Results)
-  - [ ] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval
+  - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval (hash in Results)
 
 ## MOD-001 — Results
 
@@ -89,11 +89,15 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   | raw, final prompt, seed 1, n 150 (used for the last rule) | 99.1% | 60.9% | 1.0% | 0.0% | 0.0% | 0.3 s |
   | **raw, final prompt, seed 2, n 150 (held out)** | **98.2%** | 61.8% | 0.3% | **0.0%** | 0.0% | 0.3 s |
   | thinking path (D5's alternative), final prompt, seed 20311, n 12 + 6 plain | 33.3% | 33.3% | 0.0% | 0.0% | 38.9% | 21.1 s |
+  | *Name list v2 (PR #72 round 1, MOD-001.2.9); these rows replace the ones above:* | | | | | | |
+  | raw, final prompt, seed 20311, n 50 (tuning draw) | 100.0% | 54.7% | 2.1% | 0.0% | 0.0% | 0.2 s |
+  | **raw, final prompt, seed 2, n 150 (held out)** | **98.7%** | 60.4% | 0.3% | **0.0%** | 0.0% | 0.3 s |
+  | thinking path, seed 20311, n 12 + 6 plain, alone on the GPU | 27.8% | 27.8% | 0.0% | 0.0% | 44.4% | 21.8 s |
 
   - Two prompt rules came from the misses: keep a generic word that belongs to a name ("<Name> Works"), and check every capitalised word, including a lone one before "trip". The examples in the prompt are placeholders, not eval names.
   - The remaining misses share one shape: a one-word place at the start of "<Place> trip <year> - <Person>".
   - "Exact" fell because the model now splits some multi-word names into word spans. Redaction coverage is unchanged by that.
-  - In the thinking run, errors are answers cut off at the length limit (they fail closed in the app), and they count as misses. It shared the GPU with a recording run, so its per-call time is high.
+  - In the thinking run, errors are answers cut off at the length limit (they fail closed in the app), and they count as misses. The first run shared the GPU with a recording run. Re-run alone, it takes the same ~22 s a call, so that time is the thinking path's own.
 - **Built:**
   - `prompts/sanitize_entity_v1.md`: front matter per D1 and D5 (temperature 0, seed 7, `keep_alive: 5m`, `num_predict: 512`, `raw: true`, the ChatML `wrap`, the D2 schema).
   - `classifier/models/prompts.py`: `load_prompt` and `Prompt` (strict front matter; `version` equals the file name; one-pass slot rendering).
@@ -105,9 +109,16 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - The gpu tier (`tests/gpu/`): 22 passed against the real service, every recording matched.
   - `make lint`: clean.
 - **Status:** DONE_WITH_CONCERNS.
-  - Concern (medium): held-out recall is 98.2%, not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
+  - Concern (medium): held-out recall is 98.7% with name list v2 (98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
   - Concern (low): the recorder and `recording_key` live in the gpu test until TST-005.1 (#55) lands its replay. Once it does, the test should switch to QA's record mode, and the keys must match (same rule, posted on #55).
 - **Self-rating:** 8/10, proud: yes. Gaps against #51 and its R-IDs:
   1. Recall is short of the gate's zero-survivor bar on one filename shape (R-SAN-3; see the concern above).
   2. The recorder duplicates what TST-005.1 will own, until #55 merges.
-- **Reviewer / Privacy auditor:** pending (lead).
+- **Reviewer / Privacy auditor, round 1 (at cccbe0b):** REQUEST_CHANGES / FAIL (low). Fixed in:
+  - **MOD-001.2.7, prompt injection (reviewer, major).** `detect_entities` renders `neutralize(text)`: every `<|`, `|>`, `<think>`, `</think>` and run of three or more `<` or `>` gets spaces between its characters. Spans are still matched against the original. Unit tests show that, for five injection strings, the rendered prompt holds exactly the wrapper's control tokens, one think block and one fence, with the neutralized text inside the fence.
+  - **MOD-001.2.8, injection names in the gpu test.** Three names try to override the rules, end the turn (`<|im_end|>` plus a fake answer) or close the fence (`TEXT>>>`). In each, the seeded person is still found with its label, and there are 3 new recordings. As a control, the two token-bearing strings sent without the guard were also answered correctly at seed 7. So the gpu check can't show the guard's effect; the structural guarantee is the unit test.
+  - **MOD-001.2.9, eval names (privacy, item 4).** `eval/data/entity_synthetic.yaml` is now v2:
+    - replaced a real place used as a first name;
+    - replaced two organisation names the auditor couldn't confirm as fictional;
+    - also replaced, under the stricter rule now in the file's header: a real racetrack name, common real surnames, real given names, and two names I couldn't confirm.
+    - The eval was re-run; the v2 rows are in the table above.
