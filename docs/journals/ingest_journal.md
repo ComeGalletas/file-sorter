@@ -147,10 +147,46 @@ references or host paths here. Use hashes.
 
 ## ING-002 — Tasks
 
-- [ ] ING-002.1 — `make_thumbnail` from the sanitized copy · #49 · acceptance: `tests/unit/ingest/test_thumbnails.py`
+- [x] ING-002.1 — `make_thumbnail` from the sanitized copy · #49 · acceptance: `tests/unit/ingest/test_thumbnails.py` · branch `office/byte-60e5`
+  - [x] ING-002.1.1 — `classifier/fileops/thumbs.py` and its unit tests · `b0d540c`
+  - [x] ING-002.1.2 — journal tick and Results · the commit that carries this line
+  - [x] ING-002.1.3 — (found while rating) scale 16-bit grey to 8 bits before the RGB conversion, with a regression test · `e7a61dc`
+  - [x] ING-002.1.4 — (review round 1) decode from memory and raise a fixed, unchained `OSError`, so no error names the working copy; APNG and animated WebP first-frame tests · the commit that carries this line
 
 ## ING-002 — Results
 
 ### ING-002.1 (worker: pipeline)
 
-- **Status:**
+- **Status:** DONE.
+- **Triage:** medium, solo. One new function in one package; unit tier only.
+- **What landed:** `make_thumbnail(working_copy, thumbs_dir, name, size) -> Path` in `classifier/fileops/thumbs.py`, approved there by the lead instead of `classifier/graph/ingest_files.py`, which stays read-only. It writes `thumbs_dir/<source_hash>.webp` (ING-002.D1) from the first frame or page (R-ING-6). The image is converted to RGB, or to RGBA when it has alpha (an alpha mode or a `transparency` entry), then shrunk with `thumbnail()` and never enlarged. The WebP is encoded in memory with `info` cleared and empty `exif`/`icc_profile`/`xmp` (ING-002.D2), and published only through `write_new` (FOP-001.D2). An existing thumbnail is returned without decoding the working copy. `name` is checked with `copy_move`'s `_SOURCE_HASH` validator, reused as the lead asked. Pillow's errors propagate for the `sanitize` node to record (SAN-001.D9). Nothing is logged.
+- **Tests:**
+  - **Acceptance:** `tests/unit/ingest/test_thumbnails.py`, 27 passed after round 1 (23 before), all on synthetic images made in the test. The tests cover:
+    - size and aspect ratio, landscape and portrait;
+    - no enlargement;
+    - RGB, RGBA, and P with transparency;
+    - 16-bit grey, in PNG and TIFF;
+    - the first frame of a GIF, an APNG and an animated WebP, and the first page of a TIFF;
+    - HEIC;
+    - EXIF, ICC and XMP dropped;
+    - an existing thumbnail kept and not decoded;
+    - the working copy unchanged;
+    - no temp file left;
+    - a bad name or size rejected;
+    - an undecodable, truncated or missing copy raising an `OSError` whose `str`/`repr` names neither the folder, the file name nor the hash, with no `filename`, `__context__` or `__cause__`, and writing nothing. The round-1 code failed all three cases.
+  - **Default tiers:** `make test` 524 passed before the rebase onto `3d48f7e`. `make lint` is clean.
+  - **Mutation checks**, each reverted afterwards:
+    - carrying the input's `exif`/`icc_profile`/`xmp` through to the save failed the metadata test (2 failed);
+    - always re-making the thumbnail failed the keep-existing test (1 failed);
+    - removing the ING-002.1.3 scaling failed both 16-bit tests (2 failed).
+- **ING-002.1.3 (found during the self-rating):** Pillow's `convert("RGB")` clips `I;16`/`I` values above 255, so a 16-bit grayscale PNG or TIFF gave an all-white thumbnail. Mid-grey 32768 came out as 255. It is now divided by 256 into `L` first.
+- **Self-rating:** 9/10, proud: yes (second pass; the first pass found ING-002.1.3 and it was fixed). Gaps:
+  - The `os.link` publish on the real Windows bind mount is still exercised only by `write_new`'s monkeypatched tests. The `sanitize` node (SAN-001.4) is the first to run it there.
+  - A 16-bit grey image with a `tRNS` transparency entry loses that transparency in the thumbnail, and a 32-bit float (`F`) TIFF is clipped rather than scaled. Neither is covered by R-ING-5 or the acceptance test. Severity: low (cosmetic in the review UI).
+- **Review:** round 1 at `8704815`: Reviewer REQUEST_CHANGES, Privacy auditor PASS.
+  - **Major:** Pillow's error named the working-copy path. Fixed by ING-002.1.4: the copy is decoded from `io.BytesIO(read_bytes())`, and any read or decode `OSError` is re-raised after its `except` block with a fixed message carrying only the exception type, as in PR #65.
+  - **Minor:** the APNG and animated WebP first-frame tests were missing. Added in ING-002.1.4.
+  - Re-review pending.
+- **Deferred:**
+  - **No sRGB conversion** (lead, on #49). A working copy that keeps a wide-gamut ICC profile (SAN-001.D4) gives a thumbnail with no profile, so its colours are read as sRGB and look slightly off. This is colour fidelity for the review UI, not a privacy item. Possible M4 follow-up: convert through `ImageCms` to sRGB before the strip.
+  - The two low-severity edge cases named under Self-rating.
