@@ -79,19 +79,20 @@ references or host paths here. Use hashes.
 
 ## DB-002 — Tasks
 
-- [ ] DB-002.1 — Migration `0002`: `sanitize_log` and `files.original_sanitized` · #45 · acceptance: `tests/db/ledger/test_sanitize_log_migration.py`
-  - [x] DB-002.1.1 — Migration `0002_sanitize_log`, the `SanitizeLog` model and `File.original_sanitized`, with the acceptance test; DB-001.1's test pins its `0001` shape checks to `0001`. The model and migration land together, because the drift test at head fails if either comes first. · 989d0d7
-  - [x] DB-002.1.2 — Journal Results
+- [x] DB-002.1 — Migration `0002`: `sanitize_log` and `files.original_sanitized` · #45 · acceptance: `tests/db/ledger/test_sanitize_log_migration.py`
+  - [x] DB-002.1.1 — Migration `0002_sanitize_log`, the `SanitizeLog` model and `File.original_sanitized`, with the acceptance test; DB-001.1's test pins its `0001` shape checks to `0001`. The model and migration land together, because the drift test at head fails if either comes first. · 3cf7679
+  - [x] DB-002.1.2 — Journal Results · 3fdc143
+  - [x] DB-002.1.3 — Post-rebase hashes and the integration result, after TST-006.1 (#68)
 
 ## DB-002 — Results
 
 ### DB-002.1 (worker: pipeline)
 
-- **Status:** DONE (pending the integration tier after TST-006.1, #68)
+- **Status:** DONE
 - **Triage:** large: a DB schema change (CLAUDE.md §2.1, the lead on #45), confined to `classifier/db/`. Tests: all default tiers, plus lint; no gpu or eval, since no models or prompts are touched. Solo.
 - **Plan change:** the plan had the migration (DB-002.1.1) and the models (DB-002.1.2) as separate commits. They landed as one, because the drift test at head (`test_models_match_the_migration`) fails whichever comes first. DB-002.1.2 is the journal.
-- **Tests:** unit + db: 540 passed. Acceptance `tests/db/ledger/test_sanitize_log_migration.py` plus DB-001.1's ledger test: 33 passed. It covers the single head and its parent, the columns and their nullability, the primary key, the named FK and its no-action delete, the three checks and the index, valid rows (including `exif-strip-all`, SAN-001.D12), each check rejecting bad values, the length bounds, not-null, the FK refusing an unknown hash and a delete of a referenced `files` row, `original_sanitized`, and a downgrade to `0001` (with `files` and its rows untouched) and back. `make lint` is clean. Integration: 20 setup errors before #68, because `empty_ledger` truncated `files` alone; re-run after #68 merges: (pending).
-- **Self-rating:** 9/10, proud: yes. Pass 1: 9. The one gap: the integration tier isn't green on this branch until TST-006.1 (#68, QA) lands; the re-run after the rebase closes it. `after_value` holding only a token is the writer's contract (SAN-001.1, .4); the database can't tell a token from a value, so it isn't checked here.
+- **Tests:** unit + db before the rebase: 540 passed. Acceptance `tests/db/ledger/test_sanitize_log_migration.py` plus DB-001.1's ledger test: 33 passed. It covers the single head and its parent, the columns and their nullability, the primary key, the named FK and its no-action delete, the three checks and the index, valid rows (including `exif-strip-all`, SAN-001.D12), each check rejecting bad values, the length bounds, not-null, the FK refusing an unknown hash and a delete of a referenced `files` row, `original_sanitized`, and a downgrade to `0001` (with `files` and its rows untouched) and back. `make lint` is clean. Integration: 20 setup errors before #68, because `empty_ledger` truncated `files` alone; after rebasing onto #68 (`truncate files cascade`), `make test` (unit + db + integration): 706 passed, 2 deselected.
+- **Self-rating:** 10/10, proud: yes. Pass 1: 9, because the integration tier wasn't green on this branch until TST-006.1 (#68, QA) landed. Pass 2: rebased onto it, all default tiers pass. `after_value` holding only a token is the writer's contract (SAN-001.1, .4); the database can't tell a token from a value, so it isn't checked here.
 - **Review:** (pending)
 - **Deferred:**
   - The check constraints are mirrored in the models for the reader, but Alembic's autogenerate doesn't compare them; the db-tier test checks them against the database instead.
