@@ -242,17 +242,48 @@ references or host paths here. Use hashes.
 ## TST-005 — Tasks
 
 - [ ] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py`
-  - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `bb898ac`
-  - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `ddc224b`
-  - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README
-  - [ ] TST-005.1.4 — Results
+  - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `db5fc45`
+  - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `b2639e6`
+  - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
+  - [x] TST-005.1.4 — Results
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
 
 ### TST-005.1 (worker: qa)
 
-- **Status:**
+- **Status:** DONE.
+- **What landed:**
+  - **`tests/recordings/replay.py`:**
+    - `recording_key()` implements TST-005.D5 exactly: `model`, `prompt`, `format` and `options`, plus `think` and `raw` only when sent; `keep_alive` and `stream` excluded.
+    - `ReplayTransport` serves only `POST /api/generate` and never opens a socket.
+    - `RecordingTransport` (record mode) forwards to an upstream the caller builds. It writes `{"request", "response"}` without Ollama's `context`. It keeps an existing file with the same answer and refuses a different one.
+    - `lint_recordings()` checks the committed tree.
+    - `RecordingError` derives from `BaseException`, so neither `OllamaClient`'s `httpx` handling nor a fail-closed `except Exception` can swallow a miss. Every error names only the package, the 64-hex key and the test id, and is raised unchained.
+  - **`tests/conftest.py`:**
+    - `ollama_transport(package)` always replays outside `gpu`. In `gpu` it gives the real transport, or record mode with `pytest -m gpu --record-ollama`.
+    - The option is a usage error when the selection, after `-m`, holds a non-gpu test.
+    - A miss the code under test swallowed fails the test at teardown, once.
+  - **`tests/recordings/README.md`:** usage, format and the record command. No Makefile or compose change (the lead, on #55).
+- **Tests:** `tests/devtools/test_recordings.py` has 52 unit tests:
+  - the key, replay and record mode through a real `OllamaClient` on synthetic `tmp_path` recordings;
+  - four `pytester` runs of the real conftest in a synthetic tree;
+  - the lint on the real tree and on a synthetic tree with five planted problems.
+
+  A planted secret prompt is asserted absent from every error and from the inner pytest output. Totals: devtools 121 passed (69 audit + 52); `make test` 726 → 729 passed, 2 deselected (the 726 includes .1.1 and .1.2); `make lint` clean.
+- **Mutation checks:** each mutation fails the module:
+  - `RecordingError(Exception)`: 1 failed;
+  - no teardown net: 1 failed;
+  - teardown net without the call-failed guard (a miss reported twice): 1 failed;
+  - `raw` dropped from the key: 1 failed;
+  - errors chained: 9 failed.
+- **Live check (gpu box, throwaway script, not committed):** record mode against the real `ollama` service (`models.text_llm`, a synthetic one-word prompt, temperature 0, seed 7) wrote one file into a temp folder. `lint_recordings` passed on it, and replay returned the identical answer. The real reply's top-level fields match what the format expects (`response` is a string).
+- **Self-rating:** 9/10, proud: yes. Gaps:
+  - The fixture's `gpu and` guard on record mode survives its mutation. The collection check refuses `--record-ollama` on any non-gpu selection first, so the guard is defence in depth that the CLI can't reach.
+  - The MOD-001.2 recordings weren't pushed when this landed, so they haven't been run through the lint yet. It checks them on merge (the lead's rule on #55: if they fail it, that's theirs to fix).
+  - A thinking model's reply keeps its `thinking` text in the recording. That's bulky but readable, and MOD-001.D5's raw mode avoids it.
+- **Review:** (the lead's verdict comment on the PR)
+- **Deferred:** none.
 
 ### TST-005.2 (worker: qa)
 
