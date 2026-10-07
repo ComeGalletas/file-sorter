@@ -1,7 +1,7 @@
 # Pipeline and dry run — journal
 
-**ID:** PIPE-001 (+ CLI-002) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** PIPE-001 done; CLI-002 in progress · **Milestone:** m1 ·
-**Issues:** #17, #18 · **Branch:** `office/pixel-3a83` (PIPE-001.1); CLI-002.1 per task (`office/*`)
+**ID:** PIPE-001 (+ CLI-002) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002) · **Milestone:** m1 ·
+**Issues:** #17 (PR #35), #18 (PR #38) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -103,12 +103,12 @@ references or host paths here. Use hashes.
 
 ## CLI-002 — Tasks
 
-- [ ] CLI-002.1 — `classifier dry-run [--csv]` · #18 · acceptance: `tests/integration/test_dry_run_cli.py`
+- [x] CLI-002.1 — `classifier dry-run [--csv]` · #18 · acceptance: `tests/integration/test_dry_run_cli.py`
   - [x] CLI-002.1.1 — `RunResult.ingest` raises `TypeError` instead of `assert`; annotate `run._build` (PR #35 follow-up) · unit test `tests/unit/graph/test_state.py` · commit: 0ee1b3f
   - [x] CLI-002.1.2 — the `dry-run` command, the CSV writer and the integration test (.3 folded in) · `tests/integration/test_dry_run_cli.py` (7 tests) · commit: b79971c
   - ~~CLI-002.1.3~~ folded into CLI-002.1.2 (tests ship with their code, DOC-004.D1)
-  - [x] CLI-002.1.4 — journal notes (`nodes=` seam, `limit`) and Results · commit: this commit
-  - [x] CLI-002.1.5 — PR #38 round 1: test the under-root filter and `prefix_for`, exclusive CSV open with a numeric suffix, `ValidationError` and `psycopg.Error` handled with fixed messages · commit: this commit
+  - [x] CLI-002.1.4 — journal notes (`nodes=` seam, `limit`) and Results · commit: 58bbf27
+  - [x] CLI-002.1.5 — PR #38 round 1: test the under-root filter and `prefix_for`, exclusive CSV open with a numeric suffix, `ValidationError` and `psycopg.Error` handled with fixed messages · commit: cbeaacf
 
 ## CLI-002 — Results
 
@@ -122,7 +122,7 @@ references or host paths here. Use hashes.
   - Round 1 (CLI-002.1.5): integration 10 passed (adds the sibling-prefix and unrelated-root exclusion, the validation error and the database error without echoed values); unit `tests/unit/cli/test_dry_run_report.py`, 7 passed (`prefix_for`, same-second CSV suffix).
   - `make test` (unit + db + integration): 286 passed. `make lint`: clean. No gpu tier or eval: no model or prompt is touched.
 - **Self-rating:** 9/10, proud: yes. Remaining gap: no test for an unwritable `reports/`, which raises a plain OSError rather than a clean message. It doesn't affect the acceptance criteria.
-- **Review:**
+- **Review:** PR #38, merged as `492e0c2`, closing #18. Round 1 at `58bbf27`: Reviewer REQUEST_CHANGES (1 major: no test of the under-root filter; 3 minor: same-second CSV overwrite, `ValidationError`/`psycopg.Error` tracebacks, and config errors printing the container roots, which was accepted under DOC-004.D3), Privacy auditor PASS. Round 2, scoped, at `cbeaacf`: APPROVE and PASS. The verdict comments are on the PR.
 - **Deferred:**
   - A clean message for an unwritable `reports/`, as a follow-up if the lead wants it.
   - Per CLI-002.D1, the CSV omits symlinks and unreadable files (no ledger row) and extra `duplicate_paths`; the console counts cover them.
