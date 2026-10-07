@@ -63,9 +63,9 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.4 — The eval (D3) on fictional names in `eval/`, the prompt rules it drove, and the recordings re-made for the new prompt · 24b68cf
   - [x] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`, 18 files. They landed in .2.3's commit (27cf267) because the acceptance test checks every live answer against its recording and is red without them, and were re-made in .2.4's (24b68cf) when the prompt changed.
   - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed · e2304f1
-  - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original (hash in Results)
-  - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) (hash in Results)
-  - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval (hash in Results)
+  - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original · 0dbde86
+  - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) · 9d7f8d9
+  - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval · f5dda51
 
 ## MOD-001 — Results
 
@@ -103,10 +103,11 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - `classifier/models/prompts.py`: `load_prompt` and `Prompt` (strict front matter; `version` equals the file name; one-pass slot rendering).
   - `classifier/models/text_llm.py`: `detect_entities(text, labels, *, client, model, prompt=None)`, `Entity`, `ENTITY_LABELS`, `entity_prompt()`. It applies the D2 drops, collapses duplicates and keeps first-seen order. A badly shaped answer is an `OllamaError`.
   - `OllamaClient.generate_json` gains `raw`, and `done_reason: length` is now an error (D5).
-- **Recordings:** 18 files in `tests/recordings/models/`, keyed per TST-005.D3 and D5 (`{model, prompt, format, options, think?, raw?}`). The response keeps `model`, `response`, `done` and `done_reason`. The gpu test writes them with `RECORD_OLLAMA=1` and otherwise checks every live answer against them. For SAN-001.4: the five `SANITIZE_STRINGS` in the gpu test are recorded with all three labels.
+- **Recordings:** 21 files in `tests/recordings/models/` (18, plus 3 for the injection names in round 1), keyed per TST-005.D3 and D5 (`{model, prompt, format, options, think?, raw?}`). The response keeps `model`, `response`, `done` and `done_reason`. The gpu test writes them with `RECORD_OLLAMA=1` and otherwise checks every live answer against them. For SAN-001.4: the five `SANITIZE_STRINGS` in the gpu test are recorded with all three labels.
 - **Tests:**
   - `make test` (unit + db + integration): 754 passed, after rebasing on 6203400. Unit tests added: `tests/unit/models/test_prompts.py`, `test_text_llm.py`, and 5 new cases in `test_ollama_client.py`.
   - The gpu tier (`tests/gpu/`): 22 passed against the real service, every recording matched.
+  - After round 1, with origin/main merged in at 58077bf: `make test` 812 passed, the gpu tier 25 passed with all 21 recordings matched, `make lint` clean.
   - `make lint`: clean.
 - **Status:** DONE_WITH_CONCERNS.
   - Concern (medium): held-out recall is 98.7% with name list v2 (98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
