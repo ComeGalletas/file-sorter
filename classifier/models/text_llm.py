@@ -11,6 +11,7 @@ raises `OllamaError`, so the sanitizer fails closed (SAN-001.D2). Errors never c
 or the answer.
 """
 
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
@@ -20,6 +21,10 @@ from classifier.models.prompts import Prompt, load_prompt
 
 ENTITY_PROMPT = "sanitize_entity_v1"
 ENTITY_LABELS = ("PERSON", "ORG", "LOCATION")
+# PR #72 round 1: with `raw: true` the text sits inside a ChatML turn, so a name holding a
+# control token (`<|im_end|>`), a think tag or the prompt's `<<<TEXT` / `TEXT>>>` fence could
+# close the turn or the data region. These patterns are broken up before rendering.
+_INJECTION = re.compile(r"<\||\|>|</?think>|<{3,}|>{3,}", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,15 @@ class Entity:
 def entity_prompt() -> Prompt:
     """The entity prompt; its `version` is what a stage records on the ledger (R-CAP-3)."""
     return load_prompt(ENTITY_PROMPT)
+
+
+def neutralize(text: str) -> str:
+    """`text` with chat control tokens, think tags and fence markers made inert.
+
+    Each match gets a space between its characters (`<|` becomes `< |`), so the model still
+    sees the words around it. Spans are matched against the original text, never this one.
+    """
+    return _INJECTION.sub(lambda m: " ".join(m.group(0)), text)
 
 
 def _canonical_labels(labels: Iterable[str]) -> tuple[str, ...]:
@@ -60,7 +74,9 @@ def detect_entities(
     prompt = prompt or entity_prompt()
     answer = client.generate_json(
         model=model,
-        prompt=prompt.render(labels="\n".join(f"- {label}" for label in wanted), text=text),
+        prompt=prompt.render(
+            labels="\n".join(f"- {label}" for label in wanted), text=neutralize(text)
+        ),
         schema=prompt.output_schema,
         options=prompt.options,
         keep_alive=prompt.keep_alive,
