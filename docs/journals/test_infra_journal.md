@@ -152,13 +152,20 @@ references or host paths here. Use hashes.
 - [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
   - [x] TST-003.1.1 — `tests/integration/conftest.py`: module-scoped `schema_dsn`, opt-in `empty_ledger`; `schema_support.py` documented as the shared helper · `8393773`
   - [x] TST-003.1.2 — `test_dry_run_graph.py` and `test_dry_run_cli.py` take `schema_dsn` and opt in to `empty_ledger`; their local fixtures removed, test bodies untouched · `0a6a3f3`
-  - [x] TST-003.1.3 — `tests/integration/test_schema_fixture.py`: private schema at the single head, `empty_ledger` ordered pair, own schema per call, dropped on exit
+  - [x] TST-003.1.3 — `tests/integration/test_schema_fixture.py`: private schema at the single head, `empty_ledger` ordered pair, own schema per call, dropped on exit · `5a5d881`
+  - [x] TST-003.1.4 — Results
 
 ## TST-003 — Results
 
 ### TST-003.1 (worker: qa)
 
-- **Status:**
+- **Status:** DONE.
+- **What landed:** `tests/integration/conftest.py` gives every integration module a module-scoped `schema_dsn` (its own uuid-named schema at Alembic head, dropped with `cascade` at module teardown) and an opt-in `empty_ledger` that truncates `files` in that private schema only. Neither is autouse, so `test_gate_1_script.py` pays for no migration. `schema_support.py` stays as the importable helper, because `scripts/gate_1.py` calls `migrated_schema` outside pytest. The two dry-run modules opt in with `pytestmark = pytest.mark.usefixtures("empty_ledger")`; their test bodies are untouched.
+- **Coexistence:** the db tier's `session_*` schema (TST-002.1) and PR #30's per-test schema are never touched: each fixture works in its own `module_*` schema, and `test_schema_fixture.py` asserts `files` resolves there.
+- **Tests (`make test`, unit + db + integration):** before 442 passed; after 446 passed (+4, `test_schema_fixture.py`). Integration per module before and after: `test_dry_run_cli.py` 10, `test_dry_run_graph.py` 8 (the acceptance test, unchanged), `test_gate_1_script.py` 3. Mutation check: without `empty_ledger` on the pair's second test, the module fails (1 failed, 3 passed). `make lint` clean.
+- **Self-rating:** 9/10, proud: yes. Gap: the db tier's `migrated_db` (tests/db/conftest.py) still repeats the schema-plus-upgrade steps of `migrated_schema`; folding it onto the shared helper touches the db tier's fixture, so it is left as a possible follow-up, as the lead directed on #53.
+- **Review:** (the lead's verdict comment on the PR)
+- **Deferred:** the `migrated_db` duplication above (no ID yet; the lead's call).
 
 ---
 
