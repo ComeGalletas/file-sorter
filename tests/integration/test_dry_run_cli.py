@@ -22,7 +22,7 @@ SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
 pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
 
 
-def _setup(tmp_path: Path, dsn: str, *, results: str = "results") -> tuple[Path, Path, Path]:
+def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Path]:
     source = tmp_path / "source"
     source.mkdir()
     first = source / "alpha.png"
@@ -33,14 +33,16 @@ def _setup(tmp_path: Path, dsn: str, *, results: str = "results") -> tuple[Path,
     data = yaml.safe_load(REAL_CONFIG.read_text(encoding="utf-8"))
     results_root = tmp_path / results
     data["paths"] = {"source_root": str(source), "results_root": str(results_root)}
-    data["db"] = {"dsn": dsn}
+    data["db"] = {"dsn": None}  # CFG-001.D2: the DSN comes from DB_DSN only
     config = tmp_path / "config.yaml"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     return source, results_root, config
 
 
-def _invoke(config: Path, *extra: str):
-    return CliRunner().invoke(app, ["dry-run", "--config", str(config), *extra])
+def _invoke(config: Path, dsn: str | None = None, *extra: str):
+    """`DB_DSN` is set for the call only, or unset when `dsn` is None (CFG-001.D2)."""
+    env = {"DB_DSN": dsn}
+    return CliRunner().invoke(app, ["dry-run", "--config", str(config), *extra], env=env)
 
 
 def _tree(root: Path) -> list[tuple[str, int]]:
@@ -53,8 +55,8 @@ def _ledger_count(dsn: str) -> int:
 
 
 def test_prints_the_run_counts_without_names(tmp_path: Path, schema_dsn: str) -> None:
-    _, _, config = _setup(tmp_path, schema_dsn)
-    result = _invoke(config)
+    _, _, config = _setup(tmp_path)
+    result = _invoke(config, schema_dsn)
     assert result.exit_code == 0, result.output
     out = result.stdout
     assert "new: 2" in out
@@ -68,8 +70,8 @@ def test_prints_the_run_counts_without_names(tmp_path: Path, schema_dsn: str) ->
 
 
 def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> None:
-    source, results, config = _setup(tmp_path, schema_dsn)
-    result = _invoke(config, "--csv")
+    source, results, config = _setup(tmp_path)
+    result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code == 0, result.output
     reports = list((results / "reports").glob("dry-run-*.csv"))
     assert len(reports) == 1
@@ -92,26 +94,26 @@ def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> N
 def test_writes_only_reports_under_results_and_nothing_under_source(
     tmp_path: Path, schema_dsn: str
 ) -> None:
-    source, results, config = _setup(tmp_path, schema_dsn)
+    source, results, config = _setup(tmp_path)
     before = _tree(source)
-    assert _invoke(config, "--csv").exit_code == 0
+    assert _invoke(config, schema_dsn, "--csv").exit_code == 0
     assert _tree(source) == before
     assert [p.name for p in results.iterdir()] == ["reports"]
 
 
 def test_without_csv_nothing_is_written_to_results(tmp_path: Path, schema_dsn: str) -> None:
-    _, results, config = _setup(tmp_path, schema_dsn)
-    assert _invoke(config).exit_code == 0
+    _, results, config = _setup(tmp_path)
+    assert _invoke(config, schema_dsn).exit_code == 0
     assert not results.exists()
 
 
 def test_second_run_reports_everything_known_and_adds_no_rows(
     tmp_path: Path, schema_dsn: str
 ) -> None:
-    _, _, config = _setup(tmp_path, schema_dsn)
-    assert _invoke(config).exit_code == 0
+    _, _, config = _setup(tmp_path)
+    assert _invoke(config, schema_dsn).exit_code == 0
     rows = _ledger_count(schema_dsn)
-    second = _invoke(config)
+    second = _invoke(config, schema_dsn)
     assert second.exit_code == 0, second.output
     assert "new: 0" in second.stdout
     assert "skipped-known: 4" in second.stdout
@@ -119,11 +121,11 @@ def test_second_run_reports_everything_known_and_adds_no_rows(
 
 
 def test_nested_roots_fail_the_root_check(tmp_path: Path, schema_dsn: str) -> None:
-    source, _, config = _setup(tmp_path, schema_dsn)
+    source, _, config = _setup(tmp_path)
     data = yaml.safe_load(config.read_text(encoding="utf-8"))
     data["paths"]["results_root"] = str(source / "results")
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
-    result = _invoke(config, "--csv")
+    result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code != 0
     assert "R-FOP-9" in result.output
     assert not (source / "results").exists()
@@ -137,7 +139,7 @@ def test_missing_config_exits_non_zero(tmp_path: Path) -> None:
 
 
 def test_csv_lists_only_rows_under_the_scanned_root(tmp_path: Path, schema_dsn: str) -> None:
-    source, results, config = _setup(tmp_path, schema_dsn)
+    source, results, config = _setup(tmp_path)
     sibling = str(tmp_path / "source2" / "x.png")  # same prefix as `source`, not under it
     other = str(tmp_path / "elsewhere" / "y.png")
     with psycopg.connect(schema_dsn) as conn:
@@ -148,7 +150,7 @@ def test_csv_lists_only_rows_under_the_scanned_root(tmp_path: Path, schema_dsn: 
                 " values (%s, %s, %s, now(), 'png', 'queued')",
                 (digest, digest[:8], path),
             )
-    assert _invoke(config, "--csv").exit_code == 0
+    assert _invoke(config, schema_dsn, "--csv").exit_code == 0
     (report,) = (results / "reports").glob("dry-run-*.csv")
     with report.open(encoding="utf-8", newline="") as handle:
         paths = [row["source_path"] for row in csv.DictReader(handle)]
@@ -158,11 +160,11 @@ def test_csv_lists_only_rows_under_the_scanned_root(tmp_path: Path, schema_dsn: 
 
 
 def test_validation_error_exits_2_without_echoing_values(tmp_path: Path, schema_dsn: str) -> None:
-    _, _, config = _setup(tmp_path, schema_dsn)
+    _, _, config = _setup(tmp_path)
     data = yaml.safe_load(config.read_text(encoding="utf-8"))
     data["thumbs"]["size"] = "SECRET-VALUE-123"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
-    result = _invoke(config)
+    result = _invoke(config, schema_dsn)
     assert result.exit_code == 2
     assert "thumbs.size" in result.output
     assert "SECRET-VALUE-123" not in result.output
@@ -170,8 +172,8 @@ def test_validation_error_exits_2_without_echoing_values(tmp_path: Path, schema_
 
 
 def test_database_error_exits_non_zero_without_echoing_the_dsn(tmp_path: Path) -> None:
-    _, _, config = _setup(tmp_path, "postgresql://user:hunter2@127.0.0.1:1/db?connect_timeout=2")
-    result = _invoke(config)
+    _, _, config = _setup(tmp_path)
+    result = _invoke(config, "postgresql://user:hunter2@127.0.0.1:1/db?connect_timeout=2")
     assert result.exit_code == 1
     assert "database error" in result.output
     assert "hunter2" not in result.output

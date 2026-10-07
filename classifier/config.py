@@ -14,7 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 CONFIG_ENV = "CLASSIFIER_CONFIG"
 DSN_ENV = "DB_DSN"
@@ -111,7 +111,9 @@ class ApiConfig(_Section):
 
 
 class DbConfig(_Section):
-    dsn: str | None = None  # filled from DB_DSN by load_config
+    # CFG-001.D2: null in config.yaml, filled from DB_DSN by load_config. It holds the
+    # database password, so it is kept out of repr.
+    dsn: str | None = Field(default=None, repr=False)
 
 
 class Config(_Section):
@@ -188,7 +190,10 @@ def check_roots(config: Config) -> None:
 
 
 def load_config(path: str | Path | None = None) -> Config:
-    """Load the config once: `path`, else `$CLASSIFIER_CONFIG`; the DSN comes from `$DB_DSN`."""
+    """Load the config once: `path`, else `$CLASSIFIER_CONFIG`.
+
+    The DSN comes from `$DB_DSN` only; a non-null `db.dsn` in the file is refused (CFG-001.D2).
+    """
     source = path if path is not None else os.environ.get(CONFIG_ENV)
     if not source:
         raise ConfigError(f"no config file: pass a path or set {CONFIG_ENV}")
@@ -220,8 +225,10 @@ def load_config(path: str | Path | None = None) -> Config:
         problem = f"invalid config file {file}: {_describe(exc)}"
     if problem is not None:
         raise ConfigError(problem)
+    if config.db.dsn is not None:  # CFG-001.D2: secrets come from the environment only
+        raise ConfigError(f"db.dsn must be null in the config file, set {DSN_ENV}: {file}")
     check_roots(config)
-    dsn = config.db.dsn or os.environ.get(DSN_ENV)
+    dsn = os.environ.get(DSN_ENV)
     if not dsn:
         raise ConfigError(f"no database DSN: set {DSN_ENV}")
     config.db.dsn = dsn

@@ -98,11 +98,13 @@ def test_load_without_dsn_fails(monkeypatch: pytest.MonkeyPatch) -> None:
         load_config(REAL_CONFIG)
 
 
-def test_load_prefers_dsn_in_the_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_null_dsn_in_the_file_falls_back_to_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("DB_DSN", FAKE_DSN)
     data = real_data()
-    data["db"]["dsn"] = "postgresql://other/x"
-    assert load_config(write_config(tmp_path, data)).db.dsn == "postgresql://other/x"
+    data["db"] = {"dsn": None}
+    assert load_config(write_config(tmp_path, data)).db.dsn == FAKE_DSN
 
 
 def test_load_rejects_non_mapping(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -270,3 +272,34 @@ def test_root_errors_name_the_keys_not_the_paths(source: str, results: str) -> N
     assert "paths.source_root" in str(info.value)
     assert PLANTED not in str(info.value)
     assert PLANTED not in repr(info.value)
+
+
+# CFG-002.1.3: CFG-001.D2, DB_DSN always wins and a DSN in the file is refused.
+
+PLANTED_DSN = f"postgresql://user:{PLANTED}@db:5432/x"  # placeholder, not a real DSN
+
+
+@pytest.mark.parametrize("env_dsn", [FAKE_DSN, None])
+@pytest.mark.parametrize("file_dsn", [PLANTED_DSN, ""])
+def test_dsn_in_the_file_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, env_dsn: str | None, file_dsn: str
+) -> None:
+    if env_dsn is None:
+        monkeypatch.delenv("DB_DSN", raising=False)
+    else:
+        monkeypatch.setenv("DB_DSN", env_dsn)
+    data = real_data()
+    data["db"]["dsn"] = file_dsn
+    error = load_error(write_config(tmp_path, data))
+    assert "db.dsn must be null" in str(error)
+    assert "DB_DSN" in str(error)
+    assert_value_free(error)
+
+
+def test_dsn_is_not_in_the_config_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DB_DSN", PLANTED_DSN)
+    config = load_config(REAL_CONFIG)
+    assert config.db.dsn == PLANTED_DSN
+    assert PLANTED not in repr(config)
+    assert PLANTED not in str(config)
+    assert PLANTED not in repr(config.db)
