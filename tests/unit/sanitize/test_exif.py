@@ -407,6 +407,76 @@ def test_a_missing_working_copy_fails_closed(tmp_path: Path) -> None:
     assert caught.value.__context__ is None
 
 
+@pytest.mark.parametrize("method", ["is_file", "resolve", "is_symlink"])
+def test_an_os_error_on_the_working_copy_fails_closed_without_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    # Regression (PR #73 round 1): an OSError's message holds the path.
+    path = make_image(tmp_path / f"{SECRETS['Artist']}.jpg", "JPEG")
+
+    def denied(self: Path, *args: object, **kwargs: object) -> object:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, method, denied)
+    for call in (read_tags, lambda p: strip_metadata(p, rules())):
+        with pytest.raises(MetadataStripError) as caught:
+            call(path)
+        assert caught.value.__cause__ is None and caught.value.__context__ is None
+        assert_clean(str(caught.value) + repr(caught.value))
+        assert str(tmp_path) not in str(caught.value)
+
+
+def test_a_symlinked_working_copy_is_refused(tmp_path: Path) -> None:
+    target = seeded(tmp_path, "jpg")
+    data = target.read_bytes()
+    link = tmp_path / "link.jpg"
+    link.symlink_to(target)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(link, rules())
+    assert "symbolic link" in str(caught.value)
+    assert str(tmp_path) not in str(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert target.read_bytes() == data
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        # Regression (PR #73 round 1): a key with more than three parts was skipped.
+        b'[{"SourceFile": "/w", "File:FileType": "JPEG", "XMP:XMP-dc:Creator:x": "Zyxwq"}]',
+        b'[{"SourceFile": "/w", "File:FileType": "JPEG", "EXIF::Artist": "Zyxwq"}]',
+        b'[{"SourceFile": "/w", "File:FileType": "JPEG", "Artist": "Zyxwq"}]',
+        # Well-formed JSON of an unexpected shape.
+        b"[[1, 2]]",
+        b'[[["File:FileType", "JPEG"], [1, 2]]]',
+        b"[{}]",
+        b'[{"SourceFile": "/w"}]',
+    ],
+)
+def test_read_tags_fails_closed_on_keys_or_json_it_cannot_account_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stdout: bytes
+) -> None:
+    path = make_image(tmp_path / "work.jpg", "JPEG")
+    monkeypatch.setattr(
+        exif, "_exiftool", lambda args: subprocess.CompletedProcess(args, 0, stdout, b"")
+    )
+    with pytest.raises(MetadataStripError) as caught:
+        read_tags(path)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert "Zyxwq" not in str(caught.value) + repr(caught.value)
+
+
+def test_known_tags_are_the_listed_names_only() -> None:
+    listing = (
+        "Available tags:\n  Artist Comment\n\n  GPSLatitude\nCommand-line shortcuts:\n  AllDates\n"
+    )
+    assert exif._tag_names(listing) == {"Artist", "Comment", "GPSLatitude"}
+    known = exif._known_tags()
+    assert "Artist" in known and "GPSLatitude" in known
+    assert not {"Available", "tags", "Command-line", "shortcuts", "AllDates"} & known
+    assert log_field(Tag("PNG", "PNG", "Available", "x")) == "exif:PNG:unknown"
+
+
 # --- arguments and privacy ------------------------------------------------------------------
 
 

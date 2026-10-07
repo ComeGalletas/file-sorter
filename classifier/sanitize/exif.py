@@ -151,10 +151,27 @@ def _exiftool(args: list[str]) -> subprocess.CompletedProcess[bytes] | None:
 
 
 def _absolute(path: str | Path) -> Path:
-    # An absolute path starts with `/`, so exiftool can never take it for an option.
-    resolved = Path(path).resolve()
-    if not resolved.is_file():
-        raise MetadataStripError("metadata strip: the working copy does not exist")
+    """The working copy as an absolute path: exiftool can never take it for an option.
+
+    A symlink is refused: FOP-001 only ever makes regular files. Every error is raised
+    after its `except` block, from fixed text: an OSError's message holds the path.
+    """
+    problem = None
+    resolved = None
+    try:
+        given = Path(path)
+        if given.is_symlink():
+            problem = "metadata strip: the working copy is a symbolic link"
+        else:
+            resolved = given.resolve(strict=True)
+            if not resolved.is_file():
+                problem = "metadata strip: the working copy is not a regular file"
+    except FileNotFoundError:
+        problem = "metadata strip: the working copy does not exist"
+    except (OSError, RuntimeError, ValueError):  # RuntimeError: a link loop; ValueError: NUL
+        problem = "metadata strip: the working copy can't be opened"
+    if problem is not None or resolved is None:
+        raise MetadataStripError(problem or "metadata strip: the working copy can't be opened")
     return resolved
 
 
@@ -175,17 +192,18 @@ def _parse(stdout: bytes) -> list[tuple[str, object]] | None:
     return pairs if isinstance(pairs, list) else None
 
 
-def read_tags(path: str | Path) -> Tags:
-    """Every tag exiftool reads from `path`, except file-system facts and composites."""
-    file = _absolute(path)
-    done = _exiftool([*_READ_ARGS, str(file)])
-    pairs = _parse(done.stdout) if done is not None and done.returncode == 0 else None
-    if pairs is None:
-        raise MetadataStripError("metadata read-back: exiftool could not read the file")
+def _tags(pairs: list[tuple[str, object]]) -> Tags | None:
+    """Build `Tags` from exiftool's `-G0:1` keys. None for anything it can't account for.
+
+    Every key but `SourceFile` must be `<group>:<tag>` or `<group0>:<group1>:<tag>`: a
+    key of any other shape fails the read closed, so no tag escapes the read-back check.
+    So does an `ExifTool:Error`, or a read with no `File:FileType`.
+    """
     entries = []
     file_type = ""
-    unreadable = False
     for key, value in pairs:
+        if key == "SourceFile":
+            continue
         parts = key.split(":")
         if len(parts) == 2:
             group0, name = parts
@@ -193,17 +211,37 @@ def read_tags(path: str | Path) -> Tags:
         elif len(parts) == 3:
             group0, group1, name = parts
         else:
-            continue  # SourceFile
+            return None
+        if not (group0 and group1 and name):
+            return None
         if group0 == "ExifTool" and name == "Error":
-            unreadable = True
+            return None
         if group0 in _SKIPPED_GROUPS or group1 in _SKIPPED_GROUPS:
             continue
         if group1 == "File" and name == "FileType":
             file_type = _as_text(value)
         entries.append(Tag(group0, group1, name, _as_text(value)))
-    if unreadable:
-        raise MetadataStripError("metadata read-back: exiftool reported an error on the file")
+    if not file_type:  # exiftool always names the type of a file it read: `[{}]` is no read
+        return None
     return Tags(file_type, tuple(entries))
+
+
+def read_tags(path: str | Path) -> Tags:
+    """Every tag exiftool reads from `path`, except file-system facts and composites."""
+    file = _absolute(path)
+    done = _exiftool([*_READ_ARGS, str(file)])
+    pairs = _parse(done.stdout) if done is not None and done.returncode == 0 else None
+    tags = None
+    if pairs is not None:
+        # Raised after the except block: unexpected JSON (a non-pair, a non-string key, a
+        # value json can't dump) must fail closed without chaining the original error.
+        try:
+            tags = _tags(pairs)
+        except (ValueError, TypeError, AttributeError):
+            tags = None
+    if tags is None:
+        raise MetadataStripError("metadata read-back: exiftool's output could not be accounted for")
+    return tags
 
 
 @functools.cache
@@ -212,8 +250,23 @@ def _known_tags() -> frozenset[str]:
     done = _exiftool(["-list"])
     if done is None or done.returncode != 0:
         raise MetadataStripError("metadata strip: exiftool could not list its tag names")
-    words = done.stdout.decode("ascii", "replace").split()
-    return frozenset(word for word in words if _NAME.fullmatch(word))
+    return _tag_names(done.stdout.decode("ascii", "replace"))
+
+
+def _tag_names(listing: str) -> frozenset[str]:
+    """The indented name lines under `Available tags:` only: neither a section header's
+    words nor the `Command-line shortcuts:` section count as tag names."""
+    names: set[str] = set()
+    in_tags = False
+    for line in listing.splitlines():
+        if not line.strip():
+            continue
+        if not line[:1].isspace():
+            in_tags = line.strip() == "Available tags:"
+            continue
+        if in_tags:
+            names.update(word for word in line.split() if _NAME.fullmatch(word))
+    return frozenset(names)
 
 
 def log_field(tag: Tag) -> str:

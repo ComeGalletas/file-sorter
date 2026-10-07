@@ -72,7 +72,7 @@ Decisions:
 ## SAN-001 — Plan
 
 1. **SAN-001.1, rules and text redaction (pure):** `classifier/sanitize/rules.py` loads and validates `sanitize.yaml` (pydantic). `sanitize_text(text, field, rules, entity=None) -> (text, list[Redaction])` applies literal then regex, then the entity callable when one is given (D1). `Redaction` carries `rule_id`, `field`, `before_hash`, `after_value`. Unit tests on synthetic values, with the separator variants and an empty or missing rules file.
-2. **SAN-001.2, metadata strip (pure, exiftool):** `classifier/sanitize/exif.py`: `strip_metadata(path, keep, always_drop) -> list[Redaction]` and `read_tags(path)`, both through exiftool in a subprocess with fixed arguments (D3). Unit tests generate JPEG, PNG, WebP, GIF, TIFF and HEIC files in code, with seeded GPS, serial, artist, software, XMP and IPTC tags, and check that only the keep list survives and that the pixels are unchanged.
+2. **SAN-001.2, metadata strip (pure, exiftool):** `classifier/sanitize/exif.py`: ~~`strip_metadata(path, keep, always_drop) -> list[Redaction]`~~ superseded by `strip_metadata(path, rules) -> list[Redaction]` (approved on #48: the keep list, the `exif_field` drops and the log key all come from the loaded `Rules`) and `read_tags(path)`, both through exiftool in a subprocess with fixed arguments (D3). Unit tests generate JPEG, PNG, WebP, GIF, TIFF and HEIC files in code, with seeded GPS, serial, artist, software, XMP and IPTC tags, and check that only the keep list survives and that the pixels are unchanged.
 3. **SAN-001.3, the entity rule:** `classifier/sanitize/entity.py` adapts MOD-001.2's `detect_entities` to the callable that `sanitize_text` takes. Spans not literally present in the text, and labels the rule doesn't name, are dropped. Failures raise one typed error that the node maps to D2. Unit tests use a fake detector.
 4. **SAN-001.4, the node:** `classifier/graph/sanitize.py` and its registration in `REGISTRY`. `NodeContext` gains `results_root` and the config. It selects `queued` rows (P-4), applies D9 per file, writes `files.original_sanitized`, the log rows and the status. It returns typed counts (sanitized, errored). Integration test: ingest then sanitize, on synthetic images with seeded metadata and seeded names, with recorded entity responses (TST-005.1); a re-run is a no-op; the source tree is unchanged; logs carry no name.
 
@@ -83,7 +83,8 @@ Decisions:
   - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14) · `f8a4008`
   - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops · `c883721`
   - [x] SAN-001.2.3 — Results · `e269df7`
-  - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task)
+  - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task) · `51e1b95`
+  - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
@@ -133,7 +134,12 @@ Decisions:
 - **Status:** DONE_WITH_CONCERNS.
   - **Concern (low):** the structure allow-list comes from synthetic files. A real file may carry a structure tag that isn't listed, most likely in HEIC from a phone. That file then fails closed (`error`, retried) rather than leaking. Gate 2 on the real fixtures will show it. Follow-up: widen the list in a `SAN` balance task if gate 2 reports residuals.
 - **Self-rating:** 9/10, proud: yes. Gap: the allow-list concern above. Maker notes aren't seeded, because exiftool can't create them from scratch; `-all=` removes the whole EXIF block that holds them.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** round 1 at 51e1b95: Reviewer APPROVE with minors, Privacy auditor FAIL. SAN-001.2.5 fixes all six findings:
+  - `_absolute` raises fixed text, unchained, when `is_symlink`, `resolve` or `is_file` raises an `OSError` (whose message holds the path). It also refuses a symlinked working copy.
+  - `read_tags` fails closed on a key that isn't `<group>:<tag>` or `<group0>:<group1>:<tag>` (other than `SourceFile`). Before, such a key was skipped and escaped the read-back check. It also fails closed on JSON of an unexpected shape, and on a read with no `File:FileType`.
+  - `_known_tags` takes only the indented lines under `Available tags:`, so header words and the command-line shortcuts aren't known tag names.
+  - The Plan line now shows `strip_metadata(path, rules)`.
+  - Tests: `test_exif.py` 51 passed; `tests/unit/sanitize/` with `tests/devtools` 191 passed. Re-review pending.
 
 ### SAN-001.3 (worker: pipeline)
 
