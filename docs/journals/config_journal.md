@@ -74,6 +74,10 @@ references or host paths here. Use hashes.
 ## CFG-002 — Tasks
 
 - [ ] CFG-002.1 — The four hardening items with their unit tests · #44 · acceptance: `tests/unit/config/test_config.py`
+  - [x] CFG-002.1.1 — Value-free load errors: YAML, UTF-8 and validation errors become `ConfigError`, rebuilt from location and type, with no exception chain
+  - [ ] CFG-002.1.2 — `check_roots`: absolute roots, a leading `//` collapsed, no path in the message
+  - [ ] CFG-002.1.3 — CFG-001.D2: `DB_DSN` always wins, a non-null `db.dsn` in the file is refused, `db.dsn` hidden from `repr`
+  - [ ] CFG-002.1.4 — CLI `dry-run`: drop the dead `except ValidationError` branch, test the value-free exit
 
 ## CFG-002 — Results
 

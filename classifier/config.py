@@ -3,6 +3,9 @@
 `config.yaml` holds container paths only. Every section is a strict model: an unknown key
 is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1) and the
 `classify.*.default_min_score` values (calibrated in M3).
+
+No error raised by `load_config` repeats a value from the file or the environment: messages
+name the file, the key location and the error type only (CFG-002).
 """
 
 import os
@@ -11,7 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 CONFIG_ENV = "CLASSIFIER_CONFIG"
 DSN_ENV = "DB_DSN"
@@ -127,6 +130,36 @@ class Config(_Section):
     db: DbConfig
 
 
+def _key_names(model: type[BaseModel]) -> frozenset[str]:
+    names: set[str] = set()
+    for name, info in model.model_fields.items():
+        names.add(name)
+        if isinstance(info.annotation, type) and issubclass(info.annotation, BaseModel):
+            names |= _key_names(info.annotation)
+    return frozenset(names)
+
+
+_KNOWN_KEYS = _key_names(Config)
+
+
+def _where(loc: tuple[int | str, ...]) -> str:
+    """The error's location. An unknown key is not named: a misplaced value can land there."""
+    text = ""
+    for part in loc:
+        if isinstance(part, int):
+            text += f"[{part}]"
+        else:
+            name = part if part in _KNOWN_KEYS else "<unknown key>"
+            text += f".{name}" if text else name
+    return text or "(top level)"
+
+
+def _describe(error: ValidationError) -> str:
+    """Rebuild pydantic's errors from location and type only: its `msg` and `input` may echo
+    a value from the file (CFG-002)."""
+    return "; ".join(f"{_where(err['loc'])}: {err['type']}" for err in error.errors())
+
+
 def _normalised(path: str) -> PurePosixPath:
     return PurePosixPath(posixpath.normpath(path))
 
@@ -154,10 +187,31 @@ def load_config(path: str | Path | None = None) -> Config:
     file = Path(source)
     if not file.is_file():
         raise ConfigError(f"config file not found: {file}")
-    data = yaml.safe_load(file.read_text(encoding="utf-8"))
+    # Each error is raised after its except block, from the location and type only, so the
+    # original exception (which quotes the file's text) is not even kept as __context__.
+    problem = None
+    try:
+        text = file.read_text(encoding="utf-8")
+    except UnicodeDecodeError:  # it holds the raw bytes
+        problem = f"config file is not UTF-8 text: {file}"
+    if problem is not None:
+        raise ConfigError(problem)
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        line = f" at line {mark.line + 1}" if mark is not None else ""
+        problem = f"config file is not valid YAML{line}: {file}"
+    if problem is not None:
+        raise ConfigError(problem)
     if not isinstance(data, dict):
         raise ConfigError(f"config file is not a mapping: {file}")
-    config = Config.model_validate(data)
+    try:
+        config = Config.model_validate(data)
+    except ValidationError as exc:
+        problem = f"invalid config file {file}: {_describe(exc)}"
+    if problem is not None:
+        raise ConfigError(problem)
     check_roots(config)
     dsn = config.db.dsn or os.environ.get(DSN_ENV)
     if not dsn:

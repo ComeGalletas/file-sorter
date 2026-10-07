@@ -159,3 +159,65 @@ def test_load_config_refuses_nested_roots(monkeypatch: pytest.MonkeyPatch, tmp_p
     data["paths"]["results_root"] = "/source/out"
     with pytest.raises(ConfigError, match="R-FOP-9"):
         load_config(write_config(tmp_path, data))
+
+
+# CFG-002.1.1: load errors carry no value from the file, and no exception chain.
+
+PLANTED = "PLANTED-SECRET-cfg002"
+
+
+def assert_value_free(error: ConfigError) -> None:
+    assert PLANTED not in str(error)
+    assert PLANTED not in repr(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+def load_error(file: Path) -> ConfigError:
+    with pytest.raises(ConfigError) as info:
+        load_config(file)
+    return info.value
+
+
+def test_invalid_yaml_names_the_line_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    file = tmp_path / "config.yaml"
+    file.write_text(f"paths:\n  source_root: [{PLANTED}\n", encoding="utf-8")
+    error = load_error(file)
+    assert "not valid YAML at line" in str(error)
+    assert_value_free(error)
+
+
+def test_non_utf8_file_is_refused_without_its_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    file = tmp_path / "config.yaml"
+    file.write_bytes(PLANTED.encode() + b"\xff\xfe\n")
+    error = load_error(file)
+    assert "not UTF-8" in str(error)
+    assert_value_free(error)
+
+
+def test_invalid_value_names_the_key_and_type_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    data["classify"]["score"] = PLANTED
+    data["thumbs"]["size"] = PLANTED
+    error = load_error(write_config(tmp_path, data))
+    assert "classify.score: literal_error" in str(error)
+    assert "thumbs.size: int_parsing" in str(error)
+    assert_value_free(error)
+
+
+def test_unknown_key_is_not_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    data["paths"][PLANTED] = PLANTED
+    data[PLANTED] = 1
+    error = load_error(write_config(tmp_path, data))
+    assert "paths.<unknown key>: extra_forbidden" in str(error)
+    assert "<unknown key>: extra_forbidden" in str(error)
+    assert_value_free(error)
