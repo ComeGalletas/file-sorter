@@ -68,7 +68,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval · f5dda51
   - [x] MOD-001.2.10 — After TST-005.1 (#71) merged: the gpu test takes `ollama_transport("models")` and records with `--record-ollama`; this task's own recorder and key code are removed. All 21 recordings pass #71's lint, and a `--record-ollama` run wrote nothing new and found no changed answer · d656aee
   - [x] MOD-001.2.11 — PR #72 round 2 (privacy): two real given names in the gpu test replaced with invented ones, their two recordings deleted and re-recorded with `--record-ollama`; three borderline eval names swapped (list v3), eval re-run · d9e27cb. With origin/main 3033ef4 (#74) merged in (055c9f5): `make test` 910 passed, the gpu tier 24 passed, lint clean
-  - [x] MOD-001.2.12 — PR #72 round 3 (privacy, final name sweep): five names swapped for unmistakably artificial coinages in the eval list (v4), the gpu test and one unit-test string; the three recordings holding them deleted and re-recorded with `--record-ollama`; eval re-run (hash in Results)
+  - [x] MOD-001.2.12 — PR #72 round 3 (privacy, final name sweep): five names swapped for unmistakably artificial coinages in the eval list (v4), the gpu test and one unit-test string; the three recordings holding them deleted and re-recorded with `--record-ollama`; eval re-run · b3b5367. With origin/main 33b6579 (#75) merged in (a0b6ccd): `make test` 910 passed, the gpu tier 24 passed, lint clean
 
 ## MOD-001 — Results
 
