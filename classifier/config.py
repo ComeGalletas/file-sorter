@@ -161,20 +161,28 @@ def _describe(error: ValidationError) -> str:
 
 
 def _normalised(path: str) -> PurePosixPath:
-    return PurePosixPath(posixpath.normpath(path))
+    normal = posixpath.normpath(path)
+    if normal.startswith("//"):  # normpath keeps exactly two leading slashes (POSIX)
+        normal = "/" + normal.lstrip("/")
+    return PurePosixPath(normal)
 
 
 def check_roots(config: Config) -> None:
-    """Refuse when the roots are equal or one is inside the other (R-FOP-9).
+    """Refuse unless both roots are absolute, distinct and not nested (R-FOP-9, CFG-002).
 
     Pure path comparison: trailing slashes, `//` and `..` segments are normalised first,
-    and nothing on disk is touched.
+    and nothing on disk is touched. The messages name the keys, never the paths.
     """
     source = _normalised(config.paths.source_root)
     results = _normalised(config.paths.results_root)
+    if not (source.is_absolute() and results.is_absolute()):
+        raise ConfigError(
+            "paths.source_root and paths.results_root must both be absolute container "
+            "paths (R-FOP-9)"
+        )
     if source == results or source in results.parents or results in source.parents:
         raise ConfigError(
-            f"source_root ({source}) and results_root ({results}) must not be the same "
+            "paths.source_root and paths.results_root must not be the same "
             "or nested in one another (R-FOP-9)"
         )
 

@@ -221,3 +221,52 @@ def test_unknown_key_is_not_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     assert "paths.<unknown key>: extra_forbidden" in str(error)
     assert "<unknown key>: extra_forbidden" in str(error)
     assert_value_free(error)
+
+
+# CFG-002.1.2: absolute roots only, a leading `//` collapsed, no path in the message.
+
+
+@pytest.mark.parametrize(
+    ("source", "results"),
+    [
+        ("//data", "/data/results"),
+        ("/data", "//data/results"),
+        ("//data", "//data"),
+        ("//data/source", "/data/source/"),
+    ],
+)
+def test_leading_double_slash_is_collapsed(source: str, results: str) -> None:
+    with pytest.raises(ConfigError, match="nested"):
+        check_roots(with_roots(source, results))
+
+
+def test_double_slash_siblings_pass() -> None:
+    check_roots(with_roots("//source", "/results"))
+
+
+@pytest.mark.parametrize(
+    ("source", "results"),
+    [
+        ("source", "results"),
+        ("source", "/results"),
+        ("/source", "results"),
+        ("./source", "/results"),
+        ("", "/results"),
+    ],
+)
+def test_relative_or_mixed_roots_are_refused(source: str, results: str) -> None:
+    with pytest.raises(ConfigError, match="absolute") as info:
+        check_roots(with_roots(source, results))
+    assert info.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    ("source", "results"),
+    [(f"/{PLANTED}", f"/{PLANTED}/out"), (PLANTED, "/results")],
+)
+def test_root_errors_name_the_keys_not_the_paths(source: str, results: str) -> None:
+    with pytest.raises(ConfigError) as info:
+        check_roots(with_roots(source, results))
+    assert "paths.source_root" in str(info.value)
+    assert PLANTED not in str(info.value)
+    assert PLANTED not in repr(info.value)
