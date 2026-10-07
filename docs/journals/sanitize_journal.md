@@ -112,14 +112,27 @@ Decisions:
 - `classifier/fileops/` is empty and owned by Pipeline. `delete.py` doesn't exist yet and isn't needed in M2.
 - `.work/` sits on the results drive, so the rename is atomic (Q-3).
 - **FOP-001.D1** — **The transform runs before the rename** (lead, 2026-10-07). The strip works on the temp file, so a half-sanitized file never appears under its final name. A leftover working copy from a crashed run belongs to a `queued` row, and replacing it is `.work/` clean-up, allowed only in `copy_move.py` (R-FOP-6). Temp files are named `.<source_hash>.<ext>.tmp`.
+- **FOP-001.D2** — **`write_new` publishes with `os.link`, with a fallback** (lead, 2026-10-07, on #46). The link fails instead of replacing a file that appeared meanwhile. Hard links aren't guaranteed on the Windows bind mount under Docker Desktop, so when `os.link` raises `EPERM`, `ENOTSUP`, `EOPNOTSUPP` or `EXDEV`, the helper checks `exists()` and then uses `os.rename`. That fallback's only race is two concurrent writers: M2's single run can't have them, and the run lock (R-API-6) closes it later. Both paths are tested. The returned hash of the working copy is named `copy_sha256`, so it can't be taken for `source_hash`.
 - R-FOP-3 (`.work/` cleaned on start) is not implemented in M2. See SAN-001.D7 for the conflict it raises in M7.
 
 ## FOP-001 — Tasks
 
-- [ ] FOP-001.1 — `make_working_copy` and the write-new helper · #46 · acceptance: `tests/unit/fileops/test_working_copy.py`
+- [x] FOP-001.1 — `make_working_copy` and the write-new helper · #46 · acceptance: `tests/unit/fileops/test_working_copy.py`
+  - [x] FOP-001.1.1 — `make_working_copy` in `classifier/fileops/copy_move.py`, returning `WorkingCopy(path, copy_sha256)` · `4dfe3c2`
+  - [x] FOP-001.1.2 — `write_new`: keep an existing file, publish with `os.link`, fallback per FOP-001.D2 · `8c4e1d4`
 
 ## FOP-001 — Results
 
 ### FOP-001.1 (worker: pipeline)
 
-- **Status:**
+- **Status:** DONE. FOP-001.1.1 landed in `4dfe3c2`, FOP-001.1.2 in `8c4e1d4` (PR #62).
+- **Triage:** medium, solo, unit tier. New behavior inside one package (`classifier/fileops/`), no contract change.
+- **Tests:**
+  - **Acceptance:** `tests/unit/fileops/test_working_copy.py`, 35 tests, all passing. All synthetic bytes under `tmp_path`.
+  - `make_working_copy`: the transformed copy is published under `<source_hash>.<ext>`, and `copy_sha256` is the hash of the copy, not of the source. The transform runs on `.<source_hash>.<ext>.tmp` before the final name exists. The source's bytes, size, mode and mtime don't change, and a read-only source works. A failing transform, a missing source or a failing rename leaves no file and re-raises. A stale temp and a stale working copy are replaced, and other files are left alone. A bad `source_hash` or `ext` is refused before anything is written.
+  - `write_new`: it writes when the file is absent and creates the folder. It keeps an existing file (bytes and mtime) and returns False. A file that appears before the link is kept. A stale temp is replaced. The FOP-001.D2 fallback, with `os.link` monkeypatched to raise each of `EPERM`, `ENOTSUP`, `EOPNOTSUPP` and `EXDEV`, writes the file, keeps one that appeared meanwhile and leaves no temp. Any other link error propagates and leaves nothing.
+  - **Mutation checks, each reverted:** (1) fallback without the `exists()` check: 1 failed. (2) `os.link` → `os.replace`: 3 failed. (3) temp clean-up removed: 7 failed. (4) hash taken before the transform: 2 failed.
+  - **Lint:** `make lint` clean. **Default tiers:** the pre-push gate ran 501 passed (unit 438, db 42, integration 21), then the acceptance test, 35 passed.
+- **Self-rating:** 9/10, proud: yes. Gap: the `os.link` path on the real Windows bind mount isn't exercised here. Unit tests run on the container's own filesystem, so the fallback is proven only by monkeypatching. Which path is actually taken there is first seen when the `sanitize` node writes thumbnails into the real results mount (SAN-001, ING-002).
+- **Review:** pending, PR #62.
+- **Deferred:** the R-FOP-6 grep test for unlink/remove calls outside `delete.py`/`copy_move.py` (not in this issue), and R-FOP-3 clean-on-start (not in M2, see above).
