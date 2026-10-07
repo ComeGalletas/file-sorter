@@ -1,7 +1,7 @@
 # Ledger — journal
 
-**ID:** DB-001 · **Systems:** DB · **Type:** feature · **Status:** done · **Milestone:** m1 ·
-**Issues:** #14 · **Branch:** `office/pixel-7049` (DB-001.1)
+**ID:** DB-001 (+ DB-002) · **Systems:** DB · **Type:** feature · **Status:** DB-001 done; DB-002 proposed · **Milestone:** m1 (DB-002: m2) ·
+**Issues:** #14, #45 (DB-002.1) · **Branch:** `office/pixel-7049` (DB-001.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -57,3 +57,32 @@ references or host paths here. Use hashes.
   - `updated_at` refreshes only through the ORM (`onupdate`, per the lead's note). Raw SQL updates must set it.
   - `status` is a native Postgres enum. Adding a value later needs `alter type ... add value` in its own migration.
   - Test isolation: the tests run in a throwaway schema dropped with `cascade`, so the shared `db-test` is left as found (see the test docstring).
+
+---
+
+## DB-002 — Requirement (DESIGN.md M2, 2026-10-07)
+
+- **Objective:** Add the `sanitize_log` table and the column that holds a file's sanitized name.
+- **Details:**
+  - Migration `0002`: `sanitize_log` with `id` (bigserial), `source_hash` (FK to `files`), `rule_id`, `field`, `before_hash` (64 hex), `after_value` (nullable), `created_at`; an index on `source_hash` (R-SAN-6).
+  - `files.original_sanitized` (text, nullable): the sanitized stem (SAN-001.D8).
+  - SQLAlchemy models mirror both.
+- **Constraint:** Alembic keeps one head: `down_revision` is `0001`. `after_value` holds only the replacement token, never an original value. No other §5 table yet.
+- **Implements:** DESIGN.md §5 (`sanitize_log`), R-SAN-6, SAN-001.D8.
+
+## DB-002 — Confirmed reading
+
+- `0001_files.py` is the only migration, so `0002` is the head after it.
+- **DB-002.D1** — **`field` values** (lead, 2026-10-07): `filename`, `path_segment`, or `exif:<tag name>` (SAN-001.D3, D8), enforced by a check constraint on the prefix. Tag names aren't sensitive; their values are only ever hashed.
+- **DB-002.D2** — **No cascade** (lead, 2026-10-07): a `files` row is never deleted (`deleted` is a status), so the FK has no `on delete cascade`.
+- The hash in `before_hash` follows SAN-001.D5 (open, for the human). The column is 64 hex characters either way.
+
+## DB-002 — Tasks
+
+- [ ] DB-002.1 — Migration `0002`: `sanitize_log` and `files.original_sanitized` · #45 · acceptance: `tests/db/ledger/test_sanitize_log_migration.py`
+
+## DB-002 — Results
+
+### DB-002.1 (worker: pipeline)
+
+- **Status:**

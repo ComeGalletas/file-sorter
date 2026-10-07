@@ -1,7 +1,7 @@
 # Config loading — journal
 
-**ID:** CFG-001 (+ CFG-002) · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** CFG-001 done; CFG-002 proposed · **Milestone:** m1 (CFG-002: not scheduled) ·
-**Issues:** #13 (PR #26) · **Branch:** `office/pixel-0686` (CFG-001.1)
+**ID:** CFG-001 (+ CFG-002) · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** CFG-001 done; CFG-002 proposed · **Milestone:** m1 (CFG-002: m2, proposed) ·
+**Issues:** #13 (PR #26), #44 (CFG-002.1) · **Branch:** `office/pixel-0686` (CFG-001.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -69,11 +69,11 @@ references or host paths here. Use hashes.
 ## CFG-002 — Confirmed reading
 
 - `classifier/config.py` and `tests/unit/config/test_config.py` are on `main` (PR #26). `config.yaml` ships `db.dsn: null`, so refusing a non-null value breaks nothing that is committed.
-- Not in the approved M1 plan. **The human schedules it**, either into M1 before G1 or into M2.
+- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): it is independent of the sanitizer, and item 3 keeps the database password out of the committed file. The human confirms or drops it when approving `docs/plans/m2.md`.
 
 ## CFG-002 — Tasks
 
-- [ ] CFG-002.1 — The four hardening items with their unit tests · issue: opened when scheduled · acceptance: `tests/unit/config/test_config.py`
+- [ ] CFG-002.1 — The four hardening items with their unit tests · #44 · acceptance: `tests/unit/config/test_config.py`
 
 ## CFG-002 — Results
 

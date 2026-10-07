@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-002 · SAN-001 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-001 · API-001 · MOD-001 · PIPE-002 · CFG-003 · RUN-011 · DB-002 · CLI-003 · TST-005 · DOC-007
+**Next free:** ING-003 · SAN-002 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-002 · API-001 · MOD-002 · PIPE-002 · CFG-003 · RUN-011 · DB-003 · CLI-004 · TST-006 · DOC-007
 
 ## Work items
 
@@ -27,14 +27,21 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | CLI-001 | `classifier --version` prints the package version (harness dry run, runbook step 6) | CLI | feature | done | — | #2 (PR #5) | [harness_journal.md](harness_journal.md) | `office/nibble-2cb1` | 2026-10-05 |
 | TST-001 | Deliberately failing probe test: proves the pre-push gate blocks a red branch; never fixed or merged | TST, RUN | process | blocked (by design: the push was rejected, TST-001.D1) | — | #3 (open, no PR) | [harness_journal.md](harness_journal.md) | `office/sprocket-0819` (local only, never pushed) | 2026-10-05 |
 | CFG-001 | Typed config loader; refuse nested source and results roots | CFG, FOP | feature | done | m1 | #13 (PR #26) | [config_journal.md](config_journal.md) | `office/pixel-0686` | 2026-10-06 |
-| CFG-002 | Config loader hardening from PR #26's review: leading `//` and absolute roots, errors without input values, `DB_DSN` always wins (CFG-001.D2) | CFG | refactor | proposed (not scheduled; the human picks M1 or M2) | — | — | [config_journal.md](config_journal.md) | — | 2026-10-06 |
+| CFG-002 | Config loader hardening from PR #26's review: leading `//` and absolute roots, errors without input values, `DB_DSN` always wins (CFG-001.D2) | CFG | refactor | proposed (M2, pending the human at G0) | m2 | #44 | [config_journal.md](config_journal.md) | — | 2026-10-06 |
 | DB-001 | Alembic set-up and the `files` ledger | DB | feature | done | m1 | #14 (PR #30) | [ledger_journal.md](ledger_journal.md) | `office/pixel-7049` | 2026-10-06 |
 | ING-001 | Hashing, discovery, frame probing and the ingest node | ING, PIPE, DB | feature | done | m1 | #15 (PR #27), #16 (PR #33), #34 (PR #36) | [ingest_journal.md](ingest_journal.md) | per task (`office/*`) | 2026-10-06 |
 | PIPE-001 | Batch graph skeleton with dry-run mode | PIPE | feature | done | m1 | #17 (PR #35) | [pipeline_journal.md](pipeline_journal.md) | `office/pixel-3a83` | 2026-10-06 |
 | CLI-002 | `classifier dry-run [--csv]` | CLI, PIPE, FOP | feature | done | m1 | #18 (PR #38) | [pipeline_journal.md](pipeline_journal.md) | `office/pixel-9618` | 2026-10-06 |
 | TST-002 | Db fixture, tier audit, read-only source test, gate 1 | TST, RUN | feature | done (.2 with named gaps; gate 1 PASS at G1) | m1 | #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41) | [test_infra_journal.md](test_infra_journal.md) | `office/*` per task | 2026-10-06 |
-| TST-003 | A shared private-schema fixture for integration tests (from PR #35's `schema_support.py`) | TST | refactor | proposed (not scheduled; the human picks M1 or M2) | — | — | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-06 |
-| TST-004 | Tier audit enforces §3's fixtures rule: only `gate` and `gpu` may reference `fixtures/images` (from PR #40's review) | TST | refactor | proposed (not scheduled) | — | — | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-07 |
+| TST-003 | A shared private-schema fixture for integration tests (from PR #35's `schema_support.py`) | TST | refactor | proposed (M2, pending the human at G0) | m2 | #53 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-06 |
+| TST-004 | Tier audit enforces §3's fixtures rule: only `gate` and `gpu` may reference `fixtures/images` (from PR #40's review) | TST | refactor | proposed (M2, pending the human at G0) | m2 | #54 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-07 |
+| SAN-001 | Sanitizer: `sanitize.yaml` rules (literal, regex, entity, `exif_field`), lossless metadata strip through exiftool, `sanitize_log`, the `sanitize` node, failing closed | SAN, PIPE, MOD, DB | feature | proposed | m2 | #47, #48, #52, #56 | [sanitize_journal.md](sanitize_journal.md) | per task (`office/*`) | 2026-10-07 |
+| FOP-001 | The working copy in `results_root/.work/`: read-only source, temp file, transform, atomic rename; write-new helper | FOP, SAN | feature | proposed | m2 | #46 | [sanitize_journal.md](sanitize_journal.md) | — | 2026-10-07 |
+| DB-002 | Migration `0002`: `sanitize_log` and `files.original_sanitized` | DB, SAN | feature | proposed | m2 | #45 | [ledger_journal.md](ledger_journal.md) | — | 2026-10-07 |
+| ING-002 | Thumbnails from the sanitized working copy (R-ING-5, moved from M1 by ING-001.D1) | ING, FOP | feature | proposed | m2 | #49 | [ingest_journal.md](ingest_journal.md) | — | 2026-10-07 |
+| MOD-001 | Ollama text client with a transport seam; entity-detection prompt, `detect_entities`, its eval and recordings | MOD, SAN, TST | feature | proposed | m2 | #50, #51 | [models_journal.md](models_journal.md) | — | 2026-10-07 |
+| CLI-003 | `classifier dry-run` reports the sanitize node: counts, `sanitized_name` column | CLI, SAN | feature | proposed | m2 | #57 | [pipeline_journal.md](pipeline_journal.md) | — | 2026-10-07 |
+| TST-005 | Ollama replay for the default tiers (`tests/recordings/`); gate 2 | TST, MOD, SAN | feature | proposed | m2 | #55, #58 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-07 |
 | DOC-001 | Process standard: work IDs, journals, index, commits, triage, completion status, self-rating, test tiers (adopted from the pygame project) | DOC, TST | process | done | — | — | [process_standard_journal.md](process_standard_journal.md) | main | 2026-10-05 |
 | DOC-002 | Design review: the plan reconciled into DESIGN.md (C-1 to C-20, open questions answered) | DOC, all | process | done | — | — | [design_review_journal.md](design_review_journal.md) | main | 2026-10-05 |
 | DOC-003 | Windows-native workspace: Docker Desktop host, `file-sorter-full` layout, agent-office from the fork | DOC, RUN | process | done | — | — | [workspace_journal.md](workspace_journal.md) | main | 2026-10-05 |
@@ -52,5 +59,6 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | [TEMPLATE.md](TEMPLATE.md) | DOC-001 |
 | [../plans/TEMPLATE.md](../plans/TEMPLATE.md) | DOC-001 |
 | [../plans/m1.md](../plans/m1.md) | M1: CFG-001, DB-001, ING-001 (incl. ING-001.3, #34), PIPE-001, CLI-002, TST-002 |
+| [../plans/m2.md](../plans/m2.md) | M2 (draft): SAN-001, FOP-001, DB-002, ING-002, MOD-001, CLI-003, TST-005; from the backlog, pending the human: CFG-002, TST-003, TST-004 |
 | [../../.claude/roles/README.md](../../.claude/roles/README.md) | RUN-002 |
 | `../../fixtures/labels.csv` (git-ignored) | CLS-001, M3 gate |

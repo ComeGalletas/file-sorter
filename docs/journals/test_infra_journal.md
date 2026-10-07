@@ -1,7 +1,7 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 proposed · **Milestone:** m1 ·
-**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003, TST-004 and TST-005 proposed · **Milestone:** m1 (TST-003 to TST-005: m2) ·
+**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -145,11 +145,11 @@ references or host paths here. Use hashes.
 
 ## TST-003 — Confirmed reading
 
-- Not in the approved M1 plan. **The human schedules it**, with M1 before G1 or with M2. Until then, CLI-002.1 may import `schema_support.py` as is.
+- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): SAN-001.4 and CLI-003.1 add integration tests that need the same helper, so it goes first. The human confirms or drops it when approving `docs/plans/m2.md`.
 
 ## TST-003 — Tasks
 
-- [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · issue: opened when scheduled · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
+- [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
 
 ## TST-003 — Results
 
@@ -171,14 +171,51 @@ references or host paths here. Use hashes.
 
 ## TST-004 — Confirmed reading
 
-- Not in M1's plan. **The human schedules it**, likely with M2.
+- Not in M1's plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): gate 2 is the first M2 code to read the real fixtures, so the audit should guard the other tiers before it lands. The human confirms or drops it when approving `docs/plans/m2.md`.
 
 ## TST-004 — Tasks
 
-- [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · issue: opened when scheduled · acceptance: `tests/devtools/test_tier_audit.py`
+- [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py`
 
 ## TST-004 — Results
 
 ### TST-004.1 (worker: qa)
+
+- **Status:**
+
+---
+
+## TST-005 — Requirement (DESIGN.md M2, 2026-10-07)
+
+- **Objective:** Replay recorded LLM responses outside the `gpu` tier, and measure gate 2.
+- **Details:**
+  - **Replay (TST-005.1):** an `httpx` transport that serves recorded Ollama responses from `tests/recordings/`, keyed by the request, plugged into MOD-001.1's transport seam through a shared fixture. Outside `gpu`, a missing recording fails, naming its key and the test. It never falls through to live Ollama. In the `gpu` tier, record mode writes new recordings.
+  - **Gate 2 (TST-005.2):** `scripts/gate_2.py` measures §11's criterion:
+    - **names:** 50 seeded names, deterministic (pinned seed), sanitized by the real `sanitize` path; 0 seeded values may survive;
+    - **metadata:** synthetic images with seeded EXIF, XMP, IPTC and GPS tags, plus the sanitized copies of the real fixtures; every output's tags must be inside the keep list and the file-structure tags.
+  - It prints percentages, counts of the synthetic seeds, and PASS or FAIL. Never a name, a value or a count about the real fixtures (DOC-005.D1).
+- **Constraint:** Recordings are made from synthetic strings only (SAN-001.D10). The gate never prints or records the human's `sanitize.yaml` values. Never skip: a missing prerequisite (Ollama, the model, `sanitize.yaml`) fails with a message naming it.
+- **Implements:** CLAUDE.md §3 (determinism, recordings), DESIGN.md §11 M2 gate, R-SAN-2, R-SAN-3, R-SAN-4.
+
+## TST-005 — Confirmed reading
+
+- `scripts/gate_2.py` is a stub that exits 1 (RUN-002.4). `make gate-2` already runs it in the `test` container, which reaches `ollama` and mounts the real fixtures read-only (RUN-009).
+- `tests/recordings/` is empty and QA-owned.
+- **TST-005.D1** — **Who commits a task's recordings?** Open, for the human (see `docs/plans/m2.md`).
+- **TST-005.D2** — **Where gate 2's seeded values come from?** Open, for the human (see the plan).
+- **TST-005.D3** — **Recording format** (lead, 2026-10-07): one JSON file per request under `tests/recordings/<package>/`, named by the SHA-256 of the canonical request (model, prompt, schema, options). It stores the request and the response, so a reviewer can read both.
+
+## TST-005 — Tasks
+
+- [ ] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py`
+- [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
+
+## TST-005 — Results
+
+### TST-005.1 (worker: qa)
+
+- **Status:**
+
+### TST-005.2 (worker: qa)
 
 - **Status:**
