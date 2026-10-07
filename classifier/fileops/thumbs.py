@@ -39,7 +39,8 @@ def make_thumbnail(working_copy: Path, thumbs_dir: Path, name: str, size: int) -
     working copy isn't decoded (ING-002.D2). Otherwise the first frame or page (R-ING-6) is
     converted to RGB, or RGBA when it has alpha, shrunk with `thumbnail()` so the aspect
     ratio holds and a smaller image is never enlarged, and encoded as WebP with no metadata
-    (ING-002.D2). Pillow's errors propagate for the caller to record (SAN-001.D9).
+    (ING-002.D2). A copy that can't be read or decoded raises `OSError` with a fixed
+    message that names no file, for the caller to record (SAN-001.D9).
     """
     if not _SOURCE_HASH.fullmatch(name):
         raise ValueError("name must be the source_hash: 64 lowercase hex characters")
@@ -48,9 +49,18 @@ def make_thumbnail(working_copy: Path, thumbs_dir: Path, name: str, size: int) -
     dest = thumbs_dir / f"{name}.webp"
     if dest.exists():  # ING-002.D2: kept, never replaced
         return dest
-    with Image.open(working_copy) as image:  # opens on the first frame or page (R-ING-6)
-        mode = "RGBA" if _has_alpha(image) else "RGB"
-        frame = _to_8_bit(image).convert(mode)
+    # Decoded from memory, so Pillow never holds the path. A read or decode error is raised
+    # after its except block with a fixed message, so no __context__ can carry the path.
+    problem = None
+    try:
+        data = io.BytesIO(working_copy.read_bytes())
+        with Image.open(data) as image:  # opens on the first frame or page (R-ING-6)
+            mode = "RGBA" if _has_alpha(image) else "RGB"
+            frame = _to_8_bit(image).convert(mode)
+    except OSError as exc:  # covers UnidentifiedImageError and truncation
+        problem = type(exc).__name__
+    if problem is not None:
+        raise OSError(f"working copy could not be read or decoded ({problem})")
     frame.thumbnail((size, size))
     frame.info.clear()  # ING-002.D2: nothing carried over from the working copy
     buffer = io.BytesIO()

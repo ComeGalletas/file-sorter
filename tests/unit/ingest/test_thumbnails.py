@@ -104,11 +104,16 @@ class TestMode:
 
 
 class TestFirstFrame:  # R-ING-6
-    def test_animated_gif_uses_its_first_frame(self, work_dir: Path, thumbs_dir: Path) -> None:
+    @pytest.mark.parametrize("suffix", ["gif", "png", "webp"])  # GIF, APNG, animated WebP
+    def test_an_animation_uses_its_first_frame(
+        self, work_dir: Path, thumbs_dir: Path, suffix: str
+    ) -> None:
         first, second = Image.new("RGB", (80, 80), RED), Image.new("RGB", (80, 80), BLUE)
         copy = _save(
-            first, work_dir / f"{HASH}.gif", save_all=True, append_images=[second], duration=50
+            first, work_dir / f"{HASH}.{suffix}", save_all=True, append_images=[second], duration=50
         )
+        with Image.open(copy) as stored:
+            assert getattr(stored, "n_frames", 1) == 2  # the input really is animated
         thumb = _open(make_thumbnail(copy, thumbs_dir, HASH, SIZE))
         assert _close_to(thumb.getpixel((5, 5)), RED)
 
@@ -194,11 +199,21 @@ class TestFiles:
             make_thumbnail(copy, thumbs_dir, HASH, size)
         assert not thumbs_dir.exists()
 
-    def test_an_undecodable_copy_raises_and_writes_nothing(
-        self, work_dir: Path, thumbs_dir: Path
+    @pytest.mark.parametrize("case", ["not an image", "truncated", "missing"])
+    def test_an_unreadable_copy_raises_a_message_naming_no_file(
+        self, work_dir: Path, thumbs_dir: Path, case: str
     ) -> None:
         copy = work_dir / f"{HASH}.png"
-        copy.write_bytes(b"not an image at all")
-        with pytest.raises(OSError):  # UnidentifiedImageError; SAN-001.D9 records it
+        if case == "not an image":
+            copy.write_bytes(b"not an image at all")
+        elif case == "truncated":
+            _save(Image.effect_noise((80, 80), 64).convert("RGB"), copy)
+            copy.write_bytes(copy.read_bytes()[:200])
+        with pytest.raises(OSError) as info:  # SAN-001.D9 records it
             make_thumbnail(copy, thumbs_dir, HASH, SIZE)
+        error = info.value
+        for text in (str(error), repr(error)):
+            assert str(work_dir) not in text and copy.name not in text and HASH not in text
+        assert error.filename is None
+        assert error.__context__ is None and error.__cause__ is None  # nothing chained
         assert not thumbs_dir.exists()
