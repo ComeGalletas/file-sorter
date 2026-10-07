@@ -70,8 +70,14 @@ under() { case "$(lower "$1")" in "$(lower "$2")"|"$(lower "$2")"/*) return 0 ;;
 # The command is normalized first: case-folded (Windows runs GIT and Git.exe as git), quotes
 # removed (bash -c "git merge x", git -C "a b" merge x), backslashes turned into slashes,
 # whitespace squeezed, then split into simple commands on ; & | ( ) and backticks.
+# RUN-008.D6: backslash-newline continuations are joined first (one command to bash). Then
+# the command is read TWICE, once with backslashes dropped (bash runs gi\t merge as git merge)
+# and once with backslashes as slashes (C:\x\git.exe); a segment that fails in either is refused.
 norm_segments() {
-  printf '%s\n' "$cmd" | tr 'A-Z' 'a-z' | tr -d "\"'" | tr '\\' '/' \
+  local joined
+  joined="$(printf '%s\n' "$cmd" | sed -e ':a' -e '/\\$/N; s/\\\n//; ta')"
+  { printf '%s\n' "$joined" | tr -d '\\'; printf '%s\n' "$joined" | tr '\\' '/'; } \
+    | tr 'A-Z' 'a-z' | tr -d "\"'" \
     | tr ';&|()`' '\n\n\n\n\n\n' \
     | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
@@ -84,7 +90,24 @@ has_word() { printf '%s' "$1" | grep -Eq "(^| |/)($2)( |\$)"; }
 # Only the exact sync forms pass (D1, D2). A commit message that mentions these words must
 # go through `git commit -F <file>`: the false positive is the price of failing closed.
 worker_bash_ok() {
-  local seg
+  local seg segs indirect=0 guarded=0
+  segs="$(norm_segments)"
+  # RUN-008.D6: a command built at run time ($(...), backticks, ${...}, eval, or a variable as
+  # the program) can split "git" from "merge". It is refused when it names a guarded operation
+  # anywhere: merge, pull, tag, or push with main. Plain $(...) uses (a branch name, a commit
+  # message read from a file) still pass.
+  while IFS= read -r seg; do
+    case "$seg" in '$'*) indirect=1 ;; esac
+    has_word "$seg" 'eval' && indirect=1
+    printf '%s' "$seg" | grep -Eq '(^| |/|=)(merge|pull|tag)( |$)' && guarded=1   # also m=merge
+    has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)' && guarded=1
+  done <<EOF
+$segs
+EOF
+  printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && indirect=1
+  if [ "$indirect" = 1 ] && [ "$guarded" = 1 ]; then
+    why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)"; return 1
+  fi
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
     if has_word "$seg" 'gh|gh\.exe' && printf '%s' "$seg" | grep -Eq '(^| |/)merge( |$|\?)'; then
@@ -97,8 +120,8 @@ worker_bash_ok() {
     if has_word "$seg" 'tag'; then
       why="workers never tag; the mN-approved tags are the human's (CLAUDE.md section 1.6)"; return 1
     fi
-    if has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)'; then
-      why="workers never push to main; push your task branch and open a PR"; return 1
+    if has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)|(^| )--(mirror|all)( |$)'; then
+      why="workers never push to main (nor --all/--mirror, which include it); push your task branch and open a PR"; return 1
     fi
     if has_word "$seg" 'merge'; then
       printf '%s' "$seg" | grep -Eq '^git merge( --no-edit| --no-ff)* origin/main$' && continue
@@ -110,7 +133,7 @@ worker_bash_ok() {
       why="the only pull a worker runs is 'git pull --ff-only' (RUN-008.D2). A commit message that mentions pull goes through 'git commit -F <file>'"; return 1
     fi
   done <<EOF
-$(norm_segments)
+$segs
 EOF
   return 0
 }
@@ -145,6 +168,9 @@ where() {
   if under "$real" "$main"; then printf 'repo'; return; fi
   printf 'outside'
 }
+
+# RUN-008.D6: a shell call whose command can't be read is refused, never waved through.
+[ "$tool" = Bash ] && [ -z "$cmd" ] && deny "could not read the shell command from the hook input; refusing (RUN-008.D6)"
 
 if in_linked_worktree; then
   case "$tool" in
