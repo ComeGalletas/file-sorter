@@ -66,7 +66,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original · 0dbde86
   - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) · 9d7f8d9
   - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval · f5dda51
-  - [x] MOD-001.2.10 — After TST-005.1 (#71) merged: the gpu test takes `ollama_transport("models")` and records with `--record-ollama`; this task's own recorder and key code are removed. All 21 recordings pass #71's lint, and a `--record-ollama` run wrote nothing new and found no changed answer (hash in Results)
+  - [x] MOD-001.2.10 — After TST-005.1 (#71) merged: the gpu test takes `ollama_transport("models")` and records with `--record-ollama`; this task's own recorder and key code are removed. All 21 recordings pass #71's lint, and a `--record-ollama` run wrote nothing new and found no changed answer · d656aee
 
 ## MOD-001 — Results
 
@@ -109,6 +109,11 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - `make test` (unit + db + integration): 754 passed, after rebasing on 6203400. Unit tests added: `tests/unit/models/test_prompts.py`, `test_text_llm.py`, and 5 new cases in `test_ollama_client.py`.
   - The gpu tier (`tests/gpu/`): 22 passed against the real service, every recording matched.
   - After round 1, with origin/main merged in at 58077bf: `make test` 812 passed, the gpu tier 25 passed with all 21 recordings matched, `make lint` clean.
+  - After MOD-001.2.10, with origin/main 4835b93 (#71) merged in (a1f05a4):
+    - `make test`: 883 passed, including #71's recording lint over all 21 files.
+    - The gpu tier: 24 passed. The acceptance test has 22, one fewer because the old check-recordings test was removed.
+    - A `--record-ollama` run wrote nothing new.
+    - `make lint`: clean.
   - `make lint`: clean.
 - **Status:** DONE_WITH_CONCERNS.
   - Concern (medium): held-out recall is 98.7% with name list v2 (98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
