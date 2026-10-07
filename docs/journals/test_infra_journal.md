@@ -182,12 +182,14 @@ references or host paths here. Use hashes.
 ## TST-004 — Confirmed reading
 
 - Not in M1's plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): gate 2 is the first M2 code to read the real fixtures, so the audit should guard the other tiers before it lands. **Confirmed into M2 by the human, 2026-10-07.**
+- **TST-004.D1** — **A pinned exemption registry for modules that name the real fixtures without reading them** (QA, chosen by the lead on #54, 2026-10-07). Two `unit` modules name the path legitimately: `tests/unit/gate/test_gate_1_verdict.py` matches gate 1's error text, and `tests/unit/runtime/test_fixtures_mount.py` (RUN-009) asserts the compose mount and `make init`'s output and builds a tmp sandbox repo. `NAMES_FIXTURES_WITHOUT_READING` in the audit lists each such module with a one-line reason, pinned to the exact source text of every reference it may make, once per occurrence. A new reference in a listed module still fails, and so does a pin or an entry the tree no longer has. It is central and reviewed by QA; there is still no per-line escape hatch. Rejected: exempting whole modules (a later read would get through), and rewriting the two tests to dodge the literal (evasion).
+- **Scope** (lead, on #54): `fixtures/labels.csv` is covered too, by the same scanner and registry, because the labels are as private as the images. The committed `fixtures/labels.example.csv` stays legal. Only `test_fixtures_mount.py` names the labels file (five references), so no follow-up is needed.
 
 ## TST-004 — Tasks
 
 - [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py`
-  - [x] TST-004.1.1 — `scan_fixture_refs`: string constants (f-string parts included) and path joins naming `fixtures/images` or `fixtures/labels.csv`, with the exact source text; synthetic self-tests
-  - [ ] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree
+  - [x] TST-004.1.1 — `scan_fixture_refs`: string constants (f-string parts included) and path joins naming `fixtures/images` or `fixtures/labels.csv`, with the exact source text; synthetic self-tests · `0716374`
+  - [x] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree
   - [ ] TST-004.1.3 — Results
 
 ## TST-004 — Results
