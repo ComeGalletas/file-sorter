@@ -22,6 +22,16 @@ def _has_alpha(image: Image.Image) -> bool:
     return image.mode in _ALPHA_MODES or "transparency" in image.info
 
 
+def _to_8_bit(image: Image.Image) -> Image.Image:
+    """Scale 16-bit grayscale (`I;16*`, or `I` as 16-bit PNGs open) down to `L`.
+
+    A plain `convert("RGB")` clips every value above 255 to white (ING-002.1.3).
+    """
+    if image.mode == "I" or image.mode.startswith("I;16"):
+        return image.convert("I").point(lambda value: value / 256).convert("L")
+    return image
+
+
 def make_thumbnail(working_copy: Path, thumbs_dir: Path, name: str, size: int) -> Path:
     """Make `thumbs_dir/<name>.webp` from `working_copy`, longest side `size`, and return it.
 
@@ -39,7 +49,8 @@ def make_thumbnail(working_copy: Path, thumbs_dir: Path, name: str, size: int) -
     if dest.exists():  # ING-002.D2: kept, never replaced
         return dest
     with Image.open(working_copy) as image:  # opens on the first frame or page (R-ING-6)
-        frame = image.convert("RGBA" if _has_alpha(image) else "RGB")
+        mode = "RGBA" if _has_alpha(image) else "RGB"
+        frame = _to_8_bit(image).convert(mode)
     frame.thumbnail((size, size))
     frame.info.clear()  # ING-002.D2: nothing carried over from the working copy
     buffer = io.BytesIO()

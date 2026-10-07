@@ -92,6 +92,16 @@ class TestMode:
         assert thumb.getpixel((5, 5))[3] == 0  # the transparent half
         assert thumb.getpixel((SIZE - 5, 5))[3] == 255
 
+    @pytest.mark.parametrize("suffix", ["png", "tiff"])
+    def test_sixteen_bit_grey_is_scaled_not_clipped(
+        self, work_dir: Path, thumbs_dir: Path, suffix: str
+    ) -> None:  # ING-002.1.3: a plain convert("RGB") turns mid-grey into white
+        copy = _save(Image.new("I;16", (80, 80), 32768), work_dir / f"{HASH}.{suffix}")
+        assert _open(copy).mode.startswith("I")  # the input really is 16-bit
+        thumb = _open(make_thumbnail(copy, thumbs_dir, HASH, SIZE))
+        assert thumb.mode == "RGB"
+        assert _close_to(thumb.getpixel((5, 5)), (128, 128, 128))
+
 
 class TestFirstFrame:  # R-ING-6
     def test_animated_gif_uses_its_first_frame(self, work_dir: Path, thumbs_dir: Path) -> None:
