@@ -81,8 +81,8 @@ Decisions:
 - [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14) · `2a03903`
-  - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops
-  - [ ] SAN-001.2.3 — Results
+  - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops · `c768a11`
+  - [x] SAN-001.2.3 — Results
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
@@ -111,7 +111,29 @@ Decisions:
 
 ### SAN-001.2 (worker: pipeline)
 
-- **Status:**
+- **Built:** `classifier/sanitize/exif.py`: `read_tags(path) -> Tags` and `strip_metadata(path, rules) -> list[Redaction]`. FOP-001's transform is `partial(strip_metadata, rules=rules)`.
+  - exiftool runs with fixed argument lists, no shell, on an absolute path, with a fixed 120 s timeout. No tag value ever enters an argument.
+  - The strip is `-all=` with `--ICC_Profile:all --Adobe:all` (D4, D13), then `-tagsFromFile @` for the keep list minus `exif_field` tags (D3, D15).
+  - **Measured on exiftool 13.25:** on TIFF, `-all=` leaves the IFD0 `Artist`, `Software`, `Copyright` and `ImageDescription` in place. A targeted second pass (`-<group1>:<tag>=`) removes every tag left outside the allow-list. It never names a structure tag, because exiftool will delete a TIFF's `ImageWidth` if asked.
+  - **Read-back allow-list:** the keep list, the ICC groups, Adobe APP14, and a fixed per-group list of structure tags (File, TIFF IFD0, PNG, RIFF, GIF, HEIC QuickTime/Meta, the BMP header). It also allows the containers exiftool recreates for the keep list. Anything else raises `MetadataStripError` with `reason = sanitize_metadata_residual` (D2), as fixed text, unchained.
+  - BMP is not written, only read back.
+  - **Redactions:** one per removed tag value, with `rule_id` `exif-strip-all` or the `exif_field` rule's id (D12), an HMAC `before_hash`, and `after_value` None. The `field` is guarded per D14.
+- **Tests:** `tests/unit/sanitize/test_exif.py` (acceptance), unit tier: 38 passed; `tests/unit/sanitize/` 109 passed. Lint clean. Default tiers: at pre-push.
+  - JPEG, PNG, WebP, GIF, TIFF and HEIC are generated in code with an sRGB profile and seeded with synthetic GPS, serial, artist, software, copyright, description, comment, XMP and IPTC values. Only the keep list, ICC and structure survive. Decoded pixels and ICC bytes are identical, and the hashes match the seeded values.
+  - Also tested:
+    - the TIFF second pass; BMP is unchanged byte for byte; a second strip is a no-op;
+    - a CMYK JPEG keeps APP14 and its pixels; JFIF is removed; an empty keep list;
+    - `exif_field` on a keep tag, on another tag, and on structure/ICC tags (ignored, D15);
+    - residual, failing, missing and hung exiftool, a non-image, and error or unparseable output;
+    - option-like values and a file named `-ver`: the path is always absolute, and no value reaches an argument;
+    - planted secrets, including a PNG keyword, are absent from every `repr`/`str`, every `field`, the exceptions and the logs; a lone surrogate is hashed;
+    - every `field` matches DB-002.D1's check.
+  - **Mutation checks, run on a copy:** 7 of 8 were caught (removing the second pass, the ICC exclusion, the known-tag guard, D15's order, D12's rule id, the absolute path, or the residual check). Removing `--Adobe:all` is not observable, because exiftool's `-all=` already keeps APP14. The flag stays as an explicit statement of D13.
+- **Status:** DONE_WITH_CONCERNS.
+  - **Concern (low):** the structure allow-list comes from synthetic files. A real file may carry a structure tag that isn't listed, most likely in HEIC from a phone. That file then fails closed (`error`, retried) rather than leaking. Gate 2 on the real fixtures will show it. Follow-up: widen the list in a `SAN` balance task if gate 2 reports residuals.
+  - **Concern (low):** DB-002 isn't merged, so the test copies DB-002.D1's check regex rather than importing it. Follow-up: SAN-001.4 or DB-002 replaces the copy with an import.
+- **Self-rating:** 9/10, proud: yes. Gap: the allow-list concern above. Maker notes aren't seeded, because exiftool can't create them from scratch; `-all=` removes the whole EXIF block that holds them.
+- **Reviewer / Privacy auditor:** pending.
 
 ### SAN-001.3 (worker: pipeline)
 
