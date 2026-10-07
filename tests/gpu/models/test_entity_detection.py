@@ -42,8 +42,8 @@ ENTITY_CASES = [
     ("Durnhollow Athletic Club team photo 12", [("Durnhollow Athletic Club", "ORG")]),
     ("birthday_Oskarth_Venmire_party", [("Oskarth_Venmire", "PERSON")]),
     (
-        "trip.to.Ostrela.Bay.with.Tamsin.Druvel",
-        [("Ostrela.Bay", "LOCATION"), ("Tamsin.Druvel", "PERSON")],
+        "trip.to.Ostrela.Bay.with.Tavrelle.Druvel",
+        [("Ostrela.Bay", "LOCATION"), ("Tavrelle.Druvel", "PERSON")],
     ),
 ]
 # PR #72 round 1: names that try to end the turn, close the fence or override the rules.
@@ -74,7 +74,7 @@ SANITIZE_STRINGS = [
     "Velric_Haldric_2031-04-05_0007",
     "Saltreach Rowing Club regatta 03",
     "Ostrela_Bay_sunset_0012",
-    "Ysolde Kestrand at Corrowmere",
+    "Yselvane Kestrand at Corrowmere",
     "IMG_20310405_0001",
 ]
 

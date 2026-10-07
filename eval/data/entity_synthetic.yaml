@@ -2,19 +2,19 @@
 # Every value is invented: no real person, organisation, brand or place, and nothing that
 # could be read as the human's (SAN-001.D10). Add only invented names: no real given name,
 # surname, place, venue, company or brand, even as one part of a longer name (PR #72 round 1).
-version: 2
+version: 3
 
 people:
   first: [Zorvane, Mirelda, Oskarth, Tavrelle, Velric, Yselvane, Brannoch, Quenna, Darvik,
-          Elsquorra, Quorvenna, Drevalt, Ilsabet, Ilvarro, Fenwyck, Sarvela]
+          Elsquorra, Quorvenna, Drevalt, Ilsabet, Ilvarro, Fenvarrow, Sarvela]
   last: [Quillby, Toskan, Venmire, Druvel, Pemberquill, Pellumbra, Kestrand, Oruvane, Haldric,
          Wintermoss, Delvane, Scorrin, Tavernack, Vostrelle, Morcaster, Ulvenhold]
 
 orgs: [Quillfen Robotics, Durnhollow Athletic Club, Brakmoor Works, Ostrela Freight,
        Vexmarrow Studios, Hollowpine Academy, Saltreach Rowing Club, Krellwick Bakery,
-       Ombrequist Records, Thrennick Labs, Glimmerdeep Theatre, Pallisade Mutual]
+       Ombrequist Records, Thrennick Labs, Glimmerdeep Theatre, Pallivrenne Mutual]
 
-places: [Brakmoor Harbour, Velkarra, Ostrela Bay, Dunmarrow, Saltreach, Kestrel Fells,
+places: [Brakmoor Harbour, Velkarra, Ostrela Bay, Dunmarrow, Saltreach, Kesvrane Fells,
          Orvane Valley, Quelmarsh Reach, Corrowmere, Ostrevane, Lyrravale, Murkwater Bridge]
 
 # Filename-shaped patterns. {person}, {org}, {place} are the seeded entities; {date},
