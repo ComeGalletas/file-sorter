@@ -1,6 +1,6 @@
 # Bootstrap — journal
 
-**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007, RUN-008) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
+**ID:** RUN-001 (+ RUN-002, RUN-003, RUN-004, RUN-005, RUN-006, RUN-007, RUN-008, RUN-009) · **Systems:** RUN (+ CFG, TST, DOC) · **Type:** feature · **Status:** done (RUN-002 with concerns); RUN-004 proposed · **Milestone:** — (runbook steps 3–5 and their follow-ups) ·
 **Issues:** — (before the issue queue exists) · **Branch:** main for the bootstrap; one human-side PR branch per follow-up (RUN-007: `run-007-network-rule-scope`)
 
 ---
@@ -634,3 +634,31 @@ and then (PR #39 review round 2):
     - an alias already in the global git config;
     - `origin/main` shadowing (above).
 - **Self-rating:** 9/10, proud: yes. Gap: the residual limits, by design (D7).
+
+---
+
+## RUN-009 — Requirement (human, 2026-10-07)
+
+**Objective:** the `gate` and `gpu` tiers run on worker desks, against the real fixtures, without a copy of the images.
+
+**Details:** in M1, TST-002.4's acceptance test is `scripts/gate_1.py`, and the pre-push gate runs it in the desk's worktree. `fixtures/images/` is git-ignored, so it exists only in the main checkout, and the gate would fail with "fixtures/images missing". The lead told the desk not to copy or link the fixtures until the human decided. The same will block the M3 gate and every `gpu` test.
+
+**Constraint:** no host path committed; the images stay in one place, read-only; desks still never open them. Human-side PR (RUN-002.D16).
+
+## RUN-009 — Confirmed reading
+
+- **RUN-009.D1:** **The `test` container mounts `fixtures/images/` read-only** at `/app/fixtures/images`. The source is `${FIXTURE_IMAGES:-./fixtures/images}`. In a linked worktree, the Makefile's `TEST` and `compose_test` set `FIXTURE_IMAGES` to the main checkout's copy at run time. In the main checkout, the mount also makes the images read-only to tests. (human, 2026-10-07)
+- **RUN-009.D2:** **`make init` copies `fixtures/labels.csv` into a worktree**, like `.env` and `sanitize.yaml`, and makes no placeholder when the main checkout has none. It isn't mounted: when a mounted file is missing, Docker creates an empty directory in its place, which would break test runs on checkouts without the labels. The human asked for a mount; the copy is the small-file exception, recorded here.
+
+## RUN-009 — Tasks
+
+- [x] RUN-009.1 — `docker-compose.yml` (the `test` mount), the Makefile's `TEST`, `compose_test`, `init_local_files.sh`; `tests/unit/runtime/test_fixtures_mount.py`; CLAUDE.md, the roles README and DESIGN.md §9
+
+## RUN-009 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. Runtime wiring for every desk's test runs; it changes no product code.
+- **Tests:** the default tiers, 303 passed; `make lint` clean. The acceptance test is `tests/unit/runtime/test_fixtures_mount.py`, with 6 tests.
+- **Regression check:** with the old compose file, `common.sh` and init script, 3 of the new tests fail, one per change: the mount, the worktree path, and the labels copy.
+- **Live check, in a worktree:** the `test` container sees a non-empty `/app/fixtures/images`, and a write there is refused. `make init` copied `labels.csv`, and `git status` stays clean.
+- **Self-rating:** 9/10, proud: yes. Gap: `labels.csv` is a copy (D2), so a worktree made before the human edits the labels keeps the old version until it runs `make init` again from scratch.

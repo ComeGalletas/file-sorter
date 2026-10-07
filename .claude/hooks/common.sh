@@ -13,14 +13,16 @@ in_linked_worktree() {
 }
 
 # RUN-002.D2: each linked worktree runs tests in its own compose project.
+# RUN-009.D1: ...and mounts the main checkout's git-ignored fixtures/images/, read-only.
 compose_test() {
-  local project=()
+  local project=() fixtures=()
   if in_linked_worktree; then
     local wt
     wt="$(basename "$(git rev-parse --show-toplevel)" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-')"
     project=(-p "file-sorter-$wt")
+    fixtures=("FIXTURE_IMAGES=$(main_checkout)/fixtures/images")
   fi
-  docker compose "${project[@]}" --profile test run --rm -T test "$@"
+  env "${fixtures[@]}" docker compose "${project[@]}" --profile test run --rm -T test "$@"
 }
 
 # The git-ignored .task file at the worktree root (RUN-002.D4): key=value lines
