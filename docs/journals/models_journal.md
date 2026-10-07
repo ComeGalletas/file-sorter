@@ -33,6 +33,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **MOD-001.D1** — **Sampling and `keep_alive` live in the prompt file** (lead, 2026-10-07). Each prompt in `prompts/` carries front matter: `version`, `temperature`, `seed`, `keep_alive`, and the output JSON schema. The client reads them from there, so no value is hard-coded and no config key is added. The prompt's `version` is what a later stage records on the ledger (R-CAP-3).
 - **MOD-001.D2** — **Entity output** (lead, 2026-10-07). The model answers through Ollama's `format` JSON schema: `{"entities": [{"text": ..., "label": ...}]}`. `detect_entities` drops a span that isn't literally in the input, and a label outside the requested ones. Thinking output is turned off for this call (`think: false`), if the pinned Ollama accepts it for the tag; the worker checks and records which.
 - **MOD-001.D3** — **Eval for the entity prompt** (lead, 2026-10-07). §3 asks for an `eval/` run when a prompt changes. For this prompt, the eval is gate 2's seeded-name measure (TST-005.2), run on synthetic names only in `eval/`, with the numbers in this journal: recall on seeded entities, and false redactions on a set of names with no entity.
+- **MOD-001.D4** — **Client timeout** (lead, 2026-10-07, on #50). `OllamaClient` takes `timeout` as a constructor parameter, defaulting to the module constant `DEFAULT_TIMEOUT = 300.0` s, because the first call after a model swap loads a 6–9 GB model (R-MOD-1). No config key now; if tuning ever needs one, it becomes a Pipeline issue.
 
 ## MOD-001 — Plan
 
@@ -41,14 +42,19 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 ## MOD-001 — Tasks
 
-- [ ] MOD-001.1 — The Ollama text client with a transport seam · #50 · acceptance: `tests/unit/models/test_ollama_client.py`
+- [x] MOD-001.1 — The Ollama text client with a transport seam · #50 · acceptance: `tests/unit/models/test_ollama_client.py`
+  - [x] MOD-001.1.1 — `classifier/models/ollama.py` and its unit tests (hash in Results)
 - [ ] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
 
 ## MOD-001 — Results
 
 ### MOD-001.1 (worker: ml)
 
-- **Status:**
+- **Built:** `OllamaClient(host, transport=None, timeout=DEFAULT_TIMEOUT)`, `from_env()` (reads `OLLAMA_HOST`, no default URL), `generate_json(model, prompt, schema, options, keep_alive, think=None)` → `POST /api/generate` with `model`, `prompt`, `format`, `options`, `keep_alive`, `stream: false`, and `think` only when set. One `OllamaError` for a refused host, connection error, timeout, HTTP error, a non-JSON body, a body without a text `response`, and an answer that isn't a JSON object. Errors carry the model tag and an 8-hex prompt hash, never the prompt or the answer. The host allow-list is exactly `ollama`, `localhost`, `127.0.0.1`, `::1` and is checked even when a transport is passed. Text only: no `images` field.
+- **Transport seam (for TST-005.1):** the `transport` parameter, a plain `httpx.BaseTransport` handed to `httpx.Client(transport=...)`.
+- **Tests:** `tests/unit/models/test_ollama_client.py`, 41 unit tests through `httpx.MockTransport`. `make test` (unit + db + integration): 483 passed. `make lint`: clean. Tier audit: clean (no Ollama port literal in the unit test).
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Gap: no test drives the client against real Ollama yet; MOD-001.2's `gpu` test does that, and records whether the pinned Ollama accepts `think: false` (D2).
 
 ### MOD-001.2 (worker: ml)
 
