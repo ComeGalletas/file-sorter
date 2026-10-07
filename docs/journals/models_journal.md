@@ -46,7 +46,8 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.1.1 — `classifier/models/ollama.py` and its unit tests · 6852fac
   - [x] MOD-001.1.2 — A `gpu` round trip against the real `ollama` service (discovered: the `gpu` tier was empty, so pre-push failed with "no tests collected") (hash in Results)
 - [ ] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
-  - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests (hash in Results)
+  - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests · 74a5cd4
+  - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests (hash in Results)
 
 ## MOD-001 — Results
 
