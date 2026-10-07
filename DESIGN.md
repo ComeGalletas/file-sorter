@@ -32,7 +32,7 @@ The source folder is **read-only**: the bot never moves, modifies or deletes an 
 | ID | Principle |
 | --- | --- |
 | P-1 | **Non-destructive, read-only source.** No sorting step ever writes to, moves, modifies or deletes anything in `source_root`; it is mounted read-only. Sorted copies are written to `results_root`. Deletion exists only as `purge-sources` and `delete`, which are separate, explicit CLI commands, **disabled by default** (`deletion.enabled: false`). |
-| P-2 | **Sanitize first.** No classification, captioning or naming model sees unredacted metadata or filenames. |
+| P-2 | **Sanitize first.** No classification, captioning or naming model sees unredacted metadata or filenames. No model ever receives the source path or the raw file name, only `files.original_sanitized` (ING-001.D2). |
 | P-3 | **Local first.** No egress by default except SearXNG (outbound search) and model pulls. Every remote backend is opt-in by config. This governs the app runtime. Host-side process tooling (hooks, host scripts, the desks' `gh` use) is limited by CLAUDE.md's hard rule to GitHub metadata, plus download-only, build-time access to a fixed list of registries (RUN-007.D1, D5). |
 | P-4 | **Idempotent and resumable.** The ledger is the checkpoint. A known hash is skipped, and a crash resumes from the last recorded status. |
 | P-5 | **Config over code.** Categories, prompts, templates and rules are editable from the CLI or YAML without a code change. |
@@ -59,7 +59,7 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 
 **Batching (R-PIPE-1).** Nodes run as **per-stage batches**, not per-file: embed and gate the whole batch, then caption the safe batch with the safe VLM, then the adult batch with the adult VLM, then judge with the text LLM. The ledger `status` after each node is the checkpoint, and a resumed run selects files by status. Only `fileops` is a per-file transaction.
 
-**Dry run (R-PIPE-2).** `dry-run` runs every node except `fileops`. It ends at status `proposed` and writes `source → proposed output` to CSV and to the ledger, so the UI can review it. **Milestones M3–M6 operate in dry-run only. Before M7, `results_root` holds only empty category folders from `sync-folders`, plus `.work/` and `reports/`; no image is written there.**
+**Dry run (R-PIPE-2).** `dry-run` runs every node except `fileops`. It ends at status `proposed` and writes `source → proposed output` to CSV and to the ledger, so the UI can review it. The CSV goes to `results_root/reports/`, on the box only, and carries `source_path` beside `sanitized_name` (ING-001.D2). **Milestones M3–M6 operate in dry-run only. Before M7, `results_root` holds only empty category folders from `sync-folders`, plus `.work/` and `reports/`; no image is written there.**
 
 ## 4. Functional requirements
 
@@ -198,7 +198,7 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 
 **Tables:** `categories` (with `axis ∈ {format, topic}`, `folder`, `min_score`, `branch`, `parent_id`), `category_prompts`, `naming_templates`, `template_assignments`, `files` (ledger), `sanitize_log`, `references`, `reference_embeddings`, `retrieval_log`, `deletions`, `runs`, `schema_version` (Alembic).
 
-**`files` key columns:** `source_hash` (PK), `short_hash`, `source_path`, `duplicate_paths[]`, `source_mtime`, `ext`, `status`, `branch`, `nsfw_score`, `animated`, `format`, `topic`, `format_scores`, `topic_scores` (jsonb, top-k each), `caption` (jsonb), `prompt_version`, `reference_id`, `template`, `proposed_path`, `output_path`, `output_hash`, `needs_review`, `review_reason`, `has_sensitive_text`, `error`, timestamps.
+**`files` key columns:** `source_hash` (PK), `short_hash`, `source_path`, `duplicate_paths[]`, `source_mtime`, `ext`, `status`, `branch`, `nsfw_score`, `animated`, `format`, `topic`, `format_scores`, `topic_scores` (jsonb, top-k each), `caption` (jsonb), `prompt_version`, `reference_id`, `template`, `proposed_path`, `output_path`, `output_hash`, `needs_review`, `review_reason`, `has_sensitive_text`, `error`, timestamps. `source_path` and `duplicate_paths` hold the container path (`/source/...`) for good, because every later step finds the original through them; no model receives them, and the API and UI (M4) never show them, only the sanitized name and hashes (ING-001.D2).
 
 **`files.status` enum:** `queued → sanitized → classified → captioned → resolved → named → proposed | filed`, plus `skipped`, `error` and `deleted`. "Unsorted" is the fallback **format**, not a status. A missing topic is `topic = null`. Review is the `needs_review` flag with a `review_reason ∈ {unsorted, ambiguous_reference}`.
 
@@ -405,7 +405,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
   - ML: `models/ prompts/ eval/`.
   - Data/RAG: `rag/` plus `references*` migrations.
   - API/UI: `api/ ui/`.
-  - QA: the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, `tests/recordings/`), `fixtures/`, `scripts/`.
+  - QA: the shared test infrastructure (`tests/conftest.py`, `tests/devtools/`, the recording format and replay fixture in `tests/recordings/`), `fixtures/`, `scripts/`. A worker commits its own task's recordings (TST-005.D1).
   - Every worker writes its own task's tests, in the same commit as the code (DOC-004.D1).
   - Reviewer (Sonnet), quick Reviewer (Haiku, small docs-only PRs, RUN-006), Privacy auditor (Haiku) and Test runner (Sonnet) are read-only subagents in `.claude/agents/`. The six desk roles are briefs in `.claude/roles/`, never subagents (RUN-002.D1).
 - **Human gates.**

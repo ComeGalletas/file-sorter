@@ -117,23 +117,31 @@
 
 **Objective:** carry the M2 G0 answers that change standing rules or the spec, in their own PR (RUN-007.D2), before the tasks that depend on them merge.
 
-**Details:** the human accepted all nine decisions in `docs/plans/m2.md` (PR #59) as recommended. Four of them change CLAUDE.md, DESIGN.md or the runtime, which is human-side work (RUN-002.D16). The other five are the lead's to record in its journals: the backlog scope (CFG-002, TST-003 and TST-004 in M2, RUN-004 after M3), SAN-001.D6 (no `claude` backend or OCR in M2), SAN-001.D7 (working copies persist in `.work/`) and TST-005.D2 (gate 2's seeded names).
+**Details:** the human accepted all nine decisions in `docs/plans/m2.md` (PR #59) as recommended. Five of them (D1–D5 below) change CLAUDE.md, DESIGN.md or the runtime, which is human-side work (RUN-002.D16). The other five are the lead's to record in its journals: the backlog scope (CFG-002, TST-003 and TST-004 in M2, RUN-004 after M3), SAN-001.D6 (no `claude` backend or OCR in M2), SAN-001.D7 (working copies persist in `.work/`) and TST-005.D2 (gate 2's seeded names).
 
 **Constraint:** human-side PR; the index row is the lead's (RUN-002.D13).
 
 ## DOC-007 — Confirmed reading
 
 - **DOC-007.D1 (= ING-001.D2, option A):** **The source-path exception is permanent**, for the ledger and the local reports, with two limits from M2 on: no model ever receives the path or the raw file name, only `files.original_sanitized` (P-2); and the M4 API and UI show sanitized names and hashes, never `source_path`. The dry-run CSV keeps `source_path` beside a new `sanitized_name`. (human, 2026-10-07)
-- **DOC-007.D2 (= SAN-001.D5):** **`sanitize_log.before_hash` is HMAC-SHA256** keyed with `SANITIZE_LOG_KEY`. `make init` generates the key into the local `.env`, `.env.example` names it, and compose passes it to the app and test containers (DESIGN.md R-SAN-6). A plain hash of a short value, such as a first name, could be reversed by hashing guesses. (human, 2026-10-07)
+- **DOC-007.D2 (= SAN-001.D5):** **`sanitize_log.before_hash` is HMAC-SHA256** keyed with `SANITIZE_LOG_KEY`. `make init` generates the key into the local `.env`, `.env.example` names it, and compose passes it to the `app` and `test` containers only, never to `fetch`, the one app-image container with internet access (DESIGN.md R-SAN-6). A plain hash of a short value, such as a first name, could be reversed by hashing guesses. (human, 2026-10-07)
 - **DOC-007.D3 (= SAN-001.D4):** **The ICC colour profile is kept**, with the file-structure tags (dimensions, encoding). Without it, wide-gamut images render with shifted colours (DESIGN.md R-SAN-2). (human, 2026-10-07)
 - **DOC-007.D4 (= ING-002.D1):** **Thumbnails are `.work/thumbs/<source_hash>.webp`.** 8 hex chars collide on a big folder (DESIGN.md R-ING-5). (human, 2026-10-07)
 - **DOC-007.D5 (= TST-005.D1):** **The worker whose task makes a recording commits it**, under `tests/recordings/<package>/`, from synthetic strings only. QA owns the recording format and the replay fixture, as DOC-004.D1 split the tests (CLAUDE.md §3, the roles table, and the QA and README briefs). (human, 2026-10-07)
 
 ## DOC-007 — Tasks
 
-- [x] DOC-007.1 — CLAUDE.md (the exception, §3 recordings, the QA row), DESIGN.md (R-ING-5, R-SAN-2, R-SAN-6), the Makefile's `init`, `.env.example`, `docker-compose.yml`'s shared env, and the QA and README briefs
+- [x] DOC-007.1 — CLAUDE.md (the exception, §3 recordings, the QA row), DESIGN.md (R-ING-5, R-SAN-2, R-SAN-6), the Makefile's `init`, `.env.example`, `docker-compose.yml`, and the QA and README briefs
+- [x] DOC-007.2 — Review round 1 (PR #60): D1's limits in DESIGN.md (P-2, §5, the dry-run CSV) and in the Pipeline and API/UI briefs; DESIGN.md §12's QA line; the key on `app` and `test` only, not the shared env that `fetch` inherits; the count in Details
 
 ## DOC-007 — Results
 
 - **Status:** DONE.
 - **Triage:** small to medium. Rule and spec text, plus one generated secret wired through `init` and compose; no product code.
+- **Review round 1 (PR #60), all findings fixed (DOC-007.2):**
+  - D1's limits are now in the normative spec too: P-2, §5's `source_path` note, and the dry-run CSV under `results_root/reports/`. The Pipeline and API/UI briefs carry them as well.
+  - DESIGN.md §12 matches CLAUDE.md on recordings.
+  - `SANITIZE_LOG_KEY` is set on `app` and `test` only. `fetch`, on the egress network, no longer inherits it, and no longer fails to start without it.
+  - The miscount in Details is fixed.
+- **Tests:** the default tiers, 442 passed. `docker compose config` shows the key on `app` and `test` and not on `fetch`.
+- **Self-rating:** 9/10, proud: yes. Gap: no unit test covers `init`'s key generation, as for the existing secrets; it was checked by hand.
