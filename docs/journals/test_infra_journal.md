@@ -246,7 +246,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `b2639e6`
   - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
   - [x] TST-005.1.4 — Results · `354324f`
-  - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported)
+  - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported) · `91d62a0`
+  - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError`
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
@@ -287,6 +288,10 @@ references or host paths here. Use hashes.
   - `describe()` shows only a valid `<package>/<64-hex key>.json` as it is. Any other file or folder name is reported by a 12-hex SHA-256 of its path relative to the lint root, so one stray file has one label in every message. `package_dir()` refuses a bad package with a fixed message, and an unsupported method is no longer echoed.
   - `RecordingTransport` checks each request's host with `classifier.models.ollama.check_host` before forwarding, and a refusal names no host.
   - Tests: the planted secret now sits in a stray file name, a nested folder name, an unkeyed name in a package and a bad package folder, and no lint, load or package message carries it. Seven host cases were added (four refused before any forward, three allowed). The module went from 52 to 61 tests. Mutations: dropping the host check fails 4, and echoing names in `describe()` fails 2.
+- **Review, round 2** (`91d62a0`): Reviewer APPROVE; Privacy auditor FAIL, low severity, on one remaining path: `read_bytes()` raised an uncaught `OSError` whose text carries the full path (a folder named `*.json`, an unreadable file). Fixed in TST-005.1.6:
+  - `lint_recordings` reports anything that isn't a regular file (a folder, a broken link) as `<label> is not a regular file`.
+  - `load_recording` catches `OSError` and raises `<label> cannot be read as a file`, unchained.
+  - Tests: a folder named `<secret>.json`, in the lint and loaded directly, and an unreadable file in the lint, in `load_recording` and through replay. The test container runs as root, so the unreadable case is a monkeypatched `PermissionError`. The secret appears in no problem or exception. The module went from 61 to 64 tests. Mutations: dropping the `OSError` catch fails 2, and dropping the regular-file check fails 1.
 - **Deferred:** none.
 
 ### TST-005.2 (worker: qa)

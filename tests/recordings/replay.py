@@ -109,7 +109,12 @@ def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     """
     where = describe(path, root)
     try:
-        recording = json.loads(path.read_bytes().decode("utf-8"))
+        data = path.read_bytes()
+    except OSError:
+        # The OSError's text carries the full path, so it is not chained (PR #71).
+        raise RecordingError(f"{where} cannot be read as a file") from None
+    try:
+        recording = json.loads(data.decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
         raise RecordingError(f"{where} is not UTF-8 JSON") from None
     if not isinstance(recording, dict) or set(recording) != RECORDING_FIELDS:
@@ -133,6 +138,8 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
         where = describe(path, root)
         parts = path.relative_to(root).parts
         try:
+            if not path.is_file():  # a folder named *.json, a broken link, a device
+                raise RecordingError(f"{where} is not a regular file")
             if len(parts) != 2:
                 raise RecordingError(f"{where} must sit directly in tests/recordings/<package>/")
             if not PACKAGE_RE.fullmatch(parts[0]):

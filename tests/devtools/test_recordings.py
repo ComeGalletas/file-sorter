@@ -489,3 +489,45 @@ def test_load_recording_does_not_echo_a_stray_file_name(tmp_path: Path) -> None:
         load_recording(path)
     assert "path sha256 " in str(caught.value)
     assert_private(caught.value)
+
+
+def test_lint_reports_a_folder_named_like_a_recording_privately(tmp_path: Path) -> None:
+    (tmp_path / "pkg" / f"{SECRET}.json").mkdir(parents=True)
+    (problem,) = lint_recordings(tmp_path)
+    digest = hashlib.sha256(f"pkg/{SECRET}.json".encode()).hexdigest()[:12]
+    assert problem.endswith(f"(path sha256 {digest}) is not a regular file")
+    assert SECRET not in problem
+
+
+def test_load_recording_of_a_folder_fails_privately(tmp_path: Path) -> None:
+    folder = tmp_path / "pkg" / f"{SECRET}.json"
+    folder.mkdir(parents=True)
+    with pytest.raises(RecordingError, match="cannot be read as a file") as caught:
+        load_recording(folder)  # IsADirectoryError, whose text carries the path
+    assert_private(caught.value)
+
+
+def test_an_unreadable_recording_fails_privately(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    good = write_recording(tmp_path, body(), answer())
+    stray = tmp_path / "pkg" / f"{SECRET}.json"
+    stray.write_bytes(good.read_bytes())
+    real_read_bytes = Path.read_bytes
+
+    def read_bytes(self: Path) -> bytes:
+        # The test container runs as root, so chmod can't make a file unreadable: simulate it.
+        if self.name in {stray.name, good.name}:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", read_bytes)
+    problems = lint_recordings(tmp_path)
+    assert len(problems) == 2
+    assert all("cannot be read as a file" in p and SECRET not in p for p in problems)
+    with pytest.raises(RecordingError) as caught:
+        load_recording(stray, tmp_path)
+    assert_private(caught.value)
+    with pytest.raises(RecordingError) as caught:
+        generate(ReplayTransport("pkg", TEST_ID, root=tmp_path))
+    assert_private(caught.value)
