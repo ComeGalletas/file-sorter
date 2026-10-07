@@ -4,40 +4,24 @@ Prerequisites, named on failure (CLAUDE.md §3, never skipped): the compose `oll
 running in this compose project, and `models.text_llm` is pulled (`make models`).
 Temperature 0 and a fixed seed come from the prompt's front matter (MOD-001.D1).
 
-Every name here is fictional (SAN-001.D10). The calls go through a recorder transport that
-keeps each request and answer. The last test checks them against `tests/recordings/models/`;
-with `RECORD_OLLAMA=1` it writes them instead (MOD-001.2.5):
+Every name here is fictional (SAN-001.D10). The client takes its transport from QA's
+`ollama_transport("models")` fixture (TST-005.1): the real service in the `gpu` tier, and
+record mode with `--record-ollama`, which writes new recordings to `tests/recordings/models/`
+and fails on an existing one whose answer changed (MOD-001.2.5):
 
-    docker compose -p <project> --profile test run --rm -e RECORD_OLLAMA=1 test \
-        pytest -m gpu tests/gpu/models/test_entity_detection.py
-
-Format (TST-005.D3, D5): one `<key>.json` per request holding `{"request", "response"}`, where
-`key` is the SHA-256 of the canonical request `{model, prompt, format, options, think?, raw?}`
-as compact, key-sorted JSON (`keep_alive` and `stream` excluded). `response` keeps the body's
-stable fields only (no durations, timestamps or token context). Until TST-005.1's replay lands,
-`recording_key` is this task's copy of that rule.
+    docker compose -p <project> --profile test run --rm test \
+        pytest -m gpu --record-ollama tests/gpu/models/test_entity_detection.py
 
 `SANITIZE_STRINGS` are recorded for SAN-001.4's integration test: synthetic file stems it can
 seed so its entity calls replay. All three labels are asked for, in ENTITY_LABELS order.
 """
 
-import hashlib
-import json
-import os
-from pathlib import Path
-
-import httpx
 import pytest
 
 from classifier.config import load_config
 from classifier.models.ollama import OllamaClient, OllamaError
 from classifier.models.text_llm import ENTITY_LABELS, Entity, detect_entities
 
-RECORDINGS = Path(__file__).resolve().parents[2] / "recordings" / "models"
-RECORD_ENV = "RECORD_OLLAMA"
-CANONICAL = ("model", "prompt", "format", "options")
-CANONICAL_IF_SENT = ("think", "raw")
-KEPT_RESPONSE_FIELDS = ("model", "response", "done", "done_reason")
 PREREQS = (
     "start the compose `ollama` service for this project "
     "(docker compose -p <project> up -d ollama) and pull models.text_llm (make models)"
@@ -95,44 +79,10 @@ SANITIZE_STRINGS = [
 ]
 
 
-def recording_key(body: dict) -> str:
-    """The SHA-256 of the canonical request (TST-005.D3, D5)."""
-    canonical = {k: body[k] for k in CANONICAL}
-    canonical |= {k: body[k] for k in CANONICAL_IF_SENT if k in body}
-    text = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-class Recorder(httpx.BaseTransport):
-    """Forwards to the real service and keeps every successful request and answer."""
-
-    def __init__(self) -> None:
-        self._inner = httpx.HTTPTransport()
-        self.seen: dict[str, dict] = {}
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        response = self._inner.handle_request(request)
-        response.read()
-        if response.status_code == 200:
-            body = json.loads(request.content)
-            payload = response.json()
-            kept = {k: payload[k] for k in KEPT_RESPONSE_FIELDS if k in payload}
-            self.seen[recording_key(body)] = {"request": body, "response": kept}
-        return response
-
-    def close(self) -> None:
-        self._inner.close()
-
-
-@pytest.fixture(scope="module")
-def recorder() -> Recorder:
-    return Recorder()
-
-
-@pytest.fixture(scope="module")
-def detect(recorder: Recorder):
+@pytest.fixture
+def detect(ollama_transport):
     model = load_config().models.text_llm
-    with OllamaClient.from_env(transport=recorder) as client:
+    with OllamaClient.from_env(transport=ollama_transport("models")) as client:
 
         def run(text: str, labels=ENTITY_LABELS) -> list[Entity]:
             try:
@@ -197,19 +147,3 @@ def test_same_answer_twice(detect) -> None:
 @pytest.mark.parametrize("text", SANITIZE_STRINGS)
 def test_sanitize_strings_answer(detect, text: str) -> None:
     detect(text)  # recorded for SAN-001.4; a shape error would already fail here
-
-
-def test_recordings_match_live(recorder: Recorder) -> None:
-    """Last in the module: every call above has its recording, with the same answer."""
-    assert recorder.seen, "no calls were recorded"
-    if os.environ.get(RECORD_ENV) == "1":
-        RECORDINGS.mkdir(parents=True, exist_ok=True)
-        for key, entry in recorder.seen.items():
-            text = json.dumps(entry, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-            (RECORDINGS / f"{key}.json").write_text(text, encoding="utf-8", newline="\n")
-        return
-    for key, entry in recorder.seen.items():
-        path = RECORDINGS / f"{key}.json"
-        assert path.is_file(), f"no recording {key}; re-run with {RECORD_ENV}=1"
-        recorded = json.loads(path.read_text(encoding="utf-8"))
-        assert recorded == entry, f"recording {key} differs from the live answer"

@@ -66,6 +66,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.7 — PR #72 round 1: neutralize ChatML control tokens, think tags and fence markers in the text before rendering; spans still matched against the original · 0dbde86
   - [x] MOD-001.2.8 — PR #72 round 1: injection-style synthetic names in the gpu test, with their recordings (3 new; the 18 existing keys are unchanged) · 9d7f8d9
   - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval · f5dda51
+  - [x] MOD-001.2.10 — After TST-005.1 (#71) merged: the gpu test takes `ollama_transport("models")` and records with `--record-ollama`; this task's own recorder and key code are removed. All 21 recordings pass #71's lint, and a `--record-ollama` run wrote nothing new and found no changed answer (hash in Results)
 
 ## MOD-001 — Results
 
@@ -111,7 +112,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - `make lint`: clean.
 - **Status:** DONE_WITH_CONCERNS.
   - Concern (medium): held-out recall is 98.7% with name list v2 (98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
-  - Concern (low): the recorder and `recording_key` live in the gpu test until TST-005.1 (#55) lands its replay. Once it does, the test should switch to QA's record mode, and the keys must match (same rule, posted on #55).
+  - ~~Concern (low): the recorder and `recording_key` live in the gpu test until TST-005.1 (#55) lands its replay.~~ Resolved in MOD-001.2.10: the test uses QA's `ollama_transport`, and the keys match.
 - **Self-rating:** 8/10, proud: yes. Gaps against #51 and its R-IDs:
   1. Recall is short of the gate's zero-survivor bar on one filename shape (R-SAN-3; see the concern above).
   2. The recorder duplicates what TST-005.1 will own, until #55 merges.
