@@ -300,7 +300,7 @@ db:
 | `ollama` | `ollama/ollama`, `gpus: all`, volume `ollama` | egress for pulls only |
 | `searxng` | `searxng/searxng`, JSON enabled | egress (it forwards queries to public engines) |
 | `app` | `Dockerfile` (py3.12, torch CUDA, `gpus: all`) | internal only by default; port `127.0.0.1:8000` |
-| `test` | same image, profile `test` | throwaway db, mounts `fixtures/` only |
+| `test` | same image, profile `test` | throwaway db, mounts `fixtures/` only; `fixtures/images/` read-only, from the main checkout in a worktree (RUN-009.D1) |
 
 - **R-RUN-1** All host ports bind to `127.0.0.1`.
 - **R-RUN-2** `app` has no internet route by default. The opt-in remote backends (`sanitizer.backend: claude`, `rag.web_backend: brave|claude`) require the override file `docker-compose.egress.yml`. Without that override they fail fast with a clear error.

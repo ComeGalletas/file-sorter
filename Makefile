@@ -7,7 +7,9 @@ SHELL := bash
 COMPOSE := docker compose
 # RUN-002.D2: a linked worktree tests in its own compose project, so parallel runs never share db-test.
 WT_NAME := $(shell git rev-parse --git-dir 2>/dev/null | grep -q '/worktrees/' && basename "$$(git rev-parse --show-toplevel)" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-')
-TEST := $(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) --profile test run --rm test
+# RUN-009.D1: ...and mounts the main checkout's git-ignored fixtures/images/, read-only.
+MAIN_CHECKOUT := $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
+TEST := $(if $(WT_NAME),FIXTURE_IMAGES="$(MAIN_CHECKOUT)/fixtures/images" )$(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) --profile test run --rm test
 RUFF := MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
 OLLAMA_MODELS := qwen3-vl:8b bge-m3   # the adult VLM is not pulled until Q-1 is decided (M5)
 

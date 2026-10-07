@@ -94,6 +94,14 @@ services:
     volumes:
       - .:/app
       - hf:/models/hf
+      # RUN-009.D1: the git-ignored real fixtures, read-only. In a linked worktree, the Makefile
+      # and compose_test point FIXTURE_IMAGES at the main checkout's copy (never committed).
+      - type: bind
+        source: ${FIXTURE_IMAGES:-./fixtures/images}
+        target: /app/fixtures/images
+        read_only: true
+        bind:
+          create_host_path: true   # a checkout without fixtures gets an empty folder, not an error
     depends_on:
       db-test:
         condition: service_healthy

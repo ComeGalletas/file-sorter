@@ -159,7 +159,7 @@ Branch: <branch> in <worktree path>
 1. **Lead (G0):**
    - Allocates the IDs, writes the journal sections and index rows, and lists them in `docs/plans/mN.md`.
    - Opens one GitHub issue per task. The issue title is `<task ID>: <summary>`. The issue names its acceptance test (a pytest path or `scripts/gate_N.py`) and the cited R-IDs, and carries the labels `mN` and `role:<role>`.
-2. **Worker:** works in its own worktree. It runs `make init` there (which copies `.env` and `sanitize.yaml` from the main checkout), and writes the git-ignored `.task` file (`role=`, `issue=`, `acceptance=`; see `.claude/roles/README.md`). Then it posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
+2. **Worker:** works in its own worktree. It runs `make init` there (which copies `.env`, `sanitize.yaml` and `fixtures/labels.csv` from the main checkout), and writes the git-ignored `.task` file (`role=`, `issue=`, `acceptance=`; see `.claude/roles/README.md`). Then it posts the triage block plus a short plan as the first issue comment. No code until the lead approves it.
 3. **Worker:** implements, committing one subtask at a time (§1.6). The `PostToolUse` hook runs ruff on the edited file. The `Stop` hook runs the touched tests.
 4. **Worker:** opens the PR. The pre-push hook (`.githooks/pre-push`) runs the default tiers, plus `gpu` when `classifier/models/` or `prompts/` changed, plus the acceptance test named in `.task`. A non-zero exit blocks the push, and so does a task branch without `acceptance=`.
 5. **Lead:** picks the reviewer with `bash scripts/review_route.sh <n>` (RUN-006.D1). Small, docs-only PRs get `reviewer-quick` (Haiku, static); everything else gets the full `reviewer`. The Privacy auditor always runs. The lead posts both verdicts as one PR comment before merging, with `Reviewed at <sha>` (RUN-002.D14). Blocking findings → the same comment, or a new issue. A re-review checks only the earlier findings and the diff since `Reviewed at` (RUN-006.D2).
@@ -233,7 +233,7 @@ Rate the work before the final commit, from a fresh read of the diff and the run
 ## Commands (all via Docker)
 
 ```bash
-make init          # .env + sanitize.yaml (copied from the main checkout in a worktree), secrets, git hooks
+make init          # .env + sanitize.yaml + fixtures/labels.csv (copied from the main checkout in a worktree), secrets, git hooks
 make build         # build the app/test image (CUDA PyTorch; ~7 min cold)
 make up            # docker compose up -d db ollama searxng app
 make down          # stop everything; volumes are kept
@@ -247,7 +247,7 @@ docker compose run --rm app classifier <command>   # e.g. dry-run, categories li
 
 The UI will be at `http://127.0.0.1:8000` from M4. `app` sits on an internal-only network, so the port is published through a localhost-only proxy that M4 adds (RUN-001.D5). Never add `app` to the `egress` network to expose it.
 
-In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2).
+In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2). The git-ignored `fixtures/images/` exists only in the main checkout: every `test` container mounts it read-only at `/app/fixtures/images`, from the main checkout in a worktree, so the `gate` and `gpu` tiers work on any desk. Never copy or link the images into a worktree (RUN-009.D1).
 
 ## Roles and file ownership
 
