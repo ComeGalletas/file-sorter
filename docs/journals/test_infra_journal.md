@@ -247,7 +247,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
   - [x] TST-005.1.4 — Results · `354324f`
   - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported) · `91d62a0`
-  - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError`
+  - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError` · `3442ea8`
+  - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
@@ -292,6 +293,12 @@ references or host paths here. Use hashes.
   - `lint_recordings` reports anything that isn't a regular file (a folder, a broken link) as `<label> is not a regular file`.
   - `load_recording` catches `OSError` and raises `<label> cannot be read as a file`, unchained.
   - Tests: a folder named `<secret>.json`, in the lint and loaded directly, and an unreadable file in the lint, in `load_recording` and through replay. The test container runs as root, so the unreadable case is a monkeypatched `PermissionError`. The secret appears in no problem or exception. The module went from 61 to 64 tests. Mutations: dropping the `OSError` catch fails 2, and dropping the regular-file check fails 1.
+- **Review, round 3** (`3442ea8`): Reviewer APPROVE; Privacy auditor FAIL, low severity: `is_file()` in the lint can still raise an `OSError` (e.g. access denied on a stat), and the lead asked to close the class in one go. Fixed in TST-005.1.7:
+  - `_is_file()` wraps every stat: `<label> cannot be read as a file`, unchained.
+  - The lint's `rglob` walk is in a `try`. A failure gives one fixed problem, `the recordings tree cannot be walked; no recording was checked`.
+  - Record mode's `mkdir` and `write_text` give `recording <package>/<key>.json cannot be written`, unchained.
+  - `read_bytes` was already wrapped (TST-005.1.6). Every filesystem call in `replay.py` is now inside one of these.
+  - Tests patch `Path.is_file` (in the lint on a stray `<secret>.json`, in replay and in record mode), `Path.mkdir`, `Path.write_text` and `Path.rglob` to raise a `PermissionError` carrying the full path. They assert that neither the secret nor the temp path appears and that no error is chained. The module went from 64 to 70 tests. Mutations: unwrapping the stat fails 3, the walk fails 1, and the write fails 2.
 - **Deferred:** none.
 
 ### TST-005.2 (worker: qa)

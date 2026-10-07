@@ -102,6 +102,16 @@ def describe(path: Path, root: Path | None = None) -> str:
     return f"a file not named <package>/<key>.json (path sha256 {digest})"
 
 
+def _is_file(path: Path, where: str) -> bool:
+    """`path.is_file()`, with an `OSError` (its text carries the path) turned into a labelled,
+    unchained `RecordingError` (PR #71). Every filesystem call in this module is wrapped so.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        raise RecordingError(f"{where} cannot be read as a file") from None
+
+
 def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     """A recording file, checked against the format; its name must be its request's key.
 
@@ -133,12 +143,17 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
     Each file sits in `<package>/`, follows the format, is named by its request's key, and
     its request is text only (P-3: never an `images` field).
     """
+    try:
+        paths = sorted(root.rglob("*.json"))
+    except OSError:
+        # Fixed text: the failing subtree's path is not echoed (PR #71).
+        return ["the recordings tree cannot be walked; no recording was checked"]
     problems = []
-    for path in sorted(root.rglob("*.json")):
+    for path in paths:
         where = describe(path, root)
         parts = path.relative_to(root).parts
         try:
-            if not path.is_file():  # a folder named *.json, a broken link, a device
+            if not _is_file(path, where):  # a folder named *.json, a broken link, a device
                 raise RecordingError(f"{where} is not a regular file")
             if len(parts) != 2:
                 raise RecordingError(f"{where} must sit directly in tests/recordings/<package>/")
@@ -196,7 +211,7 @@ class ReplayTransport(httpx.BaseTransport):
         try:
             key = recording_key(_request_body(request))
             path = self.directory / f"{key}.json"
-            if not path.is_file():
+            if not _is_file(path, describe(path)):
                 raise RecordingError(
                     f"no recording {self.directory.name}/{key}.json; {RECORD_HINT}"
                 )
@@ -250,22 +265,26 @@ class RecordingTransport(httpx.BaseTransport):
             raise self._fail(f"Ollama's reply for {name} has no text response field")
         recorded = {k: v for k, v in payload.items() if k not in UNRECORDED_RESPONSE_FIELDS}
         path = self.directory / f"{key}.json"
-        if path.is_file():
-            try:
-                existing = load_recording(path)
-            except RecordingError as exc:
-                raise self._fail(f"{exc}; delete it to re-record") from None
+        try:
+            existing = load_recording(path) if _is_file(path, f"recording {name}") else None
+        except RecordingError as exc:
+            raise self._fail(f"{exc}; delete it to re-record") from None
+        if existing is not None:
             if existing["response"]["response"] != recorded["response"]:
                 raise self._fail(
                     f"recording {name} exists with a different answer; delete it to re-record"
                 )
-        else:
-            text = json.dumps(
-                {"request": body, "response": recorded},
-                sort_keys=True,
-                indent=2,
-                ensure_ascii=False,
-            )
+            return httpx.Response(200, json=payload)
+        text = json.dumps(
+            {"request": body, "response": recorded},
+            sort_keys=True,
+            indent=2,
+            ensure_ascii=False,
+        )
+        try:
             self.directory.mkdir(parents=True, exist_ok=True)
             path.write_text(text + "\n", encoding="utf-8", newline="\n")
+        except OSError:
+            # The OSError's text carries the checkout path, so it is not chained (PR #71).
+            raise self._fail(f"recording {name} cannot be written") from None
         return httpx.Response(200, json=payload)

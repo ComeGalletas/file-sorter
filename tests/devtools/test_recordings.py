@@ -531,3 +531,67 @@ def test_an_unreadable_recording_fails_privately(
     with pytest.raises(RecordingError) as caught:
         generate(ReplayTransport("pkg", TEST_ID, root=tmp_path))
     assert_private(caught.value)
+
+
+# --- every filesystem call: an OSError's text carries its path (PR #71, TST-005.1.7) ---
+
+
+def denied(self: Path, *args: Any, **kwargs: Any) -> Any:
+    """A Path method stand-in that raises PermissionError, with the full path in its text."""
+    raise PermissionError(13, "Permission denied", str(self))
+
+
+def assert_no_path(exc: BaseException | str, root: Path) -> None:
+    text = exc if isinstance(exc, str) else f"{exc} {exc!r}"
+    assert SECRET not in text and str(root) not in text and root.name not in text
+    if isinstance(exc, BaseException):
+        assert_private(exc)
+
+
+def test_lint_reports_a_failing_stat_by_label(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / f"{SECRET}.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(Path, "is_file", denied)
+    (problem,) = lint_recordings(tmp_path)
+    assert problem.endswith("cannot be read as a file") and "path sha256 " in problem
+    assert_no_path(problem, tmp_path)
+
+
+def test_lint_reports_a_failing_walk_by_a_fixed_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / SECRET).mkdir()
+    monkeypatch.setattr(Path, "rglob", denied)
+    assert lint_recordings(tmp_path) == [
+        "the recordings tree cannot be walked; no recording was checked"
+    ]
+
+
+def test_replay_reports_a_failing_stat_by_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_recording(tmp_path, body(), answer())
+    transport = ReplayTransport("pkg", TEST_ID, root=tmp_path)
+    monkeypatch.setattr(Path, "is_file", denied)
+    with pytest.raises(RecordingError, match="cannot be read as a file") as caught:
+        generate(transport)
+    assert f"recording pkg/{recording_key(body())}.json" in str(caught.value)
+    assert_no_path(caught.value, tmp_path)
+    assert len(transport.failures) == 1
+
+
+@pytest.mark.parametrize("method", ["is_file", "mkdir", "write_text"])
+def test_record_reports_a_failing_filesystem_call_by_key(
+    method: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorder = RecordingTransport("pkg", upstream(answer()), TEST_ID, root=tmp_path)
+    monkeypatch.setattr(Path, method, denied)
+    with pytest.raises(RecordingError) as caught:
+        generate(recorder)
+    assert recording_key(body()) in str(caught.value) and TEST_ID in str(caught.value)
+    assert_no_path(caught.value, tmp_path)
+    assert len(recorder.failures) == 1
+    monkeypatch.undo()
+    assert not (tmp_path / "pkg" / f"{recording_key(body())}.json").exists()
