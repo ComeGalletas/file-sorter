@@ -6,7 +6,6 @@ from typing import Annotated
 
 import psycopg
 import typer
-from pydantic import ValidationError
 
 from classifier import __version__
 from classifier.cli import dry_run_report
@@ -56,13 +55,8 @@ def dry_run(
         dsn = config.db.dsn
         if not dsn:
             raise ConfigError("config.db.dsn is not set")
-    except ConfigError as error:
+    except ConfigError as error:  # value-free: load_config wraps YAML and validation errors
         typer.echo(f"error: {error}", err=True)
-        raise typer.Exit(2) from error
-    except ValidationError as error:
-        # Only the field names: a validation message echoes the offending values.
-        fields = sorted({".".join(str(part) for part in e["loc"]) for e in error.errors()})
-        typer.echo(f"error: invalid config, check: {', '.join(fields)}", err=True)
         raise typer.Exit(2) from None
     started = datetime.now(UTC)
     try:
