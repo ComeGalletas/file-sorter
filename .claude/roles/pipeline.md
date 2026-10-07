@@ -7,7 +7,7 @@
 **Watch out for:**
 - The source is read-only. The only delete code is `fileops/delete.py`, and it is disabled by default (R-FOP-0).
 - The `files.status` enum is the only checkpoint; nodes must be idempotent.
-- Never log original filenames or EXIF values: use hashes (CLAUDE.md "Hard rules"). The source path may be stored only in the ledger (`files.source_path`, `files.duplicate_paths`) and the local reports (DOC-004.D3).
+- Never log original filenames or EXIF values: use hashes (CLAUDE.md "Hard rules"). The source path may be stored only in the ledger (`files.source_path`, `files.duplicate_paths`) and the local reports (DOC-004.D3). It never goes to a model: models get only `files.original_sanitized` (ING-001.D2, DOC-007.D1).
 - Hand-tuned values in `config.yaml`: flag and ask (CLAUDE.md §1.7).
 
 Start every task as in [README.md](README.md).

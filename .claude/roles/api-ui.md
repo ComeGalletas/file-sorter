@@ -12,5 +12,6 @@
 - **The app container is on an internal-only network** (RUN-001.D5). Exposing the UI on `127.0.0.1:8000` needs the localhost-only proxy planned for M4; never add `app` to the `egress` network.
 - Every write goes through the same graph nodes as the CLI (R-API-4). There is no deletion in the UI (R-API-8).
 - Adult thumbnails are blurred by default. Thumbnails come from `.work/thumbs/`, never from originals.
+- The API and UI never show `files.source_path` or `duplicate_paths`, only the sanitized name and hashes (ING-001.D2, DOC-007.D1).
 
 Start every task as in [README.md](README.md).
