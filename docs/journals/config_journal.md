@@ -1,6 +1,6 @@
 # Config loading — journal
 
-**ID:** CFG-001 (+ CFG-002) · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** CFG-001 done; CFG-002 proposed · **Milestone:** m1 (CFG-002: m2, proposed) ·
+**ID:** CFG-001 (+ CFG-002) · **Systems:** CFG (+ FOP) · **Type:** feature · **Status:** done (CFG-001; CFG-002 in PR #74, merged as `3033ef4`) · **Milestone:** m1 (CFG-002: m2) ·
 **Issues:** #13 (PR #26), #44 (CFG-002.1) · **Branch:** `office/pixel-0686` (CFG-001.1)
 
 <!--
