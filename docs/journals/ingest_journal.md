@@ -1,7 +1,7 @@
 # Ingest — journal
 
-**ID:** ING-001 · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** done (ING-001.1–.3) · **Milestone:** m1 ·
-**Issues:** #15 (PR #27), #16 (PR #33), #34 (PR #36) · **Branch:** `office/nibble-b6b2` (.1), `office/pixel-a032` (.2), `office/nibble-42bc` (.3)
+**ID:** ING-001 (+ ING-002) · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** ING-001 done (.1–.3); ING-002 proposed · **Milestone:** m1 (ING-002: m2) ·
+**Issues:** #15 (PR #27), #16 (PR #33), #34 (PR #36), #49 (ING-002.1) · **Branch:** `office/nibble-b6b2` (.1), `office/pixel-a032` (.2), `office/nibble-42bc` (.3)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -45,7 +45,7 @@ references or host paths here. Use hashes.
   - The `dry-run` CSV under `results_root/reports/` may carry it too.
   - Logs, console and test output, issues, PRs and journals carry hashes only. Host paths are never stored.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
-  - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides.
+  - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides. **Asked at M2 G0** (`docs/plans/m2.md`, 2026-10-07).
 - **ING-001.D3** — **`animated` is an allow-list** (decided by the human, 2026-10-06; it replaces the earlier default). `animated` is true only when Pillow's `format` is in {GIF, WEBP, PNG} (PNG covers APNG) **and** `is_animated` is true. Every other format is false, including TIFF, MPO and HEIC. Classification reads frame or page 0.
 - **ING-001.D4** — **Decompression bombs: Pillow's default stands** (lead, 2026-10-06). `Image.MAX_IMAGE_PIXELS` stays at its default, 89,478,485 pixels. Above that Pillow warns (`DecompressionBombWarning`); above twice that (~179 MP) it raises `DecompressionBombError`, which `probe_image` catches and returns as `Skipped` (ING-001.2.1). A test pins the limit, so changing it is a deliberate act.
 - **ING-001.D5** — **Skip reasons live in `files.error`; only `status = error` is retried** (lead, 2026-10-06). A skipped file has `status = skipped` and its reason in `files.error`: a fixed string or an exception type, never a path. No migration. A `skipped` row counts as known under R-ING-2 and is never retried. That holds although `error` also stores skip reasons, because retries key on the status, not the column.
@@ -127,3 +127,30 @@ references or host paths here. Use hashes.
 - **Self-rating:** 10/10, proud: yes. Nothing is left against the issue's acceptance test, R-ING-6 or R-ING-9, and both regressions it guards were shown to fail the test.
 - **Review:** PR #36, merged as `f71f8d8`, closing #34. Reviewer APPROVE (full, 1 optional minor: a raw exception rather than the named message if `save` itself raises), Privacy auditor PASS, at `9be0566`; the verdict comment is on the PR.
 - **Deferred:** nothing. Note: an unrelated `make test-gpu` call ran by mistake inside the first mutation command; its output was discarded and it changed no files.
+
+---
+
+## ING-002 — Requirement (DESIGN.md M2, ING-001.D1, 2026-10-07)
+
+- **Objective:** Make each file's thumbnail from its sanitized working copy.
+- **Details:**
+  - `make_thumbnail(working_copy, thumbs_dir, name, size)`: the first frame or page (R-ING-6), longest side `thumbs.size` (256), WebP, into `results_root/.work/thumbs/` (R-ING-5).
+  - The `sanitize` node calls it after the strip (SAN-001.D9). The write goes through FOP-001's write-new helper.
+- **Constraint:** Never made from an original: the function takes the working-copy path FOP-001 returns. The UI never reads originals (R-ING-5).
+- **Implements:** R-ING-5, R-ING-6, ING-001.D1.
+
+## ING-002 — Confirmed reading
+
+- `thumbs.size: 256` is already in `config.yaml`. Pillow and pillow-heif are already dependencies, and `probe_image` already reads frame 0.
+- **ING-002.D1** — **The thumbnail's name: `<short_hash>.webp` as R-ING-5 says, or `<source_hash>.webp`?** Open, for the human (see `docs/plans/m2.md`). The plan assumes `<source_hash>.webp`.
+- **ING-002.D2** — **Format details** (lead, 2026-10-07): converted to RGB (RGBA kept when the frame has alpha), resized with `thumbnail()` so the aspect ratio holds, no metadata written. An existing thumbnail for the same hash is kept (idempotent), never replaced.
+
+## ING-002 — Tasks
+
+- [ ] ING-002.1 — `make_thumbnail` from the sanitized copy · #49 · acceptance: `tests/unit/ingest/test_thumbnails.py`
+
+## ING-002 — Results
+
+### ING-002.1 (worker: pipeline)
+
+- **Status:**

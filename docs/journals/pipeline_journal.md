@@ -1,7 +1,7 @@
 # Pipeline and dry run — journal
 
-**ID:** PIPE-001 (+ CLI-002) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002) · **Milestone:** m1 ·
-**Issues:** #17 (PR #35), #18 (PR #38) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
+**ID:** PIPE-001 (+ CLI-002, CLI-003) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002); CLI-003 proposed · **Milestone:** m1 (CLI-003: m2) ·
+**Issues:** #17 (PR #35), #18 (PR #38), #57 (CLI-003.1) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -126,3 +126,30 @@ references or host paths here. Use hashes.
 - **Deferred:**
   - A clean message for an unwritable `reports/`, as a follow-up if the lead wants it.
   - Per CLI-002.D1, the CSV omits symlinks and unreadable files (no ledger row) and extra `duplicate_paths`; the console counts cover them.
+
+---
+
+## CLI-003 — Requirement (DESIGN.md M2, 2026-10-07)
+
+- **Objective:** Make `classifier dry-run` report the sanitize node.
+- **Details:**
+  - The console adds the sanitize counts (sanitized, errored by reason), with no names.
+  - The CSV adds a `sanitized_name` column from `files.original_sanitized`.
+  - The `source_path` column follows the human's answer to ING-001.D2.
+- **Constraint:** Console output carries counts only. The CSV stays under `results_root/reports/` (DOC-004.D3).
+- **Implements:** R-PIPE-2, §7, ING-001.D2.
+
+## CLI-003 — Confirmed reading
+
+- `classifier/cli/dry_run_report.py` writes the CLI-002 CSV, and `RunResult.counts` already holds each node's result by name.
+- Blocked on ING-001.D2 for the `source_path` column only.
+
+## CLI-003 — Tasks
+
+- [ ] CLI-003.1 — The sanitize counts and the sanitized name in the dry-run report · #57 · acceptance: `tests/integration/test_dry_run_cli.py`
+
+## CLI-003 — Results
+
+### CLI-003.1 (worker: pipeline)
+
+- **Status:**
