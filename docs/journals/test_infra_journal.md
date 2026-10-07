@@ -145,7 +145,7 @@ references or host paths here. Use hashes.
 
 ## TST-003 — Confirmed reading
 
-- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): SAN-001.4 and CLI-003.1 add integration tests that need the same helper, so it goes first. The human confirms or drops it when approving `docs/plans/m2.md`.
+- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): SAN-001.4 and CLI-003.1 add integration tests that need the same helper, so it goes first. **Confirmed into M2 by the human, 2026-10-07.**
 
 ## TST-003 — Tasks
 
@@ -171,7 +171,7 @@ references or host paths here. Use hashes.
 
 ## TST-004 — Confirmed reading
 
-- Not in M1's plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): gate 2 is the first M2 code to read the real fixtures, so the audit should guard the other tiers before it lands. The human confirms or drops it when approving `docs/plans/m2.md`.
+- Not in M1's plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): gate 2 is the first M2 code to read the real fixtures, so the audit should guard the other tiers before it lands. **Confirmed into M2 by the human, 2026-10-07.**
 
 ## TST-004 — Tasks
 
@@ -201,9 +201,18 @@ references or host paths here. Use hashes.
 
 - `scripts/gate_2.py` is a stub that exits 1 (RUN-002.4). `make gate-2` already runs it in the `test` container, which reaches `ollama` and mounts the real fixtures read-only (RUN-009).
 - `tests/recordings/` is empty and QA-owned.
-- **TST-005.D1** — **Who commits a task's recordings?** Open, for the human (see `docs/plans/m2.md`).
-- **TST-005.D2** — **Where gate 2's seeded values come from?** Open, for the human (see the plan).
+- **TST-005.D1** — **The worker whose task makes a recording commits it** (confirmed by the human, 2026-10-07, as recommended; rule change DOC-007.D5, PR #60). Recordings go under `tests/recordings/<package>/`, made from synthetic strings only. QA owns the recording format and the replay fixture (TST-005.1), as DOC-004.D1 split the tests. So MOD-001.2 commits the entity recordings, and no extra QA recording task is needed.
+- **TST-005.D2** — **Gate 2's seeded names come from three sources** (confirmed by the human, 2026-10-07, as recommended). The gate builds 50 names with a pinned seed from:
+  1. the `literal` values in the local, git-ignored `sanitize.yaml`, read inside the `test` container and never printed, recorded or committed, so the gate measures the human's real rules;
+  2. synthetic emails and phone numbers;
+  3. a committed list of fictional person, organisation and place names, for the entity rule.
+
+  The residual check is a case-insensitive search for each seeded value in the sanitized name, with SAN-001.D1's separators. The gate prints PASS or FAIL and the residual share as a percentage only (DOC-005.D1); TST-005.D4 sets how it draws.
 - **TST-005.D3** — **Recording format** (lead, 2026-10-07): one JSON file per request under `tests/recordings/<package>/`, named by the SHA-256 of the canonical request (model, prompt, schema, options). It stores the request and the response, so a reviewer can read both.
+- **TST-005.D4** — **Gate 2 reveals nothing about the local rules** (lead, 2026-10-07, from PR #61's privacy audit).
+  - The share of names per source is fixed in the gate's code, never derived from the size of the local `literal` pool. Literal values are drawn **with replacement**, so the drawn set looks the same whatever the pool holds.
+  - Output is PASS or FAIL and percentages only. Never a count, a pool size, a per-source split, or a "fewer than N" message.
+  - Every error is value-free: a failing literal is reported by its rule id and a hash at most, and no traceback may echo a value. An empty or missing `literal` rule fails with a message naming `sanitize.yaml` and the rule id.
 
 ## TST-005 — Tasks
 

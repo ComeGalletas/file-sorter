@@ -37,7 +37,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 ## MOD-001 — Plan
 
 1. **MOD-001.1, the client:** `OllamaClient(host, transport=None)` with `generate_json(model, prompt, schema, options, keep_alive)`. The host check, the timeout, and `OllamaError` for connection errors, HTTP errors and invalid JSON. Unit tests through `httpx.MockTransport`: request shape, options passed through, each error mapped, a non-compose host refused.
-2. **MOD-001.2, entity detection:** `prompts/sanitize_entity_v1.md` (front matter per D1) and `detect_entities`. A `gpu` test on synthetic strings with real Ollama: known people, organisations and places found, plain dates and counters left alone, the same output on two calls. It also produces the replay recordings for SAN-001.3 and SAN-001.4 (TST-005.D1 decides where they are committed). The eval per D3.
+2. **MOD-001.2, entity detection:** `prompts/sanitize_entity_v1.md` (front matter per D1) and `detect_entities`. A `gpu` test on synthetic strings with real Ollama: known people, organisations and places found, plain dates and counters left alone, the same output on two calls. It also produces the replay recordings for SAN-001.3 and SAN-001.4 (the ML worker commits them itself, under `tests/recordings/<package>/`, synthetic strings only: TST-005.D1, DOC-007.D5). The eval per D3.
 
 ## MOD-001 — Tasks
 

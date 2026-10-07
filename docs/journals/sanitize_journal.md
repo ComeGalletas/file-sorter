@@ -23,7 +23,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - **Thumbnails** (R-ING-5, ING-002) are made by this node from the sanitized copy.
 - **Constraint:**
   - The source is never written (P-1, R-SAN-1). The working copy lives in `<results_root>/.work/` (R-FOP-1), and only `classifier/fileops/` writes or replaces files there (R-FOP-6).
-  - No original value, EXIF value or unsanitized name in logs, console, test output, issues, PRs or journals. The source path stays as DOC-004.D3 allows, pending ING-001.D2.
+  - No original value, EXIF value or unsanitized name in logs, console, test output, issues, PRs or journals. The source path stays in the ledger and the local reports only, and never reaches a model: models get `files.original_sanitized` (ING-001.D2, DOC-007.D1).
   - No pixels to any model. The `claude` backend and OCR stay off (SAN-001.D6).
   - Tests use synthetic images and synthetic strings only. No real `sanitize.yaml` value appears in a test, a recording or a commit.
 - **Implements:** R-SAN-1, R-SAN-2, R-SAN-3, R-SAN-4, R-SAN-6, R-SAN-8, P-2, P-4, R-PIPE-1; with FOP-001: R-FOP-1 (step 1), R-FOP-6.
@@ -56,10 +56,10 @@ Decisions:
   - An `exif_field` rule names tags that are **always** removed, even when the keep list names them.
   - After the strip, a read-back of the copy's tags must show nothing outside the keep list and the file-structure tags. Otherwise the file fails closed (D2).
   - Each removed tag writes one `sanitize_log` row: `field = exif:<tag name>`, the hash of its value, `after_value` null.
-- **SAN-001.D4** — **The ICC colour profile: keep or strip?** Open, for the human (see `docs/plans/m2.md`).
-- **SAN-001.D5** — **`before_hash`: plain SHA-256 or a keyed HMAC?** Open, for the human (see the plan).
-- **SAN-001.D6** — **The `claude` backend and OCR stay out of M2?** Open, for the human (see the plan). Until answered, the plan assumes yes: `sanitizer.backend: claude` and `sanitizer.ocr: true` fail fast with a message naming the key.
-- **SAN-001.D7** — **Working copies persist in `results_root/.work/` during dry runs?** Open, for the human (see the plan). The plan assumes yes.
+- **SAN-001.D4** — **The ICC colour profile is kept** (confirmed by the human, 2026-10-07, as recommended; rule change DOC-007.D3, PR #60). It counts as a file-structure tag, not metadata, so the strip keeps it and the read-back check (D3) and gate 2 allow it. Without it, wide-gamut images render with shifted colours (R-SAN-2 as amended).
+- **SAN-001.D5** — **`before_hash` is HMAC-SHA256 keyed with `SANITIZE_LOG_KEY`** (confirmed by the human, 2026-10-07, as recommended; rule change DOC-007.D2, PR #60). `make init` generates the key into the local `.env`, and compose passes it to `app` and `test` only (R-SAN-6 as amended). A missing key stops the run with a message naming `make init`, never a value. A plain hash of a short value could be reversed by hashing guesses.
+- **SAN-001.D6** — **The `claude` backend and OCR stay out of M2** (confirmed by the human, 2026-10-07, as recommended). `sanitizer.backend: claude` and `sanitizer.ocr: true` fail fast with a message naming the key. OCR waits for the VLM (M5 at the earliest); the `claude` backend for a later request.
+- **SAN-001.D7** — **Working copies persist in `results_root/.work/` during dry runs** (confirmed by the human, 2026-10-07, as recommended). Classify (M3) and caption (M5) read only the sanitized copy (P-2), so it stays from sanitize until M7 files it; `.work/` needs about as much space as the source folder. **For M7's plan:** R-FOP-3's clean-on-start must be narrowed to temp files and the copies of `filed` or `error` rows, or it deletes the copies a resumed run needs.
 - **SAN-001.D8** — **Where the sanitized name lives** (lead, 2026-10-07). A new nullable column `files.original_sanitized` holds the sanitized stem. It feeds the `{original_sanitized}` token (R-NAME-2) and the caption hint (DESIGN §4.3). Sanitized folder segments are logged in `sanitize_log` (`field = path_segment`) and not stored anywhere else. DB-002 adds the column.
 - **SAN-001.D9** — **One file is all or nothing** (lead, 2026-10-07). Per file, the node makes the working copy (FOP-001), strips and checks its metadata, redacts the name, writes the thumbnail (ING-002) and its `sanitize_log` rows, then sets `sanitized`. Any failure sets `error` with a fixed reason and writes no log rows for that file. The node never commits; `run` commits once per node (PIPE-001.D3).
 - **SAN-001.D10** — **Recordings never hold real data** (lead, 2026-10-07). Recorded LLM responses (TST-005) are made only from synthetic strings in the `gpu` tier. The gate's entity calls on the human's values are never recorded or printed.

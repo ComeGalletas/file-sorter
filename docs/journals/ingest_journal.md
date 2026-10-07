@@ -45,7 +45,7 @@ references or host paths here. Use hashes.
   - The `dry-run` CSV under `results_root/reports/` may carry it too.
   - Logs, console and test output, issues, PRs and journals carry hashes only. Host paths are never stored.
   - The rejected option was hashes only until M2, which would make `dry-run` output hard to review by hand.
-  - **Open, for the human:** PR #24's review noted that neither the rule nor D3 says whether this exception ends when the M2 sanitizer lands or is permanent. It stands as written until the human decides. **Asked at M2 G0** (`docs/plans/m2.md`, 2026-10-07).
+  - **Answered at M2 G0: the exception is permanent** (the human, 2026-10-07, option A as recommended; rule change DOC-007.D1, PR #60). PR #24's review had noted that neither the rule nor D3 said whether it ends when the sanitizer lands. It stays for the ledger and the local reports, because M7's copy, `purge-sources`, `delete` and `watch` need the path to find the original. Two limits apply from M2 on: no model ever receives the path or the raw file name, only `files.original_sanitized` (P-2); and the M4 API and UI show sanitized names and hashes, never `source_path`. The dry-run CSV, under `results_root/reports/`, keeps `source_path` beside `sanitized_name` (CLI-003).
 - **ING-001.D3** — **`animated` is an allow-list** (decided by the human, 2026-10-06; it replaces the earlier default). `animated` is true only when Pillow's `format` is in {GIF, WEBP, PNG} (PNG covers APNG) **and** `is_animated` is true. Every other format is false, including TIFF, MPO and HEIC. Classification reads frame or page 0.
 - **ING-001.D4** — **Decompression bombs: Pillow's default stands** (lead, 2026-10-06). `Image.MAX_IMAGE_PIXELS` stays at its default, 89,478,485 pixels. Above that Pillow warns (`DecompressionBombWarning`); above twice that (~179 MP) it raises `DecompressionBombError`, which `probe_image` catches and returns as `Skipped` (ING-001.2.1). A test pins the limit, so changing it is a deliberate act.
 - **ING-001.D5** — **Skip reasons live in `files.error`; only `status = error` is retried** (lead, 2026-10-06). A skipped file has `status = skipped` and its reason in `files.error`: a fixed string or an exception type, never a path. No migration. A `skipped` row counts as known under R-ING-2 and is never retried. That holds although `error` also stores skip reasons, because retries key on the status, not the column.
@@ -142,7 +142,7 @@ references or host paths here. Use hashes.
 ## ING-002 — Confirmed reading
 
 - `thumbs.size: 256` is already in `config.yaml`. Pillow and pillow-heif are already dependencies, and `probe_image` already reads frame 0.
-- **ING-002.D1** — **The thumbnail's name: `<short_hash>.webp` as R-ING-5 says, or `<source_hash>.webp`?** Open, for the human (see `docs/plans/m2.md`). The plan assumes `<source_hash>.webp`.
+- **ING-002.D1** — **Thumbnails are `.work/thumbs/<source_hash>.webp`** (confirmed by the human, 2026-10-07, as recommended; rule change DOC-007.D4, PR #60, amends R-ING-5). Eight hex characters collide on a large folder, about 1% at ten thousand files, which would lose or swap a thumbnail.
 - **ING-002.D2** — **Format details** (lead, 2026-10-07): converted to RGB (RGBA kept when the frame has alpha), resized with `thumbnail()` so the aspect ratio holds, no metadata written. An existing thumbnail for the same hash is kept (idempotent), never replaced.
 
 ## ING-002 — Tasks
