@@ -1,10 +1,10 @@
 """PIPE-001.1: the batch graph with the ingest node, in dry-run mode (the acceptance test).
 
 Synthetic images only, generated here under `tmp_path`. The module runs against its own
-migrated schema, because `run` commits (PIPE-001.D3).
+migrated schema (`schema_dsn`, tests/integration/conftest.py), because `run` commits
+(PIPE-001.D3).
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import psycopg
@@ -15,23 +15,11 @@ from PIL import Image
 from classifier.config import Config
 from classifier.graph.nodes import REGISTRY, Node, NodeContext, select_by_status
 from classifier.graph.run import run
-from tests.db.db_support import require_db_dsn
-from tests.integration.schema_support import migrated_schema
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 
-
-@pytest.fixture(scope="module")
-def schema_dsn() -> Iterator[str]:
-    with migrated_schema(require_db_dsn()) as dsn:
-        yield dsn
-
-
-@pytest.fixture(autouse=True)
-def clean_ledger(schema_dsn: str) -> None:
-    """Each test starts on an empty ledger of this module's own schema."""
-    with psycopg.connect(schema_dsn) as conn:
-        conn.execute("truncate files")
+# Each test starts on an empty ledger of this module's own schema (TST-003.1).
+pytestmark = pytest.mark.usefixtures("empty_ledger")
 
 
 @pytest.fixture
