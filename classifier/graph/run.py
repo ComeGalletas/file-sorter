@@ -15,6 +15,7 @@ from types import MappingProxyType
 
 import psycopg
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from classifier.config import Config
 from classifier.graph.nodes import REGISTRY, Node, NodeContext, plan
@@ -42,7 +43,9 @@ def run(config: Config, *, dry_run: bool = False, nodes: tuple[Node, ...] = REGI
     return RunResult(run_id, dry_run, MappingProxyType(dict(final["counts"])))
 
 
-def _build(steps: tuple[Node, ...], conn: psycopg.Connection, ctx: NodeContext):  # noqa: ANN202
+def _build(
+    steps: tuple[Node, ...], conn: psycopg.Connection, ctx: NodeContext
+) -> CompiledStateGraph:
     builder = StateGraph(GraphState)
     previous = START
     for node in steps:
