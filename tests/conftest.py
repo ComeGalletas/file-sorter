@@ -1,8 +1,9 @@
 """Test tiers by path (CLAUDE.md §3, DOC-001.D8). Test modules stay plain pytest.
 
 tests/unit/ -> unit, tests/db/ -> db, tests/integration/ -> integration, tests/gpu/ -> gpu.
-A module anywhere else counts as `unit`. The tier audit (M1, TST) will fail any `unit`
-test that opens a db connection, loads a model or calls Ollama.
+A module anywhere else counts as `unit`. The tier audit (tests/devtools/test_tier_audit.py,
+TST-002.2) fails any `unit` test that opens a db connection, loads a model or calls Ollama,
+and names the move or the TIER_BY_DIR line below that fixes it.
 """
 
 from pathlib import Path

@@ -54,7 +54,11 @@ references or host paths here. Use hashes.
   - [x] TST-002.1.2 — `tests/db/test_db_fixture.py`: head, rollback in one test, ordered pair, missing-DSN message · fcaceef
   - [x] TST-002.1.3 — PR #30's migration test and `test_db_reachable.py` take the shared `DB_DSN` check · 9516686
   - [x] TST-002.1.4 — Results · f49fd16
-- [ ] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
+- [x] TST-002.2 — Tier audit for `unit` tests · #20 · acceptance: `tests/devtools/test_tier_audit.py`
+  - [x] TST-002.2.1 — The audit and its tests, in one module (the scanner lives in the test file: `--import-mode=importlib` rules out a sibling helper import) · `0ffb5a3`
+  - [x] TST-002.2.2 — Point the `tests/conftest.py` docstring at the audit · `e112d07`
+  - [x] TST-002.2.3 — Record the results and the named gaps · `9ef33e4`
+  - [x] TST-002.2.4 — Fix the audit after review round 1: drop the `DB_DSN` check, alias and from-import HTTP calls, dynamic imports, async fixtures, the fake-transport fix text · `f6731b7`
 - [x] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
   - [x] TST-002.3.1 — `app`'s `/source` mount in `docker-compose.yml` is read-only (long and short forms) · e7747f9
   - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it · 83054ce
@@ -85,12 +89,15 @@ references or host paths here. Use hashes.
 
 ### TST-002.2 (worker: qa)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
-- **Deferred:**
+- **Status:** DONE_WITH_CONCERNS (the named gaps below)
+- **Triage:** medium; unit tier plus lint; solo.
+- **Tests:** `tests/devtools/test_tier_audit.py`: 36 pass (25 before round 1). Round 1 found the `DB_DSN` check red on `main`'s config tests, so it is gone: setting the variable opens no connection. The merged-tree run (0 violations expected) is pending the merge of `main` into this branch. `make lint` is clean.
+- **Self-rating:** 8/10, proud: yes. The 2 points are the named gaps below; the acceptance test and the lead's two additions are met.
+- **Review:** pending.
+- **Deferred / named gaps:**
+  - The scan is static and per module. A unit test that reaches the db or a model through a `classifier.*` helper is caught only if the helper's dotted name is in `INDIRECT_DB` / `INDIRECT_MODEL`. Both lists start empty, because no helper that needs the db or a model exists yet. A task that adds one registers it there.
+  - Not detected: `httpx.Client(...)` built with a real transport (module-level calls, aliases and `from httpx import post` are flagged, so a fake `MockTransport` stays legal), a db reached through an autouse fixture in a `conftest.py`, and dynamic imports whose argument is not a string constant.
+  - The scanner lives in the test file, because `--import-mode=importlib` rules out importing a sibling helper.
 
 ### TST-002.3 (worker: qa)
 
