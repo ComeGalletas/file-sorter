@@ -16,7 +16,14 @@ from pathlib import Path, PurePosixPath
 from typing import Annotated, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+    field_validator,
+)
 
 from classifier.graph.ingest_files import IMAGE_EXTENSIONS
 
@@ -24,6 +31,9 @@ LOG_KEY_ENV = "SANITIZE_LOG_KEY"
 
 # SAN-001.D1: space, `_`, `-` and `.` are interchangeable inside a literal value.
 SEPARATORS = " _-."
+
+# An EXIF/XMP/IPTC tag name, never free text: a value written there fails at load.
+TagName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_:-]{0,63}$")]
 
 
 class SanitizeConfigError(Exception):
@@ -36,14 +46,16 @@ class _Strict(BaseModel):
 
 class ExifSettings(_Strict):
     mode: Literal["strip_all"]
-    keep: list[str] = Field(default_factory=lambda: ["Orientation", "DateTimeOriginal"])
+    keep: list[TagName] = Field(
+        default_factory=lambda: ["Orientation", "DateTimeOriginal"], repr=False
+    )
 
 
 class LiteralRule(_Strict):
     id: str = Field(min_length=1)
     type: Literal["literal"]
     values: list[str] = Field(min_length=1, repr=False)  # the human's values: never printed
-    replace: str
+    replace: str = Field(repr=False)  # meant as a token, but could hold a name
 
     @field_validator("values")
     @classmethod
@@ -58,7 +70,7 @@ class RegexRule(_Strict):
     id: str = Field(min_length=1)
     type: Literal["regex"]
     pattern: str = Field(min_length=1, repr=False)  # may embed a value
-    replace: str
+    replace: str = Field(repr=False)  # meant as a token, but could hold a name
 
     @field_validator("pattern")
     @classmethod
@@ -79,7 +91,7 @@ class EntityRule(_Strict):
     id: str = Field(min_length=1)
     type: Literal["entity"]
     labels: list[Literal["PERSON", "ORG", "LOCATION"]] = Field(min_length=1)
-    replace: str
+    replace: str = Field(repr=False)  # meant as a token, but could hold a name
 
     @field_validator("replace")
     @classmethod
@@ -99,7 +111,7 @@ class ExifFieldRule(_Strict):
 
     id: str = Field(min_length=1)
     type: Literal["exif_field"]
-    fields: list[str] = Field(min_length=1, repr=False)
+    fields: list[TagName] = Field(min_length=1, repr=False)
 
 
 Rule = Annotated[LiteralRule | RegexRule | EntityRule | ExifFieldRule, Field(discriminator="type")]
@@ -186,7 +198,13 @@ def load_rules(path: str | Path, env: Mapping[str, str] | None = None) -> Rules:
     # original exception (which quotes the rules text) is not even kept as __context__.
     problem = None
     try:
-        data = yaml.safe_load(file.read_text(encoding="utf-8"))
+        text = file.read_text(encoding="utf-8")
+    except UnicodeDecodeError:  # it holds the raw bytes
+        problem = f"rules file is not UTF-8 text: {file}"
+    if problem is not None:
+        raise SanitizeConfigError(f"{problem}; compare it with sanitize.example.yaml (make init)")
+    try:
+        data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         mark = getattr(exc, "problem_mark", None)
         line = f" at line {mark.line + 1}" if mark is not None else ""

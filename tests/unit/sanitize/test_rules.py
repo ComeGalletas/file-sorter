@@ -91,15 +91,47 @@ def test_repr_and_str_never_show_values_patterns_or_fields(tmp_path: Path) -> No
     data = rules_data()
     data["rules"][1]["pattern"] = rf"{PATTERN_SECRET}\d+"
     data["rules"][3]["fields"] = ["Zyxwqtag"]
+    data["exif"]["keep"] = ["Orientation", "PlonkKeep"]  # tag-shaped, so it loads
+    for index in (0, 1, 2):
+        data["rules"][index]["replace"] = "[Zyxwq Plonk]"
     rules = load_rules(write(tmp_path, data), env=ENV)
     shown = [repr(rules), str(rules)]
     shown += [text for rule in rules.rules for text in (repr(rule), str(rule))]
     shown += [repr(list(rules.rules)), repr(RulesFile.model_validate(data))]
+    shown += [repr(rules.exif), str(rules.exif)]
     for text in shown:
         for secret in ("Zyxwq", "Plonk", PATTERN_SECRET, KEY):
             assert secret not in text, text
     # Ids and types stay visible, so a printed Rules is still useful.
     assert repr(rules).endswith("rules=[who:literal, mail:regex, ner:entity, gps:exif_field])")
+
+
+@pytest.mark.parametrize("where", ["keep", "fields"])
+@pytest.mark.parametrize("bad", [SECRET, "Zyxwq@Plonk", "1Zyxwq", "Zyxwq" * 13, ""])
+def test_tag_lists_take_tag_names_only(tmp_path: Path, where: str, bad: str) -> None:
+    data = rules_data()
+    if where == "keep":
+        data["exif"]["keep"] = ["Orientation", bad]
+    else:
+        data["rules"][3]["fields"] = [bad]
+    location = "exif.keep[1]" if where == "keep" else "rules[3].fields[0]"
+    assert f"{location}: string_pattern_mismatch" in load_error(tmp_path, data)
+
+
+def test_tag_names_with_a_group_prefix_load(tmp_path: Path) -> None:
+    data = rules_data()
+    data["exif"]["keep"] = ["Orientation", "EXIF:DateTimeOriginal", "XMP-dc_Rights"]
+    assert load_rules(write(tmp_path, data), env=ENV).exif.keep[1] == "EXIF:DateTimeOriginal"
+
+
+def test_non_utf8_file_never_echoes_its_bytes(tmp_path: Path) -> None:
+    path = tmp_path / "sanitize.yaml"
+    path.write_bytes(b"rules:\n  - values: [Zyxwq\xff\xfePlonk]\n")
+    with pytest.raises(SanitizeConfigError) as info:
+        load_rules(path, env=ENV)
+    assert "make init" in str(info.value) and "UTF-8" in str(info.value)
+    assert "Zyxwq" not in str(info.value) and "0xff" not in str(info.value)
+    assert_unchained(info.value)
 
 
 def test_the_example_file_loads() -> None:
