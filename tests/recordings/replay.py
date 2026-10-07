@@ -26,6 +26,8 @@ from typing import Any
 
 import httpx
 
+from classifier.models.ollama import OllamaError, check_host
+
 RECORDINGS = Path(__file__).resolve().parent
 GENERATE_PATH = "/api/generate"
 # TST-005.D5: always keyed, and keyed only when the body carries them.
@@ -35,6 +37,7 @@ RECORDING_FIELDS = {"request", "response"}
 # Ollama's token ids of the prompt: bulky, and unused by OllamaClient. Not recorded.
 UNRECORDED_RESPONSE_FIELDS = ("context",)
 PACKAGE_RE = re.compile(r"[a-z][a-z0-9_]*")
+KEY_RE = re.compile(r"[0-9a-f]{64}")
 RECORD_HINT = "record it in the gpu tier: pytest -m gpu --record-ollama <test path>"
 
 
@@ -74,13 +77,37 @@ def recording_key(body: object) -> str:
 def package_dir(package: str, root: Path = RECORDINGS) -> Path:
     """`root/<package>`; the name is one plain segment, so it can't leave `root`."""
     if not PACKAGE_RE.fullmatch(package):
-        raise RecordingError(f"recording package {package!r} is not a plain lower-case name")
+        # Fixed text: the name is never echoed (PR #71 privacy audit).
+        raise RecordingError("a recording package name is not a plain lower-case name")
     return root / package
 
 
-def load_recording(path: Path) -> dict[str, Any]:
-    """A recording file, checked against the format; its name must be its request's key."""
-    where = f"recording {path.parent.name}/{path.name}"
+def describe(path: Path, root: Path | None = None) -> str:
+    """A label for `path` that is safe in test output (PR #71 privacy audit).
+
+    Only a valid `<package>/<64-hex key>.json` is shown as it is. Any other file or folder
+    name could describe an original, so it is reported by a short SHA-256 of its path
+    (relative to `root` when given) instead.
+    """
+    in_place = root is None or path.parent.parent == root
+    if (
+        in_place
+        and PACKAGE_RE.fullmatch(path.parent.name)
+        and path.suffix == ".json"
+        and KEY_RE.fullmatch(path.stem)
+    ):
+        return f"recording {path.parent.name}/{path.name}"
+    name = path.relative_to(root).as_posix() if root is not None else path.name
+    digest = hashlib.sha256(name.encode("utf-8", "surrogatepass")).hexdigest()[:12]
+    return f"a file not named <package>/<key>.json (path sha256 {digest})"
+
+
+def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
+    """A recording file, checked against the format; its name must be its request's key.
+
+    Pass the lint's `root` so a stray file gets the same label in every message.
+    """
+    where = describe(path, root)
     try:
         recording = json.loads(path.read_bytes().decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
@@ -103,14 +130,15 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
     """
     problems = []
     for path in sorted(root.rglob("*.json")):
-        rel = path.relative_to(root).as_posix()
+        where = describe(path, root)
         parts = path.relative_to(root).parts
         try:
             if len(parts) != 2:
-                raise RecordingError(f"{rel} must sit directly in tests/recordings/<package>/")
-            package_dir(parts[0], root)
-            if "images" in load_recording(path)["request"]:
-                raise RecordingError(f"recording {rel} carries images; recordings are text only")
+                raise RecordingError(f"{where} must sit directly in tests/recordings/<package>/")
+            if not PACKAGE_RE.fullmatch(parts[0]):
+                raise RecordingError(f"{where} is not in a plain lower-case package folder")
+            if "images" in load_recording(path, root)["request"]:
+                raise RecordingError(f"{where} carries images; recordings are text only")
         except RecordingError as exc:
             problems.append(str(exc))
     return problems
@@ -118,7 +146,7 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
 
 def _request_body(request: httpx.Request) -> dict[str, Any]:
     if request.method != "POST" or request.url.path != GENERATE_PATH:
-        raise RecordingError(f"only POST {GENERATE_PATH} is recorded, not {request.method}")
+        raise RecordingError(f"only POST {GENERATE_PATH} is recorded")
     try:
         body = json.loads(request.read().decode("utf-8"))
     except (UnicodeDecodeError, ValueError):
@@ -126,6 +154,18 @@ def _request_body(request: httpx.Request) -> dict[str, Any]:
     if not isinstance(body, dict):
         raise RecordingError("the request body is not a JSON object")
     return body
+
+
+def _check_host(request: httpx.Request) -> None:
+    """Record mode forwards only to OllamaClient's allowed hosts, whatever client it is in."""
+    bare = request.url.copy_with(path="/", query=None, fragment=None)
+    try:
+        check_host(str(bare))
+    except OllamaError:
+        # Fixed text: the refused host is not echoed (PR #71).
+        raise RecordingError(
+            "record mode forwards only to the hosts in classifier.models.ollama.ALLOWED_HOSTS"
+        ) from None
 
 
 class ReplayTransport(httpx.BaseTransport):
@@ -182,6 +222,7 @@ class RecordingTransport(httpx.BaseTransport):
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         try:
+            _check_host(request)
             body = _request_body(request)
             key = recording_key(body)
         except RecordingError as exc:

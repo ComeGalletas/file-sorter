@@ -136,10 +136,12 @@ def test_a_body_without_the_keyed_fields_is_refused(bad: object) -> None:
         recording_key(bad)
 
 
-@pytest.mark.parametrize("name", ["", "../x", "Models", "a/b", "a.b", "1x"])
+@pytest.mark.parametrize("name", ["", "../x", "Models", "a/b", "a.b", "1x", SECRET])
 def test_package_names_are_plain_segments(name: str, tmp_path: Path) -> None:
-    with pytest.raises(RecordingError):
+    with pytest.raises(RecordingError) as caught:
         package_dir(name, tmp_path)
+    # A fixed message: the name is never echoed (PR #71 privacy audit).
+    assert str(caught.value) == "a recording package name is not a plain lower-case name"
 
 
 # --- replay ---
@@ -299,6 +301,38 @@ def test_record_does_not_write_an_http_error(tmp_path: Path) -> None:
     assert not (tmp_path / "pkg").exists()
 
 
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        f"http://{SECRET}.example",
+        "http://ollama.example",
+        "http://user:pw@localhost",
+        "ftp://ollama",
+    ],
+)
+def test_record_forwards_only_to_allowed_hosts(base_url: str, tmp_path: Path) -> None:
+    # Wired into a plain httpx.Client, so OllamaClient's own host check is not in the way.
+    forwarded: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: forwarded.append(r) or httpx.Response(200, json=answer()))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with httpx.Client(base_url=base_url, transport=recorder) as client:
+        with pytest.raises(RecordingError, match="ALLOWED_HOSTS") as caught:
+            client.post("/api/generate", json=body())
+    assert forwarded == []
+    assert not (tmp_path / "pkg").exists()
+    assert_private(caught.value)
+    assert "example" not in str(caught.value) and len(recorder.failures) == 1
+
+
+@pytest.mark.parametrize("base_url", ["http://ollama:8080", "http://localhost", "http://[::1]"])
+def test_record_forwards_to_the_allowed_hosts(base_url: str, tmp_path: Path) -> None:
+    spy = httpx.MockTransport(lambda r: httpx.Response(200, json=answer("alpha")))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with httpx.Client(base_url=base_url, transport=recorder) as client:
+        assert client.post("/api/generate", json=body()).status_code == 200
+    assert recorder.failures == []
+
+
 def test_record_refuses_a_reply_without_a_text_response(tmp_path: Path) -> None:
     recorder = RecordingTransport("pkg", upstream({"done": True}), TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
@@ -419,22 +453,39 @@ def test_lint_accepts_a_good_recording_in_any_whitespace(tmp_path: Path) -> None
 
 
 def test_lint_reports_each_bad_file_privately(tmp_path: Path) -> None:
+    # The planted SECRET is in stray file and folder names too (PR #71 privacy audit).
     good = write_recording(tmp_path, body(), answer())
-    (tmp_path / "loose.json").write_text("{}", encoding="utf-8")
-    nested = tmp_path / "pkg" / "deeper"
-    nested.mkdir()
-    (nested / good.name).write_bytes(good.read_bytes())
+    strays = {
+        "loose": f"{SECRET}.json",
+        "nested": f"pkg/{SECRET}/{good.name}",
+        "unkeyed name": f"pkg/{SECRET}.json",
+        "bad package": f"{SECRET}/{good.name}",
+    }
+    for rel in strays.values():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(good.read_bytes())
     misnamed = write_recording(tmp_path, body(prompt="other"), answer())
     misnamed.rename(misnamed.with_name("0" * 64 + ".json"))
     write_recording(tmp_path, body(prompt="with images", images=["aGVsbG8="]), answer())
-    (tmp_path / "Bad").mkdir()
-    (tmp_path / "Bad" / good.name).write_bytes(good.read_bytes())
 
     problems = lint_recordings(tmp_path)
-    assert len(problems) == 5
-    assert any("loose.json" in p for p in problems)
-    assert any("pkg/deeper/" in p for p in problems)
-    assert any("not named by the key" in p for p in problems)
-    assert any("carries images" in p for p in problems)
-    assert any("'Bad'" in p for p in problems)
+    assert len(problems) == 6
+    for rel in strays.values():
+        digest = hashlib.sha256(rel.encode("utf-8")).hexdigest()[:12]
+        assert sum(f"path sha256 {digest}" in p for p in problems) == 1
+    assert sum("must sit directly" in p for p in problems) == 2
+    assert sum("not in a plain lower-case package folder" in p for p in problems) == 1
+    assert sum("not named by the key" in p for p in problems) == 2
+    assert f"recording pkg/{'0' * 64}.json is not named by the key" in "\n".join(problems)
+    assert sum("carries images" in p for p in problems) == 1
     assert all(SECRET not in p for p in problems)
+
+
+def test_load_recording_does_not_echo_a_stray_file_name(tmp_path: Path) -> None:
+    path = tmp_path / "pkg" / f"{SECRET}.json"
+    path.parent.mkdir()
+    path.write_text("{not json", encoding="utf-8")
+    with pytest.raises(RecordingError) as caught:
+        load_recording(path)
+    assert "path sha256 " in str(caught.value)
+    assert_private(caught.value)

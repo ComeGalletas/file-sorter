@@ -245,7 +245,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `db5fc45`
   - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `b2639e6`
   - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
-  - [x] TST-005.1.4 — Results
+  - [x] TST-005.1.4 — Results · `354324f`
+  - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported)
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
@@ -282,7 +283,10 @@ references or host paths here. Use hashes.
   - The fixture's `gpu and` guard on record mode survives its mutation. The collection check refuses `--record-ollama` on any non-gpu selection first, so the guard is defence in depth that the CLI can't reach.
   - The MOD-001.2 recordings weren't pushed when this landed, so they haven't been run through the lint yet. It checks them on merge (the lead's rule on #55: if they fail it, that's theirs to fix).
   - A thinking model's reply keeps its `thinking` text in the recording. That's bulky but readable, and MOD-001.D5's raw mode avoids it.
-- **Review:** (the lead's verdict comment on the PR)
+- **Review:** round 1 (`354324f`): Reviewer APPROVE; Privacy auditor FAIL, low severity. Fixed in TST-005.1.5:
+  - `describe()` shows only a valid `<package>/<64-hex key>.json` as it is. Any other file or folder name is reported by a 12-hex SHA-256 of its path relative to the lint root, so one stray file has one label in every message. `package_dir()` refuses a bad package with a fixed message, and an unsupported method is no longer echoed.
+  - `RecordingTransport` checks each request's host with `classifier.models.ollama.check_host` before forwarding, and a refusal names no host.
+  - Tests: the planted secret now sits in a stray file name, a nested folder name, an unkeyed name in a package and a bad package folder, and no lint, load or package message carries it. Seven host cases were added (four refused before any forward, three allowed). The module went from 52 to 61 tests. Mutations: dropping the host check fails 4, and echoing names in `describe()` fails 2.
 - **Deferred:** none.
 
 ### TST-005.2 (worker: qa)
