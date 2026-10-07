@@ -142,7 +142,7 @@ references or host paths here. Use hashes.
 ## CLI-003 — Confirmed reading
 
 - `classifier/cli/dry_run_report.py` writes the CLI-002 CSV, and `RunResult.counts` already holds each node's result by name.
-- Blocked on ING-001.D2 for the `source_path` column only.
+- ING-001.D2 is answered (the human, 2026-10-07, option A; DOC-007.D1): the CSV keeps `source_path` beside the new `sanitized_name`. The console still prints counts only.
 
 ## CLI-003 — Tasks
 

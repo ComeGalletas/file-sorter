@@ -75,7 +75,7 @@ references or host paths here. Use hashes.
 - `0001_files.py` is the only migration, so `0002` is the head after it.
 - **DB-002.D1** — **`field` values** (lead, 2026-10-07): `filename`, `path_segment`, or `exif:<tag name>` (SAN-001.D3, D8), enforced by a check constraint on the prefix. Tag names aren't sensitive; their values are only ever hashed.
 - **DB-002.D2** — **No cascade** (lead, 2026-10-07): a `files` row is never deleted (`deleted` is a status), so the FK has no `on delete cascade`.
-- The hash in `before_hash` follows SAN-001.D5 (open, for the human). The column is 64 hex characters either way.
+- `before_hash` is HMAC-SHA256 keyed with `SANITIZE_LOG_KEY` (SAN-001.D5, confirmed by the human, 2026-10-07; DOC-007.D2): 64 hex characters. The migration only stores it; computing it is SAN-001.1's.
 
 ## DB-002 — Tasks
 

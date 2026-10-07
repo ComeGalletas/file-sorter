@@ -69,7 +69,7 @@ references or host paths here. Use hashes.
 ## CFG-002 — Confirmed reading
 
 - `classifier/config.py` and `tests/unit/config/test_config.py` are on `main` (PR #26). `config.yaml` ships `db.dsn: null`, so refusing a non-null value breaks nothing that is committed.
-- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): it is independent of the sanitizer, and item 3 keeps the database password out of the committed file. The human confirms or drops it when approving `docs/plans/m2.md`.
+- Not in the approved M1 plan. **Proposed for M2** at M2 G0 (lead, 2026-10-07): it is independent of the sanitizer, and item 3 keeps the database password out of the committed file. **Confirmed into M2 by the human, 2026-10-07.**
 
 ## CFG-002 — Tasks
 
