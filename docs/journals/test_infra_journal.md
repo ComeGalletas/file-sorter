@@ -207,8 +207,12 @@ references or host paths here. Use hashes.
   2. synthetic emails and phone numbers;
   3. a committed list of fictional person, organisation and place names, for the entity rule.
 
-  The residual check is a case-insensitive search for each seeded value in the sanitized name, with SAN-001.D1's separators. The gate prints PASS or FAIL and the residual count out of 50 only. It never prints a per-source split, which would hint at how many values the local rules hold.
+  The residual check is a case-insensitive search for each seeded value in the sanitized name, with SAN-001.D1's separators. The gate prints PASS or FAIL and the residual share as a percentage only (DOC-005.D1); TST-005.D4 sets how it draws.
 - **TST-005.D3** — **Recording format** (lead, 2026-10-07): one JSON file per request under `tests/recordings/<package>/`, named by the SHA-256 of the canonical request (model, prompt, schema, options). It stores the request and the response, so a reviewer can read both.
+- **TST-005.D4** — **Gate 2 reveals nothing about the local rules** (lead, 2026-10-07, from PR #61's privacy audit).
+  - The share of names per source is fixed in the gate's code, never derived from the size of the local `literal` pool. Literal values are drawn **with replacement**, so the drawn set looks the same whatever the pool holds.
+  - Output is PASS or FAIL and percentages only. Never a count, a pool size, a per-source split, or a "fewer than N" message.
+  - Every error is value-free: a failing literal is reported by its rule id and a hash at most, and no traceback may echo a value. An empty or missing `literal` rule fails with a message naming `sanitize.yaml` and the rule id.
 
 ## TST-005 — Tasks
 
