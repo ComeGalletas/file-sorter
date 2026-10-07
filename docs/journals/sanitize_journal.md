@@ -63,6 +63,7 @@ Decisions:
 - **SAN-001.D8** — **Where the sanitized name lives** (lead, 2026-10-07). A new nullable column `files.original_sanitized` holds the sanitized stem. It feeds the `{original_sanitized}` token (R-NAME-2) and the caption hint (DESIGN §4.3). Sanitized folder segments are logged in `sanitize_log` (`field = path_segment`) and not stored anywhere else. DB-002 adds the column.
 - **SAN-001.D9** — **One file is all or nothing** (lead, 2026-10-07). Per file, the node makes the working copy (FOP-001), strips and checks its metadata, redacts the name, writes the thumbnail (ING-002) and its `sanitize_log` rows, then sets `sanitized`. Any failure sets `error` with a fixed reason and writes no log rows for that file. The node never commits; `run` commits once per node (PIPE-001.D3).
 - **SAN-001.D10** — **Recordings never hold real data** (lead, 2026-10-07). Recorded LLM responses (TST-005) are made only from synthetic strings in the `gpu` tier. The gate's entity calls on the human's values are never recorded or printed.
+- **SAN-001.D11** — **The `exif_field` rule's shape** (lead, 2026-10-07, on #47). `{id, type: exif_field, fields: [<tag>, …]}`: the tags SAN-001.2 always removes (D3). `sanitize.example.yaml` gains a placeholder rule only if SAN-001.2 needs one.
 
 ## SAN-001 — Plan
 
@@ -73,7 +74,7 @@ Decisions:
 
 ## SAN-001 — Tasks
 
-- [ ] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py`
+- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
@@ -82,7 +83,24 @@ Decisions:
 
 ### SAN-001.1 (worker: pipeline)
 
-- **Status:**
+- **Built:** `classifier/sanitize/rules.py`: `load_rules`, `sanitize_text` and `sanitize_name`.
+  - Load errors name `make init` and the key location only. Pydantic and YAML errors are rebuilt from location and type, unknown keys aren't named, and nothing is chained.
+  - `field` values are `filename` and `path_segment` (DB-002.D1).
+  - The entity callable is `entity(text, labels) -> [(span, label)]`, for SAN-001.3 to adapt.
+  - `sanitize_name` keeps only an image extension (ingest's `IMAGE_EXTENSIONS`) out of the rules. Any other dotted tail is redacted as part of the name: fail closed, P-2.
+- **Tests:** `tests/unit/sanitize/test_rules.py` (acceptance), unit tier: 71 passed (after round 3). `make lint` clean. Default tiers: at pre-push.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Gap: the entity callable's shape is this task's choice; SAN-001.3 confirms it against MOD-001.2's detector. Entity spans are matched case-sensitively, as the detector returns them from the text.
+- **Reviewer / Privacy auditor:** round 1 at d9b741d: Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.3 fixes it: rule values, regex patterns and `exif_field` tags are hidden from `repr` and `str` (`Rules` shows ids and types only), and every `SanitizeConfigError`, and the validators' own errors, is raised outside its `except` block, so `__context__` is `None`.
+  - Round 2 at 866a1be: Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.4 (c093623) fixes it:
+    - `exif.keep` and `exif_field` `fields` must be EXIF tag names, or the load fails without echoing the entry, and both are hidden from `repr`;
+    - `replace` is hidden from `repr`;
+    - a non-UTF-8 rules file raises an unchained `SanitizeConfigError`.
+  - Round 3 at c093623 (exhaustive): Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.5 fixes it:
+    - `Redaction.after_value` and `SanitizedName`'s stem, segments and redactions are hidden from `repr`;
+    - `before_hash` encodes with `surrogatepass`, and a log key that isn't clean UTF-8 is refused, naming only `SANITIZE_LOG_KEY` and `make init`, unchained;
+    - rule ids must match `^[a-z0-9][a-z0-9_-]{0,63}$`, or the load fails without echoing the id.
+  - Re-review pending.
 
 ### SAN-001.2 (worker: pipeline)
 
