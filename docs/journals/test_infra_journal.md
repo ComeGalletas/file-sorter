@@ -239,6 +239,9 @@ references or host paths here. Use hashes.
   - Output is PASS or FAIL and percentages only. Never a count, a pool size, a per-source split, or a "fewer than N" message.
   - Every error is value-free: a failing literal is reported by its rule id and a hash at most, and no traceback may echo a value. An empty or missing `literal` rule fails with a message naming `sanitize.yaml` and the rule id.
 - **TST-005.D5** — **The canonical recording key** (lead, 2026-10-07, on #51 and #55; refines D3). The key is the SHA-256, in UTF-8, of `json.dumps({model, prompt, format, options, think?, raw?}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`. `think` and `raw` are present only when the `/api/generate` body carries them, because both change the answer. `raw` was added with MOD-001.D5. `keep_alive` and `stream` are excluded. Files are `tests/recordings/<package>/<key>.json`, holding `{"request": …, "response": …}`. TST-005.1 implements it, and its lint checks every committed recording.
+- **TST-005.D6** — **Where gate 2's two halves run** (lead, 2026-10-07, on #58). The names half calls `sanitize_name` on string paths, so no file is ever named with the human's values. The metadata half runs ingest and the sanitize node end to end, in a temporary results tree that is removed afterwards.
+- **TST-005.D7** — **A node `error` fails gate 2** (lead, 2026-10-07, on #58). Any gate input, synthetic or real, that the node sets to `error` fails the gate. Otherwise "only the allow-list" would pass by dropping files, and a real file that trips SAN-001.2's structure allow-list would stay hidden.
+- **TST-005.D8** — **Shares and the per-word check** (lead, 2026-10-07, on #58). 20 literal, 10 email/phone and 20 fictional entity seeds, fixed in code. For **person** seeds only, each first or last name word of 3+ letters is also searched. Orgs and places are checked as the full value, so common words a template may contain (`Bay`, `Club`) cause no false failures. The structure-tag check imports a public predicate from `classifier/sanitize/exif.py`, which #56 exposes, never a private one.
 
 ## TST-005 — Tasks
 
@@ -252,6 +255,10 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message · `693f18a`
   - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing · `456c5b7`
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
+  - [x] TST-005.2.1 — The seed draw (fixed shares, one random stream per purpose, literals with replacement), the gate's own residual matcher and the names judge; `tests/unit/gate/test_gate_2_names.py`
+  - [ ] TST-005.2.2 — The synthetic seeded images and the metadata judge; `tests/unit/gate/test_gate_2_metadata.py`
+  - [ ] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub
+  - [ ] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results
 
 ## TST-005 — Results
 
