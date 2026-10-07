@@ -242,8 +242,8 @@ references or host paths here. Use hashes.
 ## TST-005 — Tasks
 
 - [ ] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py`
-  - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests
-  - [ ] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests
+  - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `bb898ac`
+  - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests
   - [ ] TST-005.1.3 — A lint test over every committed recording; the "how to record" README
   - [ ] TST-005.1.4 — Results
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`

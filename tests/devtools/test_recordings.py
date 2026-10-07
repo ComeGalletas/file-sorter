@@ -304,3 +304,100 @@ def test_record_refuses_a_reply_without_a_text_response(tmp_path: Path) -> None:
         generate(recorder)
     assert_private(caught.value)
     assert not (tmp_path / "pkg").exists()
+
+
+# --- the shared fixture (tests/conftest.py), run in a synthetic tree with pytester ---
+
+pytest_plugins = ["pytester"]
+
+REPO_TESTS = Path(__file__).resolve().parents[1]
+INNER_SECRET = "zz-inner-" + "secret-qx"  # never written whole into the inner sources
+INNER_UNIT = """
+import pytest
+from classifier.models.ollama import OllamaClient
+from tests.recordings.replay import ReplayTransport
+
+PROMPT = "zz-inner-" + "secret-qx"
+
+
+def call(transport):
+    with OllamaClient("http://localhost", transport=transport) as client:
+        client.generate_json(model="m", prompt=PROMPT, schema={}, options={}, keep_alive=0)
+
+
+def test_replays(ollama_transport):
+    assert isinstance(ollama_transport("models"), ReplayTransport)
+
+
+def test_miss(ollama_transport):
+    call(ollama_transport("models"))
+
+
+def test_swallowed(ollama_transport):
+    try:
+        call(ollama_transport("models"))
+    except BaseException:
+        pass
+"""
+INNER_GPU = """
+import httpx
+from tests.recordings.replay import RecordingTransport
+
+
+def test_transport(ollama_transport, pytestconfig):
+    transport = ollama_transport("models")
+    if pytestconfig.getoption("--record-ollama"):
+        assert isinstance(transport, RecordingTransport)
+    else:
+        assert type(transport) is httpx.HTTPTransport
+"""
+
+
+@pytest.fixture
+def inner(pytester: pytest.Pytester) -> pytest.Pytester:
+    """A copy of the real conftest and replay helper, with one unit and one gpu module."""
+    tests = pytester.path / "tests"
+    (tests / "recordings").mkdir(parents=True)
+    (tests / "unit").mkdir()
+    (tests / "gpu").mkdir()
+    for rel in ("conftest.py", "recordings/replay.py"):
+        (tests / rel).write_text((REPO_TESTS / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    (tests / "unit" / "test_inner_unit.py").write_text(INNER_UNIT, encoding="utf-8")
+    (tests / "gpu" / "test_inner_gpu.py").write_text(INNER_GPU, encoding="utf-8")
+    return pytester
+
+
+def run_inner(inner: pytest.Pytester, *args: str) -> pytest.RunResult:
+    return inner.runpytest_subprocess(
+        "--import-mode=importlib", "-p", "no:cacheprovider", "--tb=short", "-rA", *args
+    )
+
+
+def test_fixture_replays_outside_gpu_and_fails_each_miss_once(inner: pytest.Pytester) -> None:
+    result = run_inner(inner, "-m", "not gpu")
+    # test_swallowed: its call passes, and its teardown reports the miss as an error.
+    result.assert_outcomes(passed=2, failed=1, errors=1)
+    output = result.stdout.str() + result.stderr.str()
+    key = recording_key(
+        {"model": "m", "prompt": INNER_SECRET, "format": {}, "options": {}, "keep_alive": 0}
+    )
+    assert f"no recording models/{key}.json" in output
+    assert "tests/unit/test_inner_unit.py::test_miss" in output
+    # The swallowed miss fails at teardown, naming its own test.
+    assert "caught by the code under test" in output
+    assert "tests/unit/test_inner_unit.py::test_swallowed" in output
+    assert INNER_SECRET not in output
+
+
+def test_fixture_is_the_real_transport_in_gpu(inner: pytest.Pytester) -> None:
+    run_inner(inner, "-m", "gpu").assert_outcomes(passed=1)
+
+
+def test_fixture_records_in_gpu_with_the_option(inner: pytest.Pytester) -> None:
+    run_inner(inner, "-m", "gpu", "--record-ollama").assert_outcomes(passed=1)
+
+
+def test_record_option_is_refused_when_other_tiers_are_selected(inner: pytest.Pytester) -> None:
+    result = run_inner(inner, "--record-ollama")
+    assert result.ret == pytest.ExitCode.USAGE_ERROR
+    result.stderr.fnmatch_lines(["*--record-ollama is for the gpu tier only*"])
