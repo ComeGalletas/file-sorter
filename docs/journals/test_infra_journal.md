@@ -242,13 +242,69 @@ references or host paths here. Use hashes.
 ## TST-005 — Tasks
 
 - [ ] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py`
+  - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `db5fc45`
+  - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `b2639e6`
+  - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
+  - [x] TST-005.1.4 — Results · `354324f`
+  - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported) · `91d62a0`
+  - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError` · `3442ea8`
+  - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message · `693f18a`
+  - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
 
 ### TST-005.1 (worker: qa)
 
-- **Status:**
+- **Status:** DONE.
+- **What landed:**
+  - **`tests/recordings/replay.py`:**
+    - `recording_key()` implements TST-005.D5 exactly: `model`, `prompt`, `format` and `options`, plus `think` and `raw` only when sent; `keep_alive` and `stream` excluded.
+    - `ReplayTransport` serves only `POST /api/generate` and never opens a socket.
+    - `RecordingTransport` (record mode) forwards to an upstream the caller builds. It writes `{"request", "response"}` without Ollama's `context`. It keeps an existing file with the same answer and refuses a different one.
+    - `lint_recordings()` checks the committed tree.
+    - `RecordingError` derives from `BaseException`, so neither `OllamaClient`'s `httpx` handling nor a fail-closed `except Exception` can swallow a miss. Every error names only the package, the 64-hex key and the test id, and is raised unchained.
+  - **`tests/conftest.py`:**
+    - `ollama_transport(package)` always replays outside `gpu`. In `gpu` it gives the real transport, or record mode with `pytest -m gpu --record-ollama`.
+    - The option is a usage error when the selection, after `-m`, holds a non-gpu test.
+    - A miss the code under test swallowed fails the test at teardown, once.
+  - **`tests/recordings/README.md`:** usage, format and the record command. No Makefile or compose change (the lead, on #55).
+- **Tests:** `tests/devtools/test_recordings.py` has 52 unit tests:
+  - the key, replay and record mode through a real `OllamaClient` on synthetic `tmp_path` recordings;
+  - four `pytester` runs of the real conftest in a synthetic tree;
+  - the lint on the real tree and on a synthetic tree with five planted problems.
+
+  A planted secret prompt is asserted absent from every error and from the inner pytest output. Totals: devtools 121 passed (69 audit + 52); `make test` 726 → 729 passed, 2 deselected (the 726 includes .1.1 and .1.2); `make lint` clean.
+- **Mutation checks:** each mutation fails the module:
+  - `RecordingError(Exception)`: 1 failed;
+  - no teardown net: 1 failed;
+  - teardown net without the call-failed guard (a miss reported twice): 1 failed;
+  - `raw` dropped from the key: 1 failed;
+  - errors chained: 9 failed.
+- **Live check (gpu box, throwaway script, not committed):** record mode against the real `ollama` service (`models.text_llm`, a synthetic one-word prompt, temperature 0, seed 7) wrote one file into a temp folder. `lint_recordings` passed on it, and replay returned the identical answer. The real reply's top-level fields match what the format expects (`response` is a string).
+- **Self-rating:** 9/10, proud: yes. Gaps:
+  - The fixture's `gpu and` guard on record mode survives its mutation. The collection check refuses `--record-ollama` on any non-gpu selection first, so the guard is defence in depth that the CLI can't reach.
+  - The MOD-001.2 recordings weren't pushed when this landed, so they haven't been run through the lint yet. It checks them on merge (the lead's rule on #55: if they fail it, that's theirs to fix).
+  - A thinking model's reply keeps its `thinking` text in the recording. That's bulky but readable, and MOD-001.D5's raw mode avoids it.
+- **Review:** round 1 (`354324f`): Reviewer APPROVE; Privacy auditor FAIL, low severity. Fixed in TST-005.1.5:
+  - `describe()` shows only a valid `<package>/<64-hex key>.json` as it is. Any other file or folder name is reported by a 12-hex SHA-256 of its path relative to the lint root, so one stray file has one label in every message. `package_dir()` refuses a bad package with a fixed message, and an unsupported method is no longer echoed.
+  - `RecordingTransport` checks each request's host with `classifier.models.ollama.check_host` before forwarding, and a refusal names no host.
+  - Tests: the planted secret now sits in a stray file name, a nested folder name, an unkeyed name in a package and a bad package folder, and no lint, load or package message carries it. Seven host cases were added (four refused before any forward, three allowed). The module went from 52 to 61 tests. Mutations: dropping the host check fails 4, and echoing names in `describe()` fails 2.
+- **Review, round 2** (`91d62a0`): Reviewer APPROVE; Privacy auditor FAIL, low severity, on one remaining path: `read_bytes()` raised an uncaught `OSError` whose text carries the full path (a folder named `*.json`, an unreadable file). Fixed in TST-005.1.6:
+  - `lint_recordings` reports anything that isn't a regular file (a folder, a broken link) as `<label> is not a regular file`.
+  - `load_recording` catches `OSError` and raises `<label> cannot be read as a file`, unchained.
+  - Tests: a folder named `<secret>.json`, in the lint and loaded directly, and an unreadable file in the lint, in `load_recording` and through replay. The test container runs as root, so the unreadable case is a monkeypatched `PermissionError`. The secret appears in no problem or exception. The module went from 61 to 64 tests. Mutations: dropping the `OSError` catch fails 2, and dropping the regular-file check fails 1.
+- **Review, round 3** (`3442ea8`): Reviewer APPROVE; Privacy auditor FAIL, low severity: `is_file()` in the lint can still raise an `OSError` (e.g. access denied on a stat), and the lead asked to close the class in one go. Fixed in TST-005.1.7:
+  - `_is_file()` wraps every stat: `<label> cannot be read as a file`, unchained.
+  - The lint's `rglob` walk is in a `try`. A failure gives one fixed problem, `the recordings tree cannot be walked; no recording was checked`.
+  - Record mode's `mkdir` and `write_text` give `recording <package>/<key>.json cannot be written`, unchained.
+  - `read_bytes` was already wrapped (TST-005.1.6). Every filesystem call in `replay.py` is now inside one of these.
+  - Tests patch `Path.is_file` (in the lint on a stray `<secret>.json`, in replay and in record mode), `Path.mkdir`, `Path.write_text` and `Path.rglob` to raise a `PermissionError` carrying the full path. They assert that neither the secret nor the temp path appears and that no error is chained. The module went from 64 to 70 tests. Mutations: unwrapping the stat fails 3, the walk fails 1, and the write fails 2.
+- **Review, round 4** (`693f18a`): Privacy auditor FAIL, low severity, one last case: `write_text` raised a `UnicodeEncodeError` (a `ValueError`, not an `OSError`) quoting the character when Ollama's reply held a lone surrogate. Fixed in TST-005.1.8:
+  - The text is encoded to bytes before `mkdir` and the write, and `write_bytes` replaces `write_text`, so nothing is left half-written.
+  - The encode failure gives `Ollama's reply for <package>/<key>.json is not valid UTF-8 text`, unchained. The `OSError` wrap stays.
+  - Tests: a reply whose JSON decodes to a lone surrogate beside the planted secret. Neither appears in the error, nothing is written (not even the folder), and the record-mode filesystem test now patches `write_bytes`. The module went from 70 to 71 tests. Mutation: unwrapping the encode fails 1.
+- **Deferred:** none.
 
 ### TST-005.2 (worker: qa)
 
