@@ -74,7 +74,7 @@ Decisions:
 
 ## SAN-001 — Tasks
 
-- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 (PR #65 round 1, hash in the PR)
+- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
@@ -88,10 +88,15 @@ Decisions:
   - `field` values are `filename` and `path_segment` (DB-002.D1).
   - The entity callable is `entity(text, labels) -> [(span, label)]`, for SAN-001.3 to adapt.
   - `sanitize_name` keeps only an image extension (ingest's `IMAGE_EXTENSIONS`) out of the rules. Any other dotted tail is redacted as part of the name: fail closed, P-2.
-- **Tests:** `tests/unit/sanitize/test_rules.py` (acceptance), unit tier: 50 passed (after round 1). `make lint` clean. Default tiers: at pre-push.
+- **Tests:** `tests/unit/sanitize/test_rules.py` (acceptance), unit tier: 62 passed (after round 2). `make lint` clean. Default tiers: at pre-push.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. Gap: the entity callable's shape is this task's choice; SAN-001.3 confirms it against MOD-001.2's detector. Entity spans are matched case-sensitively, as the detector returns them from the text.
-- **Reviewer / Privacy auditor:** round 1 at d9b741d: Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.3 fixes it: rule values, regex patterns and `exif_field` tags are hidden from `repr` and `str` (`Rules` shows ids and types only), and every `SanitizeConfigError`, and the validators' own errors, is raised outside its `except` block, so `__context__` is `None`. Re-review pending.
+- **Reviewer / Privacy auditor:** round 1 at d9b741d: Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.3 fixes it: rule values, regex patterns and `exif_field` tags are hidden from `repr` and `str` (`Rules` shows ids and types only), and every `SanitizeConfigError`, and the validators' own errors, is raised outside its `except` block, so `__context__` is `None`.
+  - Round 2 at 866a1be: Reviewer APPROVE, Privacy auditor FAIL. SAN-001.1.4 (c093623) fixes it:
+    - `exif.keep` and `exif_field` `fields` must be EXIF tag names, or the load fails without echoing the entry, and both are hidden from `repr`;
+    - `replace` is hidden from `repr`;
+    - a non-UTF-8 rules file raises an unchained `SanitizeConfigError`.
+  - Re-review pending.
 
 ### SAN-001.2 (worker: pipeline)
 
