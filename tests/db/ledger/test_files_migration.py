@@ -70,7 +70,8 @@ def test_single_head(alembic_cfg: Config) -> None:
 
 
 def test_upgrade_creates_the_ledger(alembic_cfg: Config, schema: str) -> None:
-    command.upgrade(alembic_cfg, "head")
+    # Pinned to 0001: later migrations add columns (DB-002.1 adds original_sanitized).
+    command.upgrade(alembic_cfg, "0001")
 
     cols = dict(
         _rows(
@@ -139,7 +140,7 @@ def test_downgrade_round_trip(alembic_cfg: Config, schema: str) -> None:
 
 
 def test_models_match_the_migration(alembic_cfg: Config, schema: str) -> None:
-    """No drift: Alembic's autogenerate finds nothing to change between `File` and 0001."""
+    """No drift: Alembic's autogenerate finds nothing to change between the models and head."""
     from alembic.autogenerate import compare_metadata
     from alembic.migration import MigrationContext
     from sqlalchemy import create_engine
@@ -166,4 +167,5 @@ def test_env_loads_the_dsn_through_load_config(
     with monkeypatch.context() as patch:
         patch.setenv("DB_DSN", dsn.render_as_string(hide_password=False))
         command.upgrade(Config(str(INI)), "head")
-    assert _rows(schema, "select version_num from alembic_version") == [("0001",)]
+    head = ScriptDirectory.from_config(Config(str(INI))).get_current_head()
+    assert _rows(schema, "select version_num from alembic_version") == [(head,)]

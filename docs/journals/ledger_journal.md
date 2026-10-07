@@ -80,6 +80,8 @@ references or host paths here. Use hashes.
 ## DB-002 — Tasks
 
 - [ ] DB-002.1 — Migration `0002`: `sanitize_log` and `files.original_sanitized` · #45 · acceptance: `tests/db/ledger/test_sanitize_log_migration.py`
+  - [x] DB-002.1.1 — Migration `0002_sanitize_log`, the `SanitizeLog` model and `File.original_sanitized`, with the acceptance test; DB-001.1's test pins its `0001` shape checks to `0001`. The model and migration land together, because the drift test at head fails if either comes first.
+  - [ ] DB-002.1.2 — Journal Results
 
 ## DB-002 — Results
 
