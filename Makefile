@@ -10,6 +10,8 @@ WT_NAME := $(shell git rev-parse --git-dir 2>/dev/null | grep -q '/worktrees/' &
 # RUN-009.D1: ...and mounts the main checkout's git-ignored fixtures/images/, read-only.
 MAIN_CHECKOUT := $(shell dirname "$$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
 TEST := $(if $(WT_NAME),FIXTURE_IMAGES="$(MAIN_CHECKOUT)/fixtures/images" )$(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) --profile test run --rm test
+# RUN-011.D1: Ollama for the gpu tier and the gates only, in the same compose project.
+OLLAMA_UP := $(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) up -d ollama
 RUFF := MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
 OLLAMA_MODELS := qwen3-vl:8b bge-m3   # the adult VLM is not pulled until Q-1 is decided (M5)
 
@@ -54,7 +56,8 @@ models: ## Pull the Ollama tags and HF weights into volumes (~11 GB)
 test: ## unit + db + integration tiers (CLAUDE.md §3)
 	$(TEST)
 
-test-gpu: ## gpu tier: real SigLIP, NSFW and Ollama
+test-gpu: ## gpu tier: real SigLIP, NSFW and Ollama (starts ollama, RUN-011)
+	@$(OLLAMA_UP) >/dev/null
 	$(TEST) pytest -m gpu
 
 lint: ## ruff check + format check (container, nothing installed on the host)
@@ -64,5 +67,6 @@ lint: ## ruff check + format check (container, nothing installed on the host)
 format: ## ruff format in place
 	$(RUFF) format .
 
-gate-%: ## Milestone gate N, e.g. make gate-3
+gate-%: ## Milestone gate N, e.g. make gate-3 (starts ollama, RUN-011)
+	@$(OLLAMA_UP) >/dev/null
 	$(TEST) python scripts/gate_$*.py
