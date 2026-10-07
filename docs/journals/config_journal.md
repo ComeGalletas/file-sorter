@@ -78,7 +78,8 @@ references or host paths here. Use hashes.
   - [x] CFG-002.1.2 — `check_roots`: absolute roots, a leading `//` collapsed, no path in the message (51b9db6)
   - [x] CFG-002.1.3 — CFG-001.D2: `DB_DSN` always wins, a non-null `db.dsn` in the file is refused, `db.dsn` hidden from `repr` (a83fd6b)
   - [x] CFG-002.1.4 — CLI `dry-run`: drop the dead `except ValidationError` branch, test the value-free exit (8693c49)
-  - [x] CFG-002.1.5 — Results and post-rebase hashes
+  - [x] CFG-002.1.5 — Results and post-rebase hashes (9447512)
+  - [x] CFG-002.1.6 — PR #74 round 1: int and bool keys shown as `<unknown key>`, an `OSError` from the read wrapped
 
 ## CFG-002 — Results
 
@@ -87,7 +88,7 @@ references or host paths here. Use hashes.
 - **Status:** DONE
 - **Triage:** medium; `unit` (config, cli) plus lint, with the default tiers through the pre-push gate; solo; branch `office/byte-3ea0`.
 - **Tests:**
-  - `unit` 47 passed in `tests/unit/config/test_config.py` (the acceptance test).
+  - `unit` 48 passed in `tests/unit/config/test_config.py` (the acceptance test), after round 1.
   - `unit` 5 passed in the new `tests/unit/cli/test_dry_run_config_errors.py`.
   - `integration` 10 passed in `tests/integration/test_dry_run_cli.py`.
   - `make test` on the rebased branch: 783 passed, 2 deselected. `make lint` clean.
@@ -97,4 +98,7 @@ references or host paths here. Use hashes.
   - `DbConfig.dsn` is `repr=False`. The CLI never prints the config or a dump of it.
 - **Found along the way:** `tests/integration/test_dry_run_cli.py` (CLI-002's test) wrote its DSN into the config file, which CFG-001.D2 now refuses. It now passes `DB_DSN` per invocation, folded into CFG-002.1.3 so that every commit is green. `test_dry_run_graph.py` and `scripts/gate_1.py` build `Config` directly and are unaffected.
 - **Self-rating:** pass 1: 9/10, proud: yes. The 1 point: `_where` shows any location part that isn't a config key as `<unknown key>`, including a pydantic union tag. No current field has a tagged union, so nothing is affected today. A future `str | int` field would get a vaguer location, though still value-free.
-- **Review:** pending.
+- **Review:** PR #74 round 1 at `9447512`: Reviewer APPROVE, Privacy auditor FAIL.
+  - Privacy: an int or bool YAML key was printed in the location, because pydantic keeps it as an int. `_where` now shows every non-string part as `<unknown key>`. The config has no lists.
+  - Reviewer finding 1: an `OSError` from `read_text` now becomes a fixed, unchained `ConfigError` with the file path.
+  - Both fixes are in CFG-002.1.6, with regression tests that fail on the old code. The int and bool keys are checked in `str`, `repr` and the CLI's stderr; the read failure is a planted `PermissionError`.

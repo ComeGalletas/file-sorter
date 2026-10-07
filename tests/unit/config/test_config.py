@@ -166,6 +166,7 @@ def test_load_config_refuses_nested_roots(monkeypatch: pytest.MonkeyPatch, tmp_p
 # CFG-002.1.1: load errors carry no value from the file, and no exception chain.
 
 PLANTED = "PLANTED-SECRET-cfg002"
+PLANTED_INT = 424242987
 
 
 def assert_value_free(error: ConfigError) -> None:
@@ -219,9 +220,32 @@ def test_unknown_key_is_not_named(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
     data = real_data()
     data["paths"][PLANTED] = PLANTED
     data[PLANTED] = 1
-    error = load_error(write_config(tmp_path, data))
+    data["thumbs"][PLANTED_INT] = 1  # int and bool YAML keys stay int in pydantic's loc
+    data["watch"][True] = 1
+    file = tmp_path / "config.yaml"
+    file.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")  # mixed key types
+    error = load_error(file)
     assert "paths.<unknown key>: extra_forbidden" in str(error)
-    assert "<unknown key>: extra_forbidden" in str(error)
+    assert "thumbs.<unknown key>: invalid_key" in str(error)
+    assert "watch.<unknown key>: invalid_key" in str(error)
+    assert_value_free(error)
+    for text in (str(error), repr(error)):
+        assert str(PLANTED_INT) not in text
+        assert "True" not in text
+
+
+def test_unreadable_file_is_a_fixed_unchained_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    file = write_config(tmp_path, real_data())
+
+    def refuse(self: Path, *args: object, **kwargs: object) -> str:
+        raise PermissionError(13, PLANTED)
+
+    monkeypatch.setattr(Path, "read_text", refuse)
+    error = load_error(file)
+    assert "can't be read" in str(error)
     assert_value_free(error)
 
 

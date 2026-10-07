@@ -10,12 +10,13 @@ from classifier.cli import app
 
 REAL_CONFIG = Path(__file__).resolve().parents[3] / "config.yaml"
 PLANTED = "PLANTED-SECRET-cfg002"
+PLANTED_INT = 424242987
 PLANTED_DSN = f"postgresql://user:{PLANTED}@db:5432/x"  # placeholder, not a real DSN
 
 
 def _invoke(tmp_path: Path, data: dict, dsn: str | None = "postgresql://u:p@db/x"):
     config = tmp_path / "config.yaml"
-    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    config.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     return CliRunner().invoke(app, ["dry-run", "--config", str(config)], env={"DB_DSN": dsn})
 
 
@@ -34,9 +35,14 @@ def test_invalid_value_exits_2_naming_the_key_only(tmp_path: Path) -> None:
     data = _data()
     data["thumbs"]["size"] = PLANTED
     data["paths"][PLANTED] = PLANTED
+    data["api"][PLANTED_INT] = 1
+    data["watch"][True] = 1
     result = _invoke(tmp_path, data)
     _assert_value_free_exit(result, "thumbs.size: int_parsing")
     assert "paths.<unknown key>" in result.output
+    assert "api.<unknown key>" in result.output
+    assert str(PLANTED_INT) not in result.stderr
+    assert "True" not in result.stderr
 
 
 def test_invalid_yaml_exits_2_without_the_text(tmp_path: Path) -> None:

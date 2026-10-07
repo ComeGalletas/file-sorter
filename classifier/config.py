@@ -145,14 +145,15 @@ _KNOWN_KEYS = _key_names(Config)
 
 
 def _where(loc: tuple[int | str, ...]) -> str:
-    """The error's location. An unknown key is not named: a misplaced value can land there."""
+    """The error's location. An unknown key is not named: a misplaced value can land there.
+
+    The config has no lists, so an int part (an int or bool YAML key) is an unknown key too.
+    """
     text = ""
     for part in loc:
-        if isinstance(part, int):
-            text += f"[{part}]"
-        else:
-            name = part if part in _KNOWN_KEYS else "<unknown key>"
-            text += f".{name}" if text else name
+        known = isinstance(part, str) and part in _KNOWN_KEYS
+        name = part if known else "<unknown key>"
+        text += f".{name}" if text else str(name)
     return text or "(top level)"
 
 
@@ -207,6 +208,8 @@ def load_config(path: str | Path | None = None) -> Config:
         text = file.read_text(encoding="utf-8")
     except UnicodeDecodeError:  # it holds the raw bytes
         problem = f"config file is not UTF-8 text: {file}"
+    except OSError:
+        problem = f"config file can't be read: {file}"
     if problem is not None:
         raise ConfigError(problem)
     try:
