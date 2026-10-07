@@ -1,11 +1,10 @@
 """CLI-002.1: `classifier dry-run [--csv]` (the acceptance test).
 
 Synthetic images only, generated under `tmp_path`. The command runs `run`, which commits, so
-the module has its own migrated schema (see schema_support).
+the module has its own migrated schema (`schema_dsn`, tests/integration/conftest.py).
 """
 
 import csv
-from collections.abc import Iterator
 from pathlib import Path
 
 import psycopg
@@ -16,23 +15,11 @@ from typer.testing import CliRunner
 
 from classifier.cli import app
 from classifier.cli.dry_run_report import COLUMNS
-from tests.db.db_support import require_db_dsn
-from tests.integration.schema_support import migrated_schema
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
 
-
-@pytest.fixture(scope="module")
-def schema_dsn() -> Iterator[str]:
-    with migrated_schema(require_db_dsn()) as dsn:
-        yield dsn
-
-
-@pytest.fixture(autouse=True)
-def clean_ledger(schema_dsn: str) -> None:
-    with psycopg.connect(schema_dsn) as conn:
-        conn.execute("truncate files")
+pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
 
 
 def _setup(tmp_path: Path, dsn: str, *, results: str = "results") -> tuple[Path, Path, Path]:
