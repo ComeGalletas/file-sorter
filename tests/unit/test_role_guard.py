@@ -306,6 +306,8 @@ def test_normalization_leaves_ordinary_names_alone(
         # round 1, finding 2: braces inside quotes are never expanded
         "gh pr view 5 --json number,title --jq '{n: .number, t: .title}'",
         'gh pr list --json number,title --jq ".[] | {n: .number, t: .title}"',
+        'gh pr view 5 --jq \'{n: .number, t: "a \\" b"}\'',
+        "git commit -F - <<EOF\nX.1: Don't stop at the first quote\nEOF",
         "git log --oneline @{u}..HEAD",
     ],
 )
@@ -402,6 +404,11 @@ def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> No
         r"g$'\x69't merge office/other-desk",
         "{g,}it merge office/other-desk",
         "echo {1..3} && g{h,}h pr merge 5",
+        # PR #43 round 2, finding 1: quote confusion
+        "echo 'say \"hi' ; g{i,}t merge office/other-desk ; echo 'x\"'",
+        'echo \\"; g{i,}t merge office/other-desk; echo \\"',
+        'echo "it\'s" ; g{i,}t merge office/other-desk',
+        "echo 'unclosed ; g{i,}t merge office/other-desk",
     ],
 )
 def test_worker_other_merges_pulls_and_tags_are_refused(
