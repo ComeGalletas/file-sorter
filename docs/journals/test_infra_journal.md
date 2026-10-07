@@ -1,7 +1,7 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003, TST-004 and TST-005 proposed · **Milestone:** m1 (TST-003 to TST-005: m2) ·
-**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003, TST-004 and TST-006 done; TST-005 in progress (.1 done) · **Milestone:** m1 (TST-003 to TST-006: m2) ·
+**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -149,7 +149,7 @@ references or host paths here. Use hashes.
 
 ## TST-003 — Tasks
 
-- [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
+- [x] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour) · PR #63 → `cf77ff3`
   - [x] TST-003.1.1 — `tests/integration/conftest.py`: module-scoped `schema_dsn`, opt-in `empty_ledger`; `schema_support.py` documented as the shared helper · `8393773`
   - [x] TST-003.1.2 — `test_dry_run_graph.py` and `test_dry_run_cli.py` take `schema_dsn` and opt in to `empty_ledger`; their local fixtures removed, test bodies untouched · `0a6a3f3`
   - [x] TST-003.1.3 — `tests/integration/test_schema_fixture.py`: private schema at the single head, `empty_ledger` ordered pair, own schema per call, dropped on exit · `5a5d881`
@@ -164,8 +164,8 @@ references or host paths here. Use hashes.
 - **Coexistence:** the db tier's `session_*` schema (TST-002.1) and PR #30's per-test schema are never touched: each fixture works in its own `module_*` schema, and `test_schema_fixture.py` asserts `files` resolves there.
 - **Tests (`make test`, unit + db + integration):** before 442 passed; after 446 passed (+4, `test_schema_fixture.py`). Integration per module before and after: `test_dry_run_cli.py` 10, `test_dry_run_graph.py` 8 (the acceptance test, unchanged), `test_gate_1_script.py` 3. Mutation check: without `empty_ledger` on the pair's second test, the module fails (1 failed, 3 passed). `make lint` clean.
 - **Self-rating:** 9/10, proud: yes. Gap: the db tier's `migrated_db` (tests/db/conftest.py) still repeats the schema-plus-upgrade steps of `migrated_schema`; folding it onto the shared helper touches the db tier's fixture, so it is left as a possible follow-up, as the lead directed on #53.
-- **Review:** (the lead's verdict comment on the PR)
-- **Deferred:** the `migrated_db` duplication above (no ID yet; the lead's call).
+- **Review:** PR #63, merged as `cf77ff3`, closing #53. Reviewer APPROVE (full, 3 minor: the ordered pair is guarded, the lead's ticks, the branch behind `main` with no overlap) and Privacy auditor PASS, at `714c70d`. The verdict comment is on the PR. `empty_ledger` later became `truncate files cascade` in TST-006.1 (#68), when `sanitize_log` arrived.
+- **Deferred:** the `migrated_db` duplication above. It is not allocated: a low-value refactor, left for a quiet moment.
 
 ---
 
@@ -187,7 +187,7 @@ references or host paths here. Use hashes.
 
 ## TST-004 — Tasks
 
-- [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py`
+- [x] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · #54 · acceptance: `tests/devtools/test_tier_audit.py` · PR #67 → `01d550e`
   - [x] TST-004.1.1 — `scan_fixture_refs`: string constants (f-string parts included) and path joins naming `fixtures/images` or `fixtures/labels.csv`, with the exact source text; synthetic self-tests · `0716374`
   - [x] TST-004.1.2 — `audit()` applies it to every module outside `gate` and `gpu`, conftests and helpers included; the pinned `NAMES_FIXTURES_WITHOUT_READING` registry (TST-004.D1); audit-level tests on a synthetic tree · `a6c0859`
   - [x] TST-004.1.3 — Results
@@ -205,7 +205,7 @@ references or host paths here. Use hashes.
 - **Self-rating:**
   - Pass 1: 8/10, proud: no. Gap: identical references on one line were merged, so a pin counted once covered two (against D1's "once per occurrence"). Fixed in TST-004.1.4.
   - Pass 2: 9/10, proud: yes. Gap: a static scan can't see a path built from variables, by runtime concatenation, or from an env var or config (named in the docstring). Pins are exact source text, so reformatting a pinned line makes the entry stale; it fails loudly and QA re-pins it.
-- **Review:** (the lead's verdict comment on the PR)
+- **Review:** PR #67, merged as `01d550e`, closing #54. Reviewer APPROVE (full, 2 minor: re-pinning after a reformat is accepted, the lead's ticks) and Privacy auditor PASS, at `edd2d62`. The verdict comment is on the PR.
 - **Deferred:** none.
 
 ---
@@ -238,10 +238,11 @@ references or host paths here. Use hashes.
   - The share of names per source is fixed in the gate's code, never derived from the size of the local `literal` pool. Literal values are drawn **with replacement**, so the drawn set looks the same whatever the pool holds.
   - Output is PASS or FAIL and percentages only. Never a count, a pool size, a per-source split, or a "fewer than N" message.
   - Every error is value-free: a failing literal is reported by its rule id and a hash at most, and no traceback may echo a value. An empty or missing `literal` rule fails with a message naming `sanitize.yaml` and the rule id.
+- **TST-005.D5** — **The canonical recording key** (lead, 2026-10-07, on #51 and #55; refines D3). The key is the SHA-256, in UTF-8, of `json.dumps({model, prompt, format, options, think?, raw?}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`. `think` and `raw` are present only when the `/api/generate` body carries them, because both change the answer. `raw` was added with MOD-001.D5. `keep_alive` and `stream` are excluded. Files are `tests/recordings/<package>/<key>.json`, holding `{"request": …, "response": …}`. TST-005.1 implements it, and its lint checks every committed recording.
 
 ## TST-005 — Tasks
 
-- [ ] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py`
+- [x] TST-005.1 — The Ollama replay transport and fixture · #55 · acceptance: `tests/devtools/test_recordings.py` · PR #71 → `4835b93`
   - [x] TST-005.1.1 — `tests/recordings/replay.py`: the TST-005.D5 key, `ReplayTransport`, `RecordingTransport`, `RecordingError(BaseException)`; unit tests · `db5fc45`
   - [x] TST-005.1.2 — The shared `ollama_transport` fixture and `--record-ollama` (gpu tier only) in `tests/conftest.py`; `pytester` tests · `b2639e6`
   - [x] TST-005.1.3 — A lint test over every committed recording; the "how to record" README · `e2994d6`
@@ -249,7 +250,7 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported) · `91d62a0`
   - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError` · `3442ea8`
   - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message · `693f18a`
-  - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing
+  - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing · `456c5b7`
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
@@ -304,8 +305,35 @@ references or host paths here. Use hashes.
   - The text is encoded to bytes before `mkdir` and the write, and `write_bytes` replaces `write_text`, so nothing is left half-written.
   - The encode failure gives `Ollama's reply for <package>/<key>.json is not valid UTF-8 text`, unchained. The `OSError` wrap stays.
   - Tests: a reply whose JSON decodes to a lone surrogate beside the planted secret. Neither appears in the error, nothing is written (not even the folder), and the record-mode filesystem test now patches `write_bytes`. The module went from 70 to 71 tests. Mutation: unwrapping the encode fails 1.
+- **Review, round 5** (`456c5b7`): Reviewer APPROVE and Privacy auditor PASS. Merged as `4835b93` (PR #71), closing #55. The verdict comments for every round are on the PR.
 - **Deferred:** none.
 
 ### TST-005.2 (worker: qa)
 
 - **Status:**
+
+---
+
+## TST-006 — Requirement (lead, from DB-002.1's blocker on #45, 2026-10-07)
+
+- **Objective:** Make the integration tier's `empty_ledger` empty `files` and every table that references it.
+- **Details:** DB-002.1 adds `sanitize_log` with a foreign key to `files` and no cascade on delete (DB-002.D2). Postgres then refuses `truncate files`. The fixture runs `truncate files cascade`, still only in the module's private schema.
+- **Constraint:** Never truncate a shared schema. It must pass on `main` before the migration lands. QA owns the file (DOC-004.D1), so the Pipeline desk on #45 didn't edit it.
+- **Implements:** CLAUDE.md §3 (shared setup), TST-003.1, DB-002.D2.
+
+## TST-006 — Confirmed reading
+
+- The cascade can't leave the module's schema. Every `module_*` schema is migrated with its own `search_path`, so each foreign key stays local, and no migration writes a cross-schema one (PR #69's review).
+- Allocated mid-run by the lead and done by a short extra QA desk, so DB-002.1 wasn't blocked. That was one desk over the plan's limit of 4 for the length of the task.
+
+## TST-006 — Tasks
+
+- [x] TST-006.1 — `empty_ledger` runs `truncate files cascade`; a test with a child table that has a foreign key to `files` · #68 · acceptance: `tests/integration/test_schema_fixture.py` · PR #69 → `2716ea5`
+
+## TST-006 — Results
+
+### TST-006.1 (worker: qa)
+
+- **Status:** DONE. One commit, `1a28598` (TST-006.1.1). The worker's results are in PR #69's body.
+- **Tests:** the new test fails against the old fixture (`FeatureNotSupported`) and passes with the cascade. `make test` 678 passed, per the PR.
+- **Review:** PR #69, merged as `2716ea5`, closing #68. Reviewer APPROVE (full, informational only) and Privacy auditor PASS, at `1a28598`. The verdict comment is on the PR.

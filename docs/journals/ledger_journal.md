@@ -1,6 +1,6 @@
 # Ledger — journal
 
-**ID:** DB-001 (+ DB-002) · **Systems:** DB · **Type:** feature · **Status:** DB-001 done; DB-002 proposed · **Milestone:** m1 (DB-002: m2) ·
+**ID:** DB-001 (+ DB-002) · **Systems:** DB · **Type:** feature · **Status:** done (DB-001, DB-002) · **Milestone:** m1 (DB-002: m2) ·
 **Issues:** #14, #45 (DB-002.1) · **Branch:** `office/pixel-7049` (DB-001.1)
 
 <!--
@@ -82,7 +82,7 @@ references or host paths here. Use hashes.
 - [x] DB-002.1 — Migration `0002`: `sanitize_log` and `files.original_sanitized` · #45 · acceptance: `tests/db/ledger/test_sanitize_log_migration.py`
   - [x] DB-002.1.1 — Migration `0002_sanitize_log`, the `SanitizeLog` model and `File.original_sanitized`, with the acceptance test; DB-001.1's test pins its `0001` shape checks to `0001`. The model and migration land together, because the drift test at head fails if either comes first. · 3cf7679
   - [x] DB-002.1.2 — Journal Results · 3fdc143
-  - [x] DB-002.1.3 — Post-rebase hashes and the integration result, after TST-006.1 (#68)
+  - [x] DB-002.1.3 — Post-rebase hashes and the integration result, after TST-006.1 (#68) · 8278320
 
 ## DB-002 — Results
 
@@ -93,6 +93,6 @@ references or host paths here. Use hashes.
 - **Plan change:** the plan had the migration (DB-002.1.1) and the models (DB-002.1.2) as separate commits. They landed as one, because the drift test at head (`test_models_match_the_migration`) fails whichever comes first. DB-002.1.2 is the journal.
 - **Tests:** unit + db before the rebase: 540 passed. Acceptance `tests/db/ledger/test_sanitize_log_migration.py` plus DB-001.1's ledger test: 33 passed. It covers the single head and its parent, the columns and their nullability, the primary key, the named FK and its no-action delete, the three checks and the index, valid rows (including `exif-strip-all`, SAN-001.D12), each check rejecting bad values, the length bounds, not-null, the FK refusing an unknown hash and a delete of a referenced `files` row, `original_sanitized`, and a downgrade to `0001` (with `files` and its rows untouched) and back. `make lint` is clean. Integration: 20 setup errors before #68, because `empty_ledger` truncated `files` alone; after rebasing onto #68 (`truncate files cascade`), `make test` (unit + db + integration): 706 passed, 2 deselected.
 - **Self-rating:** 10/10, proud: yes. Pass 1: 9, because the integration tier wasn't green on this branch until TST-006.1 (#68, QA) landed. Pass 2: rebased onto it, all default tiers pass. `after_value` holding only a token is the writer's contract (SAN-001.1, .4); the database can't tell a token from a value, so it isn't checked here.
-- **Review:** (pending)
+- **Review:** PR #70, merged as `6203400`, closing #45. Reviewer APPROVE (full, large; 1 optional minor: no group-qualified D14 field among the valid cases, which SAN-001.2 pins from its side) and Privacy auditor PASS, at `8278320`. The verdict comment is on the PR. Privacy notes: `after_value`, `original_sanitized` and generic rule ids are writer contracts.
 - **Deferred:**
   - The check constraints are mirrored in the models for the reader, but Alembic's autogenerate doesn't compare them; the db-tier test checks them against the database instead.
