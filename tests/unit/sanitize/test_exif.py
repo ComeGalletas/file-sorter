@@ -13,6 +13,7 @@ import pytest
 from PIL import Image, ImageCms, PngImagePlugin
 from pillow_heif import register_heif_opener
 
+from classifier.db.models import SanitizeLog
 from classifier.sanitize import exif
 from classifier.sanitize.exif import (
     RESIDUAL_REASON,
@@ -36,8 +37,23 @@ from classifier.sanitize.rules import (
 register_heif_opener()
 
 KEY = log_key({LOG_KEY_ENV: "00112233445566778899aabbccddeeff"})
-# DB-002.D1's check constraint on sanitize_log.field: SAN-001.D14 must fit it.
-DB_FIELD_CHECK = re.compile(r"^exif:[A-Za-z][A-Za-z0-9_:-]{0,63}$")
+
+
+def db_field_check() -> re.Pattern[str]:
+    """The exif pattern of DB-002.D1's sanitize_log.field check, read from the model."""
+    (check,) = (c for c in SanitizeLog.__table__.constraints if c.name == "sanitize_log_field")
+    (pattern,) = re.findall(r"field ~ '([^']+)'", str(check.sqltext))
+    return re.compile(pattern)
+
+
+DB_FIELD_CHECK = db_field_check()  # SAN-001.D14 must fit it
+
+
+def test_the_db_field_check_is_the_exif_pattern() -> None:
+    assert DB_FIELD_CHECK.pattern.startswith("^exif:")
+    assert DB_FIELD_CHECK.fullmatch("exif:EXIF:GPSLatitude")
+    assert not DB_FIELD_CHECK.fullmatch("exif:EXIF:Zyxwq Plonk")
+
 
 # Made-up values that must never surface anywhere but a hash.
 SECRETS = {
