@@ -65,10 +65,10 @@ references or host paths here. Use hashes.
   - [x] TST-002.3.3 — the purge file is the only read-write remount, for `app` only, with its DANGER header · 5d97934
   - [x] TST-002.3.4 — Results, self-rating and the local regression check · 401f437
   - [x] TST-002.3.5 — hardening from the round-1 review: short-form target read from the right; `read_only` true only for a real `True` or `"true"` · 4a8097d
-- [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
-  - [x] TST-002.4.1 — `scripts/gate_1.py`: prerequisites (`DB_DSN`, `fixtures/images/`), fresh migrated schema, two dry runs, the verdict on run 2 and an aggregates-only report · (hash in the next commit)
-  - [x] TST-002.4.2 — `tests/unit/gate/` (verdict logic, no counts printed, named prerequisites) and `tests/integration/test_gate_1_script.py` (end to end on synthetic images) · (hash in the next commit)
-  - [ ] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main
+- [x] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
+  - [x] TST-002.4.1 — `scripts/gate_1.py`: prerequisites (`DB_DSN`, `fixtures/images/`), fresh migrated schema, two dry runs, the verdict on run 2 and an aggregates-only report · 1601434
+  - [x] TST-002.4.2 — `tests/unit/gate/` (verdict logic, no counts printed, named prerequisites) and `tests/integration/test_gate_1_script.py` (end to end on synthetic images) · 6e6227f
+  - [x] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main · this commit
 
 ## TST-002 — Results
 
@@ -113,12 +113,12 @@ references or host paths here. Use hashes.
 
 ### TST-002.4 (worker: qa)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
-- **Deferred:**
+- **Status:** DONE.
+- **Triage:** medium; solo; unit and integration tiers plus the gate itself as the acceptance test.
+- **Tests:** 9 new (8 `unit` in `tests/unit/gate/`, 1 `integration`), all green in the test container; ruff clean. `make gate-1` against the real fixtures: skipped on re-run 100.0%, new ledger rows 0, PASS, exit 0 (percentages only, DOC-005.D1). Without the fixtures it fails naming `fixtures/images/`.
+- **Self-rating:** 9/10, proud: yes. Gap: it calls `run()` (the entry point `classifier dry-run` uses) rather than the CLI, so the CLI wiring is covered by CLI-002.1's own tests, not by the gate; and the private schema comes from `schema_support.py` until TST-003.
+- **Review:** pending.
+- **Deferred:** none.
 
 ---
 
