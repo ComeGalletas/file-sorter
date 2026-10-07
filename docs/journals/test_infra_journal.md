@@ -151,7 +151,8 @@ references or host paths here. Use hashes.
 
 - [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
   - [x] TST-003.1.1 — `tests/integration/conftest.py`: module-scoped `schema_dsn`, opt-in `empty_ledger`; `schema_support.py` documented as the shared helper · `8393773`
-  - [x] TST-003.1.2 — `test_dry_run_graph.py` and `test_dry_run_cli.py` take `schema_dsn` and opt in to `empty_ledger`; their local fixtures removed, test bodies untouched
+  - [x] TST-003.1.2 — `test_dry_run_graph.py` and `test_dry_run_cli.py` take `schema_dsn` and opt in to `empty_ledger`; their local fixtures removed, test bodies untouched · `0a6a3f3`
+  - [x] TST-003.1.3 — `tests/integration/test_schema_fixture.py`: private schema at the single head, `empty_ledger` ordered pair, own schema per call, dropped on exit
 
 ## TST-003 — Results
 
