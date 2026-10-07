@@ -21,6 +21,7 @@ from classifier.sanitize.rules import (
     Rules,
     RulesFile,
     SanitizeConfigError,
+    before_hash,
     load_rules,
     log_key,
     sanitize_name,
@@ -412,3 +413,58 @@ def test_sanitize_name_keeps_only_an_image_extension_out_of_the_rules() -> None:
     # Not an image extension: the dotted tail is part of the name and is redacted.
     tail = sanitize_name("zyxwq.plonk", make_rules(WHO))
     assert (tail.stem, tail.suffix) == ("[PERSON]", "")
+
+
+# --- PR #65 round 3: repr of results, surrogates, rule ids ------------------------------
+
+
+def test_redaction_and_sanitized_name_repr_hide_names_and_replacements() -> None:
+    leaky = {**WHO, "replace": "[Qwvplk]"}  # a name written as the replacement
+    name = sanitize_name("Mordelk/zyxwq plonk Vantrim.jpg", make_rules(leaky))
+    assert name.stem == "[Qwvplk] Vantrim"  # residue that no rule matched
+    _, found = sanitize_text("zyxwq plonk", FILENAME, make_rules(leaky))
+    shown = [repr(name), str(name), repr(name.redactions), repr(found), str(found[0])]
+    for text in shown:
+        for secret in ("Qwvplk", "Vantrim", "Mordelk", "zyxwq", "Zyxwq"):
+            assert secret not in text, text
+    assert repr(name) == "SanitizedName(suffix='.jpg')"
+    assert found[0].after_value == "[Qwvplk]"  # still stored, never printed
+
+
+def surrogate_hash(value: str) -> str:
+    data = value.encode("utf-8", "surrogatepass")
+    return hmac.new(KEY.encode("utf-8"), data, hashlib.sha256).hexdigest()
+
+
+def test_hashed_value_may_hold_a_lone_surrogate() -> None:
+    value = "Drax\udcff"  # a byte decoded with surrogateescape
+
+    def entity(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+        return [(value, "PERSON")]
+
+    text, found = sanitize_text(f"by {value}", FILENAME, make_rules(NER), entity)
+    assert text == "by [PERSON]"
+    assert found[0].before_hash == surrogate_hash(value)
+    assert before_hash("Zyxwq\ud800", KEY.encode("utf-8")) == surrogate_hash("Zyxwq\ud800")
+
+
+def test_log_key_with_a_lone_surrogate_is_refused_unchained(tmp_path: Path) -> None:
+    bad = {LOG_KEY_ENV: "Zyxwq\udcffPlonk"}
+    with pytest.raises(SanitizeConfigError) as info:
+        log_key(bad)
+    message = str(info.value)
+    assert LOG_KEY_ENV in message and "make init" in message
+    assert "Zyxwq" not in message and "udcff" not in message and "\udcff" not in message
+    assert_unchained(info.value)
+    load_error(tmp_path, rules_data(), env=bad)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["Zyxwq", "zyxwq plonk", "-zyxwq", "zyxwq.plonk", "z" * 65, ""],
+    ids=["upper", "space", "leading-dash", "dot", "too-long", "empty"],  # tmp_path takes the id
+)
+def test_rule_id_is_a_label(tmp_path: Path, bad: str) -> None:
+    data = rules_data()
+    data["rules"][0]["id"] = bad
+    assert "rules[0].id: string_pattern_mismatch" in load_error(tmp_path, data)

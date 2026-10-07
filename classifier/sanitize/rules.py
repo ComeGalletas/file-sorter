@@ -34,6 +34,9 @@ SEPARATORS = " _-."
 
 # An EXIF/XMP/IPTC tag name, never free text: a value written there fails at load.
 TagName = Annotated[str, StringConstraints(pattern=r"^[A-Za-z][A-Za-z0-9_:-]{0,63}$")]
+# A rule id is a label, never free text: it is printed in repr and stored as
+# sanitize_log.rule_id.
+RuleId = Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$")]
 
 
 class SanitizeConfigError(Exception):
@@ -52,7 +55,7 @@ class ExifSettings(_Strict):
 
 
 class LiteralRule(_Strict):
-    id: str = Field(min_length=1)
+    id: RuleId
     type: Literal["literal"]
     values: list[str] = Field(min_length=1, repr=False)  # the human's values: never printed
     replace: str = Field(repr=False)  # meant as a token, but could hold a name
@@ -67,7 +70,7 @@ class LiteralRule(_Strict):
 
 
 class RegexRule(_Strict):
-    id: str = Field(min_length=1)
+    id: RuleId
     type: Literal["regex"]
     pattern: str = Field(min_length=1, repr=False)  # may embed a value
     replace: str = Field(repr=False)  # meant as a token, but could hold a name
@@ -88,7 +91,7 @@ class RegexRule(_Strict):
 
 
 class EntityRule(_Strict):
-    id: str = Field(min_length=1)
+    id: RuleId
     type: Literal["entity"]
     labels: list[Literal["PERSON", "ORG", "LOCATION"]] = Field(min_length=1)
     replace: str = Field(repr=False)  # meant as a token, but could hold a name
@@ -109,7 +112,7 @@ class EntityRule(_Strict):
 class ExifFieldRule(_Strict):
     """Tags that are always removed, even when `exif.keep` names them (SAN-001.D3, D11)."""
 
-    id: str = Field(min_length=1)
+    id: RuleId
     type: Literal["exif_field"]
     fields: list[TagName] = Field(min_length=1, repr=False)
 
@@ -186,7 +189,14 @@ def log_key(env: Mapping[str, str] | None = None) -> bytes:
     value = (os.environ if env is None else env).get(LOG_KEY_ENV, "")
     if not value.strip():
         raise SanitizeConfigError(f"{LOG_KEY_ENV} is not set: run make init")
-    return value.encode("utf-8")
+    # Raised after the except block: UnicodeEncodeError quotes the character.
+    try:
+        key = value.encode("utf-8")
+    except UnicodeEncodeError:
+        key = None
+    if key is None:
+        raise SanitizeConfigError(f"{LOG_KEY_ENV} is not valid UTF-8 text: run make init")
+    return key
 
 
 def load_rules(path: str | Path, env: Mapping[str, str] | None = None) -> Rules:
@@ -233,25 +243,35 @@ EntityFn = Callable[[str, Sequence[str]], Sequence[tuple[str, str]]]
 
 @dataclass(frozen=True)
 class Redaction:
-    """One `sanitize_log` row's text fields. The redacted value itself is never kept."""
+    """One `sanitize_log` row's text fields. The redacted value itself is never kept.
+
+    `after_value` is stored in `sanitize_log` but never printed: `replace` may hold a name.
+    """
 
     rule_id: str
     field: str
     before_hash: str
-    after_value: str | None
+    after_value: str | None = field(repr=False)
 
 
 @dataclass(frozen=True)
 class SanitizedName:
-    stem: str  # stored as files.original_sanitized (SAN-001.D8)
-    suffix: str  # the extension, never passed to the rules (SAN-001.D1)
-    segments: tuple[str, ...]
-    redactions: tuple[Redaction, ...]
+    """Only the extension shows in repr: the stem and segments keep any residue of the
+    original name that no rule matched."""
+
+    stem: str = field(repr=False)  # stored as files.original_sanitized (SAN-001.D8)
+    suffix: str = ""  # the extension, never passed to the rules (SAN-001.D1)
+    segments: tuple[str, ...] = field(default=(), repr=False)
+    redactions: tuple[Redaction, ...] = field(default=(), repr=False)
 
 
 def before_hash(value: str, key: bytes) -> str:
-    """HMAC-SHA256 of the redacted value, hex (SAN-001.D5, DOC-007.D2)."""
-    return hmac.new(key, value.encode("utf-8"), hashlib.sha256).hexdigest()
+    """HMAC-SHA256 of the redacted value, hex (SAN-001.D5, DOC-007.D2).
+
+    `surrogatepass`: a name decoded with surrogateescape (or a Windows file name) may hold
+    a lone surrogate, and strict UTF-8 would raise an error quoting it.
+    """
+    return hmac.new(key, value.encode("utf-8", "surrogatepass"), hashlib.sha256).hexdigest()
 
 
 def _literal_pattern(value: str) -> str:
