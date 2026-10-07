@@ -105,13 +105,16 @@ worker_bash_ok() {
 $segs
 EOF
   printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && indirect=1
-  # RUN-010.D1: ANSI-C quoting ($'mer\x67e') and brace expansion (git {merge,} x, me{r,}ge)
-  # build a word the text can't show, so neither is allowed in a command that runs git or gh.
-  # A plain @{...} reflog suffix (stash@{0}, @{u}) has no comma or "..", so it still passes.
-  if printf '%s\n' "$segs" | grep -Eq '(^| |/)(git|git\.exe|gh|gh\.exe)( |$)'; then
-    if printf '%s' "$cmd" | grep -Fq "\$'" || printf '%s' "$cmd" | grep -Eq '\{[^}]*(,|\.\.)[^}]*\}'; then
-      why="ANSI-C quoting (\$'...') and brace expansion ({a,b}) aren't allowed in a git or gh command on a worker desk; write the words out (RUN-010.D1)"; return 1
-    fi
+  # RUN-010.D1: ANSI-C quoting ($'mer\x67e', g$'\x69't) and brace expansion (git {merge,} x,
+  # g{i,}t) build a word, even the program name, that the text can't show. So neither is
+  # allowed anywhere in a worker's command. Bash never expands braces inside quotes, so quoted
+  # text is dropped before the brace check: a jq object (--jq '{a: .x, b: .y}') still passes,
+  # and so does a plain reflog suffix (stash@{0}, @{u}), which has no comma or "..".
+  if printf '%s' "$cmd" | grep -Fq "\$'"; then
+    why="ANSI-C quoting (\$'...') isn't allowed in a worker's command; write the words out (RUN-010.D1)"; return 1
+  fi
+  if printf '%s' "$cmd" | sed -e 's/"[^"]*"//g' -e "s/'[^']*'//g" | grep -Eq '\{[^}]*(,|\.\.)[^}]*\}'; then
+    why="unquoted brace expansion ({a,b}, {1..3}) isn't allowed in a worker's command; write the words out (RUN-010.D1)"; return 1
   fi
   if [ "$indirect" = 1 ] && [ "$guarded" = 1 ]; then
     why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)"; return 1

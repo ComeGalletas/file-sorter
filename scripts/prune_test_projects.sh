@@ -12,11 +12,15 @@ set -uo pipefail
 # The project suffix for a worktree folder name, exactly as the Makefile and compose_test make it.
 slug() { printf '%s' "$1" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-'; }
 
+# The list always holds at least the main checkout. If it can't be read, prune nothing:
+# an empty list would make every desk look gone (PR #43 review, finding 3).
+paths="$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')"
+[ -n "$paths" ] || exit 0
 live=" "
 while IFS= read -r path; do
   [ -n "$path" ] && live="$live$(slug "$(basename "$path")") "
 done <<EOF
-$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+$paths
 EOF
 
 projects="$(docker ps -a --filter label=com.docker.compose.project \

@@ -61,6 +61,27 @@ def test_prunes_only_projects_of_missing_worktrees(tmp_path: Path) -> None:
     assert "pruned test project file-sorter-gone-desk" in out.stdout
 
 
+def test_prunes_nothing_when_the_worktree_list_cannot_be_read(tmp_path: Path) -> None:
+    # Outside any git repo, `git worktree list` fails: every desk would look gone.
+    outside = tmp_path / "not-a-repo"
+    (outside / "scripts").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "prune_test_projects.sh", outside / "scripts")
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    (bin_ / "docker").write_text(FAKE_DOCKER)
+    (bin_ / "docker").chmod(0o755)
+    log = tmp_path / "down.log"
+    env = {
+        **os.environ,
+        "PATH": f"{bin_}{os.pathsep}{os.environ['PATH']}",
+        "DOWN_LOG": str(log),
+        "GIT_CEILING_DIRECTORIES": str(tmp_path),
+    }
+    result = subprocess.run(["bash", "scripts/prune_test_projects.sh"], cwd=outside, env=env)
+    assert result.returncode == 0
+    assert not log.exists()
+
+
 def test_never_fails_init_when_docker_is_missing(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     (repo / "scripts").mkdir(parents=True)
