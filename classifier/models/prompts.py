@@ -2,8 +2,9 @@
 
 A prompt file is Markdown with YAML front matter between two `---` lines. The front matter
 carries everything a call needs besides the model tag: `version` (equal to the file name, and
-what a stage records on the ledger), `temperature`, `seed`, `keep_alive`, an optional `think`,
-and the output JSON `schema`. The body is the template; `{name}` marks a slot.
+what a stage records on the ledger), `temperature`, `seed`, `keep_alive`, optional
+`num_predict`, `think`, `raw` and `wrap` (MOD-001.D5), and the output JSON `schema`. The body
+is the template; `{name}` marks a slot.
 
 The folder is the repo's `prompts/` (`/app/prompts` in the container, where the repo is
 bind-mounted and the package installed editable). No config key holds it (MOD-001.D1).
@@ -12,10 +13,10 @@ bind-mounted and the package installed editable). No config key holds it (MOD-00
 import re
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "prompts"
 _NAME = re.compile(r"[a-z0-9_]+")
@@ -36,14 +37,30 @@ class Prompt(BaseModel):
     temperature: float
     seed: int
     keep_alive: str | int
+    num_predict: int | None = Field(default=None, gt=0)
     think: bool | None = None
+    # MOD-001.D5: `raw` skips Ollama's chat template; `wrap` is the prompt's own, with one
+    # `{prompt}` slot. It is the only model-specific part of a prompt file.
+    raw: bool = False
+    wrap: str | None = None
     output_schema: dict[str, Any] = Field(alias="schema")
     template: str
+
+    @model_validator(mode="after")
+    def _raw_needs_wrap(self) -> Self:
+        if self.raw != (self.wrap is not None):
+            raise ValueError("`raw: true` and `wrap` go together")
+        if self.wrap is not None and self.wrap.count("{prompt}") != 1:
+            raise ValueError("`wrap` must hold exactly one {prompt} slot")
+        return self
 
     @property
     def options(self) -> dict[str, Any]:
         """The sampling options for Ollama's `options` field."""
-        return {"temperature": self.temperature, "seed": self.seed}
+        options: dict[str, Any] = {"temperature": self.temperature, "seed": self.seed}
+        if self.num_predict is not None:
+            options["num_predict"] = self.num_predict
+        return options
 
     @property
     def slots(self) -> frozenset[str]:
@@ -55,7 +72,9 @@ class Prompt(BaseModel):
             raise PromptError(
                 f"prompt {self.version} takes slots {sorted(self.slots)}, got {sorted(values)}"
             )
-        return _SLOT.sub(lambda m: values[m.group(1)], self.template)
+        body = _SLOT.sub(lambda m: values[m.group(1)], self.template)
+        # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.
+        return self.wrap.replace("{prompt}", body) if self.wrap is not None else body
 
 
 def load_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:

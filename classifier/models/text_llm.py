@@ -65,6 +65,7 @@ def detect_entities(
         options=prompt.options,
         keep_alive=prompt.keep_alive,
         think=prompt.think,
+        raw=prompt.raw,
     )
     where = f"model {model!r}, text {_prompt_hash(text)}"
     items = answer.get("entities")

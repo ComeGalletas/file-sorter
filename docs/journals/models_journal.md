@@ -34,6 +34,17 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **MOD-001.D2** — **Entity output** (lead, 2026-10-07). The model answers through Ollama's `format` JSON schema: `{"entities": [{"text": ..., "label": ...}]}`. `detect_entities` drops a span that isn't literally in the input, and a label outside the requested ones. Thinking output is turned off for this call (`think: false`), if the pinned Ollama accepts it for the tag; the worker checks and records which.
 - **MOD-001.D3** — **Eval for the entity prompt** (lead, 2026-10-07). §3 asks for an `eval/` run when a prompt changes. For this prompt, the eval is gate 2's seeded-name measure (TST-005.2), run on synthetic names only in `eval/`, with the numbers in this journal: recall on seeded entities, and false redactions on a set of names with no entity.
 - **MOD-001.D4** — **Client timeout** (lead, 2026-10-07, on #50). `OllamaClient` takes `timeout` as a constructor parameter, defaulting to the module constant `DEFAULT_TIMEOUT = 300.0` s, because the first call after a model swap loads a 6–9 GB model (R-MOD-1). No config key now; if tuning ever needs one, it becomes a Pipeline issue.
+- **MOD-001.D5** — **The entity prompt runs raw, without thinking** (lead, 2026-10-07, on #51). D2's check: on `ollama/ollama:0.35.1`, `qwen3-vl:8b` **accepts `think: false` but ignores it**. Probe on synthetic strings, temperature 0, seed 7:
+
+  | Request | Per filename-like string |
+  | --- | --- |
+  | default (no `think`) | ~3 000 thinking tokens, ~30 s; once cut off at the length limit with an empty `response` |
+  | `think: false` | HTTP 200, but still ~3 000 thinking tokens, ~30 s |
+  | `/no_think` in the prompt | ~2 800 thinking tokens, ~28 s |
+  | `think: false` + `/no_think` | cut off at the length limit, empty `response` |
+  | `raw: true`, ChatML user turn + empty think block | 0.1–0.8 s, 6–60 tokens, no thinking, valid JSON |
+
+  So: `OllamaClient.generate_json` gains `raw: bool = False`, sent only when true. The prompt front matter gains an optional `wrap` with one `{prompt}` slot, which goes with `raw: true`. `sanitize_entity_v1` carries the ChatML wrapper; it is the only model-specific part, and a change of `models.text_llm` family means a new prompt version. Fail closed still holds: `done_reason: length` or an empty `response` is an `OllamaError`, and `num_predict` is bounded in the front matter. The recording key includes `raw` when sent: `{model, prompt, format, options, think?, raw?}`, never `keep_alive` or `stream` (amends TST-005.D5).
 
 ## MOD-001 — Plan
 
@@ -47,7 +58,11 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.1.2 — A `gpu` round trip against the real `ollama` service (discovered: the `gpu` tier was empty, so pre-push failed with "no tests collected") (hash in Results)
 - [ ] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
   - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests · 74a5cd4
-  - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests (hash in Results)
+  - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests · 283671b
+  - [ ] MOD-001.2.3 — The `gpu` acceptance test on synthetic strings, with the recorder
+  - [ ] MOD-001.2.4 — The eval (D3) on fictional names in `eval/`
+  - [ ] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`
+  - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed (hash in Results)
 
 ## MOD-001 — Results
 

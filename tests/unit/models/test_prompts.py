@@ -75,6 +75,41 @@ def test_malformed_files_are_refused(tmp_path: Path, body: str, match: str) -> N
         load_prompt("demo_v1", write(tmp_path, "demo_v1", body))
 
 
+RAW = GOOD.replace("seed: 7\n", 'seed: 7\nnum_predict: 64\nraw: true\nwrap: "<u>{prompt}</u><a>"\n')
+
+
+def test_raw_prompt_is_wrapped_once(tmp_path: Path) -> None:
+    p = load_prompt("demo_v1", write(tmp_path, "demo_v1", RAW))
+    assert p.raw is True
+    assert p.options == {"temperature": 0.0, "seed": 7, "num_predict": 64}
+    out = p.render(labels="L", text="x {prompt} y")
+    assert out.startswith("<u>Labels: L\n") and out.endswith("</u><a>")
+    assert "x {prompt} y" in out  # the body can't inject a second wrapper slot
+    assert p.slots == {"labels", "text"}
+
+
+def test_plain_prompt_is_not_raw(tmp_path: Path) -> None:
+    p = load_prompt("demo_v1", write(tmp_path, "demo_v1", GOOD))
+    assert p.raw is False and p.wrap is None
+    assert "num_predict" not in p.options
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "raw: true\n",  # raw without a wrapper
+        'wrap: "<u>{prompt}</u>"\n',  # a wrapper without raw
+        'raw: true\nwrap: "<u></u>"\n',  # no slot
+        'raw: true\nwrap: "{prompt}{prompt}"\n',  # two slots
+        "num_predict: 0\n",
+    ],
+)
+def test_raw_and_wrap_are_checked(tmp_path: Path, extra: str) -> None:
+    body = GOOD.replace("seed: 7\n", "seed: 7\n" + extra)
+    with pytest.raises(PromptError, match="invalid"):
+        load_prompt("demo_v1", write(tmp_path, "demo_v1", body))
+
+
 @pytest.mark.parametrize("name", ["../x", "a/b", "A_v1", "", "x.md"])
 def test_bad_names_are_refused(tmp_path: Path, name: str) -> None:
     with pytest.raises(PromptError, match="invalid prompt name"):
@@ -91,6 +126,8 @@ def test_entity_prompt_ships_with_its_front_matter() -> None:
     assert isinstance(p, Prompt)
     assert (PROMPTS_DIR / "sanitize_entity_v1.md").is_file()
     assert p.temperature == 0
+    assert p.raw is True and p.think is None  # MOD-001.D5
+    assert p.num_predict is not None
     assert p.slots == {"labels", "text"}
     label = p.output_schema["properties"]["entities"]["items"]["properties"]["label"]
     assert label["enum"] == ["PERSON", "ORG", "LOCATION"]

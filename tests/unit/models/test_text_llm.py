@@ -48,9 +48,13 @@ def test_request_uses_the_prompt_front_matter() -> None:
     assert p.version == ENTITY_PROMPT
     assert body["model"] == "tag:1b"
     assert body["format"] == p.output_schema
-    assert body["options"] == {"temperature": 0.0, "seed": p.seed}
+    assert body["options"] == {"temperature": 0.0, "seed": p.seed, "num_predict": p.num_predict}
     assert body["keep_alive"] == p.keep_alive
-    assert "think" not in body  # MOD-001.D2: the tag ignores think=false
+    # MOD-001.D5: the tag ignores think=false, so the prompt is raw with its own wrapper.
+    assert "think" not in body
+    assert body["raw"] is True
+    assert body["prompt"].startswith("<|im_start|>user\n")
+    assert body["prompt"].endswith("<|im_start|>assistant\n<think>\n\n</think>\n\n")
     assert "images" not in body
     assert TEXT in body["prompt"]
 

@@ -5,8 +5,14 @@ temperature: 0
 seed: 7
 # R-MOD-1: kept loaded through one sanitize batch, unloaded after five idle minutes.
 keep_alive: 5m
-# MOD-001.D2: the qwen3-vl:8b tag on the pinned Ollama accepts `think: false` but still
-# thinks, so the request leaves `think` out.
+# Bounded, so a runaway answer can't stall a batch; a cut-off answer fails closed (MOD-001.D5).
+num_predict: 512
+# MOD-001.D5: the qwen3-vl:8b tag on the pinned Ollama accepts `think: false` but still thinks
+# (~3 000 tokens, ~30 s a name, sometimes cut off). So the request is raw: the wrapper below is
+# Qwen's ChatML user turn with an empty think block, and `think` is left out. It is the only
+# model-specific part of this file; a change of `models.text_llm` family needs a new version.
+raw: true
+wrap: "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
 schema:
   type: object
   properties:

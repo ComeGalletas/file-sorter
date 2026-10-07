@@ -88,8 +88,13 @@ class OllamaClient:
         options: Mapping[str, Any],
         keep_alive: str | int,
         think: bool | None = None,
+        raw: bool = False,
     ) -> dict[str, Any]:
-        """Run `prompt` on `model` and return its answer, constrained to the JSON `schema`."""
+        """Run `prompt` on `model` and return its answer, constrained to the JSON `schema`.
+
+        `raw=True` sends the prompt without Ollama's chat template, so the prompt carries its
+        own (MOD-001.D5). An answer cut off at the token limit is an error (fail closed).
+        """
         body: dict[str, Any] = {
             "model": model,
             "prompt": prompt,
@@ -100,6 +105,8 @@ class OllamaClient:
         }
         if think is not None:
             body["think"] = think
+        if raw:
+            body["raw"] = True
         where = f"model {model!r}, prompt {_prompt_hash(prompt)}"
         try:
             response = self._http.post(GENERATE_PATH, json=body)
@@ -115,6 +122,8 @@ class OllamaClient:
             raise OllamaError(f"Ollama sent a body that is not JSON ({where})") from None
         if not isinstance(payload, dict) or not isinstance(payload.get("response"), str):
             raise OllamaError(f"Ollama's body has no text `response` field ({where})")
+        if payload.get("done_reason") == "length":
+            raise OllamaError(f"Ollama's answer was cut off at the token limit ({where})")
         try:
             answer = json.loads(payload["response"])
         except ValueError:
