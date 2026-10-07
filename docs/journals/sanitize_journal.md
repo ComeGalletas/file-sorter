@@ -64,18 +64,27 @@ Decisions:
 - **SAN-001.D9** — **One file is all or nothing** (lead, 2026-10-07). Per file, the node makes the working copy (FOP-001), strips and checks its metadata, redacts the name, writes the thumbnail (ING-002) and its `sanitize_log` rows, then sets `sanitized`. Any failure sets `error` with a fixed reason and writes no log rows for that file. The node never commits; `run` commits once per node (PIPE-001.D3).
 - **SAN-001.D10** — **Recordings never hold real data** (lead, 2026-10-07). Recorded LLM responses (TST-005) are made only from synthetic strings in the `gpu` tier. The gate's entity calls on the human's values are never recorded or printed.
 - **SAN-001.D11** — **The `exif_field` rule's shape** (lead, 2026-10-07, on #47). `{id, type: exif_field, fields: [<tag>, …]}`: the tags SAN-001.2 always removes (D3). `sanitize.example.yaml` gains a placeholder rule only if SAN-001.2 needs one.
+- **SAN-001.D12** — **Rule ids of metadata rows** (lead, 2026-10-07, on #48). A tag removed by the keep-list strip logs `rule_id = exif-strip-all`; a tag removed by an `exif_field` rule logs that rule's own id.
+- **SAN-001.D13** — **Adobe APP14 is a file-structure tag, like ICC** (lead, 2026-10-07, on #48). `DCTEncodeVersion`, `APP14Flags0/1` and `ColorTransform` decide how an Adobe CMYK/YCCK JPEG decodes, so the strip keeps them. JFIF, which can carry a thumbnail, is still removed.
+- **SAN-001.D14** — **Tag names read from a file are free text** (lead, 2026-10-07, on #48). A PNG text keyword or an unknown XMP namespace becomes exiftool's tag or group name. So `field = exif:<group0>:<tag>` only when `<tag>` is in exiftool's own known-tag list (`exiftool -list`), else `exif:<group0>:unknown`; it fits DB-002.D1's check. Exceptions and `repr` never carry a tag name read from a file.
+- **SAN-001.D15** — **An `exif_field` rule beats the keep list, never the structure or ICC tags** (lead, 2026-10-07, on #48). Removing a structure tag (a TIFF's `ImageWidth` or `StripOffsets`) corrupts the image.
 
 ## SAN-001 — Plan
 
 1. **SAN-001.1, rules and text redaction (pure):** `classifier/sanitize/rules.py` loads and validates `sanitize.yaml` (pydantic). `sanitize_text(text, field, rules, entity=None) -> (text, list[Redaction])` applies literal then regex, then the entity callable when one is given (D1). `Redaction` carries `rule_id`, `field`, `before_hash`, `after_value`. Unit tests on synthetic values, with the separator variants and an empty or missing rules file.
-2. **SAN-001.2, metadata strip (pure, exiftool):** `classifier/sanitize/exif.py`: `strip_metadata(path, keep, always_drop) -> list[Redaction]` and `read_tags(path)`, both through exiftool in a subprocess with fixed arguments (D3). Unit tests generate JPEG, PNG, WebP, GIF, TIFF and HEIC files in code, with seeded GPS, serial, artist, software, XMP and IPTC tags, and check that only the keep list survives and that the pixels are unchanged.
+2. **SAN-001.2, metadata strip (pure, exiftool):** `classifier/sanitize/exif.py`: ~~`strip_metadata(path, keep, always_drop) -> list[Redaction]`~~ superseded by `strip_metadata(path, rules) -> list[Redaction]` (approved on #48: the keep list, the `exif_field` drops and the log key all come from the loaded `Rules`) and `read_tags(path)`, both through exiftool in a subprocess with fixed arguments (D3). Unit tests generate JPEG, PNG, WebP, GIF, TIFF and HEIC files in code, with seeded GPS, serial, artist, software, XMP and IPTC tags, and check that only the keep list survives and that the pixels are unchanged.
 3. **SAN-001.3, the entity rule:** `classifier/sanitize/entity.py` adapts MOD-001.2's `detect_entities` to the callable that `sanitize_text` takes. Spans not literally present in the text, and labels the rule doesn't name, are dropped. Failures raise one typed error that the node maps to D2. Unit tests use a fake detector.
 4. **SAN-001.4, the node:** `classifier/graph/sanitize.py` and its registration in `REGISTRY`. `NodeContext` gains `results_root` and the config. It selects `queued` rows (P-4), applies D9 per file, writes `files.original_sanitized`, the log rows and the status. It returns typed counts (sanitized, errored). Integration test: ingest then sanitize, on synthetic images with seeded metadata and seeded names, with recorded entity responses (TST-005.1); a re-run is a no-op; the source tree is unchanged; logs carry no name.
 
 ## SAN-001 — Tasks
 
 - [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
-- [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
+- [x] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
+  - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14) · `f8a4008`
+  - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops · `c883721`
+  - [x] SAN-001.2.3 — Results · `e269df7`
+  - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task) · `51e1b95`
+  - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
@@ -104,7 +113,33 @@ Decisions:
 
 ### SAN-001.2 (worker: pipeline)
 
-- **Status:**
+- **Built:** `classifier/sanitize/exif.py`: `read_tags(path) -> Tags` and `strip_metadata(path, rules) -> list[Redaction]`. FOP-001's transform is `partial(strip_metadata, rules=rules)`.
+  - exiftool runs with fixed argument lists, no shell, on an absolute path, with a fixed 120 s timeout. No tag value ever enters an argument.
+  - The strip is `-all=` with `--ICC_Profile:all --Adobe:all` (D4, D13), then `-tagsFromFile @` for the keep list minus `exif_field` tags (D3, D15).
+  - **Measured on exiftool 13.25:** on TIFF, `-all=` leaves the IFD0 `Artist`, `Software`, `Copyright` and `ImageDescription` in place. A targeted second pass (`-<group1>:<tag>=`) removes every tag left outside the allow-list. It never names a structure tag, because exiftool will delete a TIFF's `ImageWidth` if asked.
+  - **Read-back allow-list:** the keep list, the ICC groups, Adobe APP14, and a fixed per-group list of structure tags (File, TIFF IFD0, PNG, RIFF, GIF, HEIC QuickTime/Meta, the BMP header). It also allows the containers exiftool recreates for the keep list. Anything else raises `MetadataStripError` with `reason = sanitize_metadata_residual` (D2), as fixed text, unchained.
+  - BMP is not written, only read back.
+  - **Redactions:** one per removed tag value, with `rule_id` `exif-strip-all` or the `exif_field` rule's id (D12), an HMAC `before_hash`, and `after_value` None. The `field` is guarded per D14.
+- **Tests:** `tests/unit/sanitize/test_exif.py` (acceptance), unit tier: 39 passed; `tests/unit/sanitize/` 110 passed. Lint clean. Default tiers: at pre-push.
+  - JPEG, PNG, WebP, GIF, TIFF and HEIC are generated in code with an sRGB profile and seeded with synthetic GPS, serial, artist, software, copyright, description, comment, XMP and IPTC values. Only the keep list, ICC and structure survive. Decoded pixels and ICC bytes are identical, and the hashes match the seeded values.
+  - Also tested:
+    - the TIFF second pass; BMP is unchanged byte for byte; a second strip is a no-op;
+    - a CMYK JPEG keeps APP14 and its pixels; JFIF is removed; an empty keep list;
+    - `exif_field` on a keep tag, on another tag, and on structure/ICC tags (ignored, D15);
+    - residual, failing, missing and hung exiftool, a non-image, and error or unparseable output;
+    - option-like values and a file named `-ver`: the path is always absolute, and no value reaches an argument;
+    - planted secrets, including a PNG keyword, are absent from every `repr`/`str`, every `field`, the exceptions and the logs; a lone surrogate is hashed;
+    - every `field` matches DB-002.D1's check, read from `SanitizeLog`'s constraint so the two cannot drift.
+  - **Mutation checks, run on a copy:** 7 of 8 were caught (removing the second pass, the ICC exclusion, the known-tag guard, D15's order, D12's rule id, the absolute path, or the residual check). Removing `--Adobe:all` is not observable, because exiftool's `-all=` already keeps APP14. The flag stays as an explicit statement of D13.
+- **Status:** DONE_WITH_CONCERNS.
+  - **Concern (low):** the structure allow-list comes from synthetic files. A real file may carry a structure tag that isn't listed, most likely in HEIC from a phone. That file then fails closed (`error`, retried) rather than leaking. Gate 2 on the real fixtures will show it. Follow-up: widen the list in a `SAN` balance task if gate 2 reports residuals.
+- **Self-rating:** 9/10, proud: yes. Gap: the allow-list concern above. Maker notes aren't seeded, because exiftool can't create them from scratch; `-all=` removes the whole EXIF block that holds them.
+- **Reviewer / Privacy auditor:** round 1 at 51e1b95: Reviewer APPROVE with minors, Privacy auditor FAIL. SAN-001.2.5 fixes all six findings:
+  - `_absolute` raises fixed text, unchained, when `is_symlink`, `resolve` or `is_file` raises an `OSError` (whose message holds the path). It also refuses a symlinked working copy.
+  - `read_tags` fails closed on a key that isn't `<group>:<tag>` or `<group0>:<group1>:<tag>` (other than `SourceFile`). Before, such a key was skipped and escaped the read-back check. It also fails closed on JSON of an unexpected shape, and on a read with no `File:FileType`.
+  - `_known_tags` takes only the indented lines under `Available tags:`, so header words and the command-line shortcuts aren't known tag names.
+  - The Plan line now shows `strip_metadata(path, rules)`.
+  - Tests: `test_exif.py` 51 passed; `tests/unit/sanitize/` with `tests/devtools` 191 passed. Re-review pending.
 
 ### SAN-001.3 (worker: pipeline)
 
