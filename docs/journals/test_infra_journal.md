@@ -1,7 +1,7 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** in progress (TST-002.1, .3 done; .2 in review; .4 waits for CLI-002.1); TST-003 proposed · **Milestone:** m1 ·
-**Issues:** #19, #20, #21, #22 · **Branch:** per task, named by agent-office (`office/*`)
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 proposed · **Milestone:** m1 ·
+**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -59,6 +59,8 @@ references or host paths here. Use hashes.
   - [x] TST-002.2.2 — Point the `tests/conftest.py` docstring at the audit · `e112d07`
   - [x] TST-002.2.3 — Record the results and the named gaps · `9ef33e4`
   - [x] TST-002.2.4 — Fix the audit after review round 1: drop the `DB_DSN` check, alias and from-import HTTP calls, dynamic imports, async fixtures, the fake-transport fix text · `f6731b7`
+  - [x] TST-002.2.5 — Journal the round-1 fixes · `cb6e735`
+  - [x] (human-side sync, RUN-002.D16) `main` merged into the branch, journal conflict resolved · `9e3f058`
 - [x] TST-002.3 — `app` mounts the source read-only (R-FOP-8) · #21 · acceptance: `tests/unit/runtime/test_source_mount_readonly.py`
   - [x] TST-002.3.1 — `app`'s `/source` mount in `docker-compose.yml` is read-only (long and short forms) · e7747f9
   - [x] TST-002.3.2 — no other service mounts `/source` writably; the egress file doesn't touch it · 83054ce
@@ -69,7 +71,7 @@ references or host paths here. Use hashes.
   - [x] TST-002.4.1 — `scripts/gate_1.py`: prerequisites (`DB_DSN`, `fixtures/images/`), fresh migrated schema, two dry runs, the verdict on run 2 and an aggregates-only report · 1601434
   - [x] TST-002.4.2 — `tests/unit/gate/` (verdict logic, no counts printed, named prerequisites) and `tests/integration/test_gate_1_script.py` (end to end on synthetic images) · 6e6227f
   - [x] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main · 557e1f0
-  - [x] TST-002.4.4 — PR #41 round 1: run 1 must have ingested an image (no vacuous pass), an error prints only its type, `check_roots` after validation · this commit
+  - [x] TST-002.4.4 — PR #41 round 1: run 1 must have ingested an image (no vacuous pass), an error prints only its type, `check_roots` after validation · da68bcc
 
 ## TST-002 — Results
 
@@ -95,9 +97,13 @@ references or host paths here. Use hashes.
 
 - **Status:** DONE_WITH_CONCERNS (the named gaps below)
 - **Triage:** medium; unit tier plus lint; solo.
-- **Tests:** `tests/devtools/test_tier_audit.py`: 36 pass (25 before round 1). Round 1 found the `DB_DSN` check red on `main`'s config tests, so it is gone: setting the variable opens no connection. The merged-tree run (0 violations expected) is pending the merge of `main` into this branch. `make lint` is clean.
+- **Tests:** `tests/devtools/test_tier_audit.py`: 36 pass (25 before round 1). Round 1 found the `DB_DSN` check red on `main`'s config tests, so it is gone: setting the variable opens no connection. The merged-tree run is done: after the human-side merge of `main` (`9e3f058`), the pre-push gate passed, and round 3's static scan found **0 violations** across all 13 unit-tier modules on `main`, including PR #38's two new ones (lead, at close-out). `make lint` is clean.
 - **Self-rating:** 8/10, proud: yes. The 2 points are the named gaps below; the acceptance test and the lead's two additions are met.
-- **Review:** pending.
+- **Review:** PR #28, merged as `d0e59eb`, closing #20.
+  - Round 1, at `9ef33e4`: Reviewer REQUEST_CHANGES. The blocker was the `DB_DSN` check going red on `main`, caused by the lead's own instruction. There were 2 majors (aliased HTTP calls and dynamic imports missed) and 3 minors. Privacy auditor PASS.
+  - Round 2, scoped, at `cb6e735`: APPROVE, with one condition: merge `main` before landing.
+  - Round 3, scoped to the merge `9e3f058`: APPROVE and PASS.
+  - The verdict comments are on the PR.
 - **Deferred / named gaps:**
   - The scan is static and per module. A unit test that reaches the db or a model through a `classifier.*` helper is caught only if the helper's dotted name is in `INDIRECT_DB` / `INDIRECT_MODEL`. Both lists start empty, because no helper that needs the db or a model exists yet. A task that adds one registers it there.
   - Not detected: `httpx.Client(...)` built with a real transport (module-level calls, aliases and `from httpx import post` are flagged, so a fake `MockTransport` stays legal), a db reached through an autouse fixture in a `conftest.py`, and dynamic imports whose argument is not a string constant.
@@ -118,7 +124,8 @@ references or host paths here. Use hashes.
 - **Triage:** medium; solo; unit and integration tiers plus the gate itself as the acceptance test.
 - **Tests:** 13 new (10 `unit` in `tests/unit/gate/`, 3 `integration`), all green in the test container; ruff clean. `make gate-1` against the real fixtures: skipped on re-run 100.0%, new ledger rows 0, PASS, exit 0 (percentages only, DOC-005.D1). Without the fixtures it fails naming `fixtures/images/`.
 - **Self-rating:** 9/10, proud: yes. Gap: it calls `run()` (the entry point `classifier dry-run` uses) rather than the CLI, so the CLI wiring is covered by CLI-002.1's own tests, not by the gate; and the private schema comes from `schema_support.py` until TST-003.
-- **Review:** pending.
+- **Review:** PR #41, merged as `537c72c`, closing #22. Round 1 at `557e1f0`: Reviewer REQUEST_CHANGES (1 major: a fixtures folder of only non-images could pass vacuously; 3 minor: an unwrapped traceback, `check_roots` not called, a missing hash), Privacy auditor PASS. Round 2, scoped, at `da68bcc`: APPROVE and PASS. The verdict comments are on the PR.
+  - **Lead's G1 run** (main checkout, `537c72c`, `make gate-1`, real fixtures via the read-only mount): skipped on re-run **100.0%**, new ledger rows **0**, **PASS**, exit 0.
 - **Deferred:** none.
 
 ---
@@ -147,5 +154,31 @@ references or host paths here. Use hashes.
 ## TST-003 — Results
 
 ### TST-003.1 (worker: qa)
+
+- **Status:**
+
+---
+
+## TST-004 — Requirement (lead, from PR #40's review, 2026-10-07)
+
+- **Objective:** Make the tier audit enforce CLAUDE.md §3's fixtures rule: only the `gate` and `gpu` tiers read the real fixtures.
+- **Details:**
+  - RUN-009 (PR #40) mounts the main checkout's `fixtures/images/` read-only into every `test` container, whatever the tier.
+  - Nothing stops a `unit`, `db` or `integration` module from opening it. Extend `tests/devtools/test_tier_audit.py` so a module outside `gate` and `gpu` that references `fixtures/images` (a string constant or a path join) fails, naming the module and the line.
+  - Self-tests use synthetic modules only.
+- **Constraint:** The audit never opens the fixtures. Synthetic images under `tmp_path` stay legal. QA owns it (DOC-004.D1).
+- **Implements:** CLAUDE.md §3 (images), RUN-009, TST-002.2.
+
+## TST-004 — Confirmed reading
+
+- Not in M1's plan. **The human schedules it**, likely with M2.
+
+## TST-004 — Tasks
+
+- [ ] TST-004.1 — The tier audit flags references to the real fixtures outside `gate` and `gpu` · issue: opened when scheduled · acceptance: `tests/devtools/test_tier_audit.py`
+
+## TST-004 — Results
+
+### TST-004.1 (worker: qa)
 
 - **Status:**

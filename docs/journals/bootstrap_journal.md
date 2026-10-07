@@ -662,3 +662,24 @@ and then (PR #39 review round 2):
 - **Regression check:** with the old compose file, `common.sh` and init script, 3 of the new tests fail, one per change: the mount, the worktree path, and the labels copy.
 - **Live check, in a worktree:** the `test` container sees a non-empty `/app/fixtures/images`, and a write there is refused. `make init` copied `labels.csv`, and `git status` stays clean.
 - **Self-rating:** 9/10, proud: yes. Gap: `labels.csv` is a copy (D2), so a worktree made before the human edits the labels keeps the old version until it runs `make init` again from scratch.
+
+---
+
+## RUN-010 — Requirement (lead, from the PR #39 and #40 reviews, 2026-10-07)
+
+- **Objective:** Close the minor follow-ups the reviewers left on RUN-008 and RUN-009.
+- **Details:**
+  1. **RUN-008 residuals (PR #39, round 3):** list ANSI-C quoting (`$'…'` around the subcommand word) and brace expansion around it among the documented guard residuals under the D4 threat model, or deny them.
+  2. **CLAUDE.md's guard bullet (PR #39, round 3):** it names "the pre-push hook" as a merge backstop, but that hook runs tests and doesn't inspect merges. Name the real backstops: the Reviewer, and the lead's `gh pr merge`-only `main` (as D7 already says).
+  3. **The fixtures mount (PR #40):** decide `create_host_path` on the read-only fixtures bind. `true` can create an empty, git-ignored `fixtures/images/` in a main checkout without images, so the gate then reports "empty" rather than "missing". `false` fails louder.
+  4. **Process (PR #40):** human-side merge commits carry a work ID in their subject, like worker merges do (RUN-008).
+- **Constraint:** These are human-side changes (RUN-002.D16): the guard, CLAUDE.md and compose. The lead only records them.
+- **Implements:** RUN-008, RUN-009.
+
+## RUN-010 — Tasks
+
+- [ ] RUN-010.1 — The four follow-ups above · human-side PR, when the human schedules it
+
+## RUN-010 — Results
+
+- **Status:** proposed.
