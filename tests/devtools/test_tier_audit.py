@@ -21,6 +21,7 @@ Setting an env var such as DB_DSN opens no connection, so it is not flagged.
 
 import ast
 import importlib.util
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,6 +58,91 @@ class Violation:
     kind: str  # db | model | ollama | http
     line: int
     what: str
+
+
+# TST-004: the real fixtures. Concatenated so this module does not trip its own scan.
+FIXTURES = "fix" + "tures"
+REAL_FIXTURES = {"images": FIXTURES + "/images", "labels": FIXTURES + "/labels.csv"}
+# Whole path segments only: the committed fixtures/labels.example.csv stays legal.
+REAL_FIXTURE_RE = re.compile(rf"(?<![\w.-]){FIXTURES}/(images|labels\.csv)(?![\w.-])")
+
+
+@dataclass(frozen=True)
+class FixtureRef:
+    line: int
+    target: str  # fixtures/images | fixtures/labels.csv
+    text: str  # the exact source text, which NAMES_FIXTURES_WITHOUT_READING pins
+
+
+def _real_fixture_in(value: str) -> str | None:
+    """The real fixture a string names, as `fixtures/<x>`, or None."""
+    match = REAL_FIXTURE_RE.search(value.replace("\\", "/").casefold())
+    return f"{FIXTURES}/{match.group(1)}" if match else None
+
+
+def _joined_fixture(first: ast.expr, second: ast.expr) -> str | None:
+    """The real fixture named by two adjacent path parts ("fixtures", "images"), or None."""
+    if not all(isinstance(p, ast.Constant) and isinstance(p.value, str) for p in (first, second)):
+        return None
+    if first.value.replace("\\", "/").strip("/").casefold() != FIXTURES:
+        return None
+    return _real_fixture_in(f"{FIXTURES}/{second.value.lstrip('/')}")
+
+
+def _docstring_ids(tree: ast.Module) -> set[int]:
+    owners = [tree] + [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+    ]
+    return {
+        id(o.body[0].value)
+        for o in owners
+        if o.body
+        and isinstance(o.body[0], ast.Expr)
+        and isinstance(o.body[0].value, ast.Constant)
+        and isinstance(o.body[0].value.value, str)
+    }
+
+
+def scan_fixture_refs(source: str) -> list[FixtureRef]:
+    """Every reference to the real fixtures in a module's code: a string constant (f-string
+    parts included) or a path join of "fixtures" and "images" / "labels.csv". Docstrings are
+    prose, not code, so they are not references."""
+    tree = ast.parse(source)
+    skip = _docstring_ids(tree)
+    found: list[FixtureRef] = []
+
+    def add(node: ast.AST, target: str) -> None:
+        text = ast.get_source_segment(source, node) or ""
+        found.append(FixtureRef(node.lineno, target, text))
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.JoinedStr):
+            parts = [v for v in node.values if isinstance(v, ast.Constant)]
+            skip.update(id(p) for p in parts)
+            target = _real_fixture_in("".join(str(p.value) for p in parts))
+            if target:
+                add(node, target)
+        elif isinstance(node, ast.Constant) and id(node) not in skip:
+            value = node.value
+            if isinstance(value, bytes):
+                value = value.decode("latin-1")
+            if isinstance(value, str) and (target := _real_fixture_in(value)):
+                add(node, target)
+        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            left = node.left
+            if isinstance(left, ast.BinOp) and isinstance(left.op, ast.Div):
+                left = left.right  # root / "fixtures" / "images"
+            if isinstance(left, ast.Call) and left.args:
+                left = left.args[-1]  # Path("fixtures") / "images"
+            if target := _joined_fixture(left, node.right):
+                add(node, target)
+        elif isinstance(node, ast.Call):
+            for first, second in zip(node.args, node.args[1:], strict=False):
+                if target := _joined_fixture(first, second):
+                    add(node, target)
+    return sorted(set(found), key=lambda r: (r.line, r.target, r.text))
 
 
 def _load_conftest():
@@ -254,6 +340,63 @@ def test_scanner_flags_each_forbidden_use(source: str, kind: str) -> None:
 )
 def test_scanner_passes_clean_modules(source: str) -> None:
     assert scan_source(source) == []
+
+
+F = FIXTURES  # synthetic sources below name the fixtures without this module doing so
+
+
+@pytest.mark.parametrize(
+    ("source", "target"),
+    [
+        (f"P = '{F}/images'\n", "images"),
+        (f"P = '/app/{F}/images/'\n", "images"),
+        (f"P = r'{F}\\images'\n", "images"),
+        (f"P = '{F.upper()}/Images'\n", "images"),
+        (f"P = b'{F}/images'\n", "images"),
+        (f"P = '{F}/labels.csv'\n", "labels"),
+        (f"P = f'{{root}}/{F}/images'\n", "images"),
+        (f"P = f'{{root}}/{F}/labels.csv'\n", "labels"),
+        (f"P = root / '{F}' / 'images'\n", "images"),
+        (f"P = root / '{F}' / 'images' / 'a.png'\n", "images"),
+        (f"P = root / '{F}' / 'labels.csv'\n", "labels"),
+        (f"P = Path('{F}') / 'images'\n", "images"),
+        (f"P = Path(root, '{F}', 'images')\n", "images"),
+        (f"P = os.path.join(root, '{F}', 'labels.csv')\n", "labels"),
+        (f"P = root.joinpath('{F}', 'images')\n", "images"),
+        (f"def test_a():\n    open(REPO / '{F}' / 'labels.csv')\n", "labels"),
+    ],
+)
+def test_fixture_scanner_flags_each_reference(source: str, target: str) -> None:
+    found = scan_fixture_refs(source)
+    assert [r.target for r in found] == [REAL_FIXTURES[target]]
+    assert found[0].line == source.count("\n")  # each reference is on the last line
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def test_a(tmp_path):\n    (tmp_path / 'images' / 'a.png').write_bytes(b'')\n",
+        f"def test_a(tmp_path):\n    d = tmp_path / '{F}'\n",
+        f"P = '{F}'\nQ = 'images'\n",
+        f"P = '{F}/labels.example.csv'\n",
+        f"P = root / '{F}' / 'labels.example.csv'\n",
+        f"P = '{F}/images_synthetic'\n",
+        f"P = 'my{F}/images'\n",
+        f"'''Reads {F}/images only in the gate tier.'''\n",
+        f"def test_a():\n    '''Not {F}/labels.csv.'''\n",
+        f"P = root / 'images' / '{F}'\n",
+    ],
+)
+def test_fixture_scanner_passes_clean_modules(source: str) -> None:
+    assert scan_fixture_refs(source) == []
+
+
+def test_fixture_scanner_keeps_the_exact_source_text() -> None:
+    source = f"A = sandbox['wt'] / '{F}' / 'images'\nB = f'x={{m}}/{F}/images'\n"
+    assert [(r.line, r.text) for r in scan_fixture_refs(source)] == [
+        (1, f"sandbox['wt'] / '{F}' / 'images'"),
+        (2, f"f'x={{m}}/{F}/images'"),
+    ]
 
 
 def test_indirect_helpers_are_flagged_when_registered() -> None:
