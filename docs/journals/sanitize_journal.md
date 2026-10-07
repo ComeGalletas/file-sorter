@@ -117,6 +117,8 @@ Decisions:
 ## FOP-001 — Tasks
 
 - [ ] FOP-001.1 — `make_working_copy` and the write-new helper · #46 · acceptance: `tests/unit/fileops/test_working_copy.py`
+  - [x] FOP-001.1.1 — `make_working_copy` in `classifier/fileops/copy_move.py`, returning `WorkingCopy(path, copy_sha256)`
+  - [ ] FOP-001.1.2 — `write_new`: keep an existing file, publish with `os.link`, fallback per FOP-001.D2
 
 ## FOP-001 — Results
 
