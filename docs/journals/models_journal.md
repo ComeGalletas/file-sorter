@@ -59,10 +59,10 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - [ ] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
   - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests · 74a5cd4
   - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests · 283671b
-  - [ ] MOD-001.2.3 — The `gpu` acceptance test on synthetic strings, with the recorder
+  - [x] MOD-001.2.3 — The `gpu` acceptance test on synthetic strings, with the recorder (hash in Results)
   - [ ] MOD-001.2.4 — The eval (D3) on fictional names in `eval/`
-  - [ ] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`
-  - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed (hash in Results)
+  - [x] MOD-001.2.5 — The replay recordings under `tests/recordings/models/`: 18 files, landed in .2.3's commit because the acceptance test checks every live answer against its recording and is red without them
+  - [x] MOD-001.2.6 — Raw mode for the entity prompt (D5, discovered: `think: false` is ignored by the tag): `raw` in the client, `wrap` and `num_predict` in the front matter, a cut-off answer fails closed · bbbf298
 
 ## MOD-001 — Results
 
