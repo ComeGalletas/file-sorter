@@ -2,19 +2,141 @@
 
 Criterion: Re-running on the same folder skips 100% of files, with no new ledger rows.
 
-STUB (RUN-002.4): exits 1 until milestone 1 implements the measurement.
-QA owns this file. Report aggregates and hashes only, never file names or references.
+Runs inside the `test` container (`make gate-1`): a fresh migrated schema in `db-test`, a dry
+run twice over `fixtures/images/`, then the measurement on run 2 (TST-002.D2):
+  - skipped share = (skipped_known + skipped_unreadable + duplicate) / total, must be 100%;
+  - new ledger rows (the `files` count before vs after run 2), must be 0.
+QA owns this file. Output is percentages and "0 new ledger rows" only: never a count of the
+human's images, never a file name or path (DOC-005.D1).
 """
 
 import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+IMAGES = REPO / "fixtures" / "images"
+CONFIG = REPO / "config.yaml"
 
 CRITERION = "Re-running on the same folder skips 100% of files, with no new ledger rows."
 
 
-def main() -> int:
-    print(f"gate 1 NOT IMPLEMENTED: {CRITERION}", file=sys.stderr)
-    return 1
+class GateSetupError(Exception):
+    """A prerequisite is missing; the gate fails and names it. It is never skipped."""
+
+
+@dataclass(frozen=True)
+class Verdict:
+    passed: bool
+    lines: tuple[str, ...]
+
+
+def skipped_share(new: int, skipped_known: int, skipped_unreadable: int, duplicate: int) -> float:
+    """Share of run 2's files that were not newly ingested, in percent (0.0 for an empty tree)."""
+    total = new + skipped_known + skipped_unreadable + duplicate
+    if total == 0:
+        return 0.0
+    return 100.0 * (skipped_known + skipped_unreadable + duplicate) / total
+
+
+def judge(
+    *,
+    new: int,
+    skipped_known: int,
+    skipped_unreadable: int,
+    duplicate: int,
+    rows_before: int,
+    rows_after: int,
+) -> Verdict:
+    """Decide the gate from run 2's buckets and the ledger count around it. Prints no counts."""
+    total = new + skipped_known + skipped_unreadable + duplicate
+    lines: list[str] = []
+    ok = True
+    if total == 0:
+        return Verdict(False, ("gate 1 FAIL: run 2 saw no files; 100% of nothing proves nothing",))
+
+    share = skipped_share(new, skipped_known, skipped_unreadable, duplicate)
+    share_ok = new == 0 and share == 100.0
+    status = "ok" if share_ok else "FAIL"
+    lines.append(f"skipped on re-run: {share:.1f}% (required 100.0%): {status}")
+    ok &= share_ok
+
+    rows_ok = rows_after == rows_before
+    if rows_ok:
+        lines.append("new ledger rows: 0 (required 0): ok")
+    else:
+        # The ledger only grows by ingest, so a negative delta is as wrong as a positive one.
+        lines.append("new ledger rows: not 0 (required 0): FAIL")
+    ok &= rows_ok
+
+    lines.append(f"gate 1 {'PASS' if ok else 'FAIL'}: {CRITERION}")
+    return Verdict(ok, tuple(lines))
+
+
+def check_prerequisites(dsn: str | None, images: Path) -> str:
+    """Return the DSN, or raise naming what is missing."""
+    if not dsn:
+        raise GateSetupError(
+            "DB_DSN is not set: gate 1 needs the throwaway Postgres of the `test` compose "
+            "profile. Run it with `make gate-1`."
+        )
+    if not images.is_dir():
+        raise GateSetupError(
+            "fixtures/images/ is missing: gate 1 measures the human's real fixtures, mounted "
+            "read-only into the `test` container (RUN-009). Run it with `make gate-1`."
+        )
+    if not any(images.iterdir()):
+        raise GateSetupError("fixtures/images/ is empty: gate 1 has nothing to ingest.")
+    return dsn
+
+
+def measure(db_dsn: str, images: Path) -> Verdict:
+    """Dry-run `images` twice against a fresh migrated schema and judge run 2."""
+    # Imported here so the pure logic above loads without the app's dependencies.
+    import psycopg
+    import yaml
+
+    from classifier.config import Config
+    from classifier.graph.run import run
+    from tests.integration.schema_support import migrated_schema
+
+    with migrated_schema(db_dsn) as dsn, tempfile.TemporaryDirectory() as results:
+        data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+        data["paths"] = {"source_root": str(images), "results_root": results}
+        data["db"] = {"dsn": dsn}
+        config = Config.model_validate(data)
+
+        run(config, dry_run=True)
+        with psycopg.connect(dsn) as conn:
+            before = conn.execute("select count(*) from files").fetchone()[0]
+        second = run(config, dry_run=True).ingest
+        with psycopg.connect(dsn) as conn:
+            after = conn.execute("select count(*) from files").fetchone()[0]
+
+    return judge(
+        new=second.new,
+        skipped_known=second.skipped_known,
+        skipped_unreadable=second.skipped_unreadable,
+        duplicate=second.duplicate,
+        rows_before=before,
+        rows_after=after,
+    )
+
+
+def main(images: Path = IMAGES) -> int:
+    import os
+
+    try:
+        dsn = check_prerequisites(os.environ.get("DB_DSN"), images)
+    except GateSetupError as exc:
+        print(f"gate 1 FAIL: {exc}", file=sys.stderr)
+        return 1
+    verdict = measure(dsn, images)
+    print("\n".join(verdict.lines))
+    return 0 if verdict.passed else 1
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(REPO))
     sys.exit(main())

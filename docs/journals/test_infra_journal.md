@@ -66,6 +66,9 @@ references or host paths here. Use hashes.
   - [x] TST-002.3.4 — Results, self-rating and the local regression check · 401f437
   - [x] TST-002.3.5 — hardening from the round-1 review: short-form target read from the right; `read_only` true only for a real `True` or `"true"` · 4a8097d
 - [ ] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
+  - [x] TST-002.4.1 — `scripts/gate_1.py`: prerequisites (`DB_DSN`, `fixtures/images/`), fresh migrated schema, two dry runs, the verdict on run 2 and an aggregates-only report · (hash in the next commit)
+  - [x] TST-002.4.2 — `tests/unit/gate/` (verdict logic, no counts printed, named prerequisites) and `tests/integration/test_gate_1_script.py` (end to end on synthetic images) · (hash in the next commit)
+  - [ ] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main
 
 ## TST-002 — Results
 
