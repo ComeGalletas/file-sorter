@@ -248,7 +248,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.4 — Results · `354324f`
   - [x] TST-005.1.5 — PR #71 privacy audit: stray file and folder names are reported by a short SHA-256 of their path, a bad package by a fixed message; record mode forwards only to `OllamaClient`'s allowed hosts (`check_host`, imported) · `91d62a0`
   - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError` · `3442ea8`
-  - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message
+  - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message · `693f18a`
+  - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
 
 ## TST-005 — Results
@@ -299,6 +300,10 @@ references or host paths here. Use hashes.
   - Record mode's `mkdir` and `write_text` give `recording <package>/<key>.json cannot be written`, unchained.
   - `read_bytes` was already wrapped (TST-005.1.6). Every filesystem call in `replay.py` is now inside one of these.
   - Tests patch `Path.is_file` (in the lint on a stray `<secret>.json`, in replay and in record mode), `Path.mkdir`, `Path.write_text` and `Path.rglob` to raise a `PermissionError` carrying the full path. They assert that neither the secret nor the temp path appears and that no error is chained. The module went from 64 to 70 tests. Mutations: unwrapping the stat fails 3, the walk fails 1, and the write fails 2.
+- **Review, round 4** (`693f18a`): Privacy auditor FAIL, low severity, one last case: `write_text` raised a `UnicodeEncodeError` (a `ValueError`, not an `OSError`) quoting the character when Ollama's reply held a lone surrogate. Fixed in TST-005.1.8:
+  - The text is encoded to bytes before `mkdir` and the write, and `write_bytes` replaces `write_text`, so nothing is left half-written.
+  - The encode failure gives `Ollama's reply for <package>/<key>.json is not valid UTF-8 text`, unchained. The `OSError` wrap stays.
+  - Tests: a reply whose JSON decodes to a lone surrogate beside the planted secret. Neither appears in the error, nothing is written (not even the folder), and the record-mode filesystem test now patches `write_bytes`. The module went from 70 to 71 tests. Mutation: unwrapping the encode fails 1.
 - **Deferred:** none.
 
 ### TST-005.2 (worker: qa)

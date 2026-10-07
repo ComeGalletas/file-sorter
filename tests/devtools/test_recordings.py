@@ -333,6 +333,23 @@ def test_record_forwards_to_the_allowed_hosts(base_url: str, tmp_path: Path) -> 
     assert recorder.failures == []
 
 
+def test_record_refuses_a_lone_surrogate_in_the_reply_before_writing(tmp_path: Path) -> None:
+    # Valid JSON whose \ud800 escape decodes to a lone surrogate, which UTF-8 can't encode.
+    reply = (
+        '{"model": "m", "done": true, "response": "{\\"word\\": \\"alpha\\"}", '
+        f'"thinking": "{SECRET} \\ud800"}}'
+    ).encode()
+    spy = httpx.MockTransport(lambda request: httpx.Response(200, content=reply))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError, match="not valid UTF-8 text") as caught:
+        generate(recorder)
+    assert recording_key(body()) in str(caught.value)
+    assert "\ud800" not in str(caught.value)
+    assert_private(caught.value)
+    assert len(recorder.failures) == 1
+    assert not (tmp_path / "pkg").exists()  # nothing written, not even the folder
+
+
 def test_record_refuses_a_reply_without_a_text_response(tmp_path: Path) -> None:
     recorder = RecordingTransport("pkg", upstream({"done": True}), TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
@@ -582,7 +599,7 @@ def test_replay_reports_a_failing_stat_by_key(
     assert len(transport.failures) == 1
 
 
-@pytest.mark.parametrize("method", ["is_file", "mkdir", "write_text"])
+@pytest.mark.parametrize("method", ["is_file", "mkdir", "write_bytes"])
 def test_record_reports_a_failing_filesystem_call_by_key(
     method: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

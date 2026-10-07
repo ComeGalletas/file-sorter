@@ -281,9 +281,15 @@ class RecordingTransport(httpx.BaseTransport):
             indent=2,
             ensure_ascii=False,
         )
+        # Encoded before the file is opened, so a bad reply leaves no partial recording.
+        try:
+            data = (text + "\n").encode("utf-8")
+        except UnicodeEncodeError:
+            # A lone surrogate in the reply: the error would quote it, so it is not chained.
+            raise self._fail(f"Ollama's reply for {name} is not valid UTF-8 text") from None
         try:
             self.directory.mkdir(parents=True, exist_ok=True)
-            path.write_text(text + "\n", encoding="utf-8", newline="\n")
+            path.write_bytes(data)
         except OSError:
             # The OSError's text carries the checkout path, so it is not chained (PR #71).
             raise self._fail(f"recording {name} cannot be written") from None
