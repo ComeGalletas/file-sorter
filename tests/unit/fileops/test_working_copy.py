@@ -1,5 +1,6 @@
 """FOP-001.1: the working copy in `.work/`. Synthetic bytes only, generated here."""
 
+import errno
 import hashlib
 import os
 import stat
@@ -7,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from classifier.fileops.copy_move import WorkingCopy, make_working_copy
+from classifier.fileops.copy_move import WorkingCopy, make_working_copy, write_new
 
 SOURCE_BYTES = b"synthetic-source-bytes" * 100
 HASH = hashlib.sha256(SOURCE_BYTES).hexdigest()
@@ -165,3 +166,88 @@ class TestMakeWorkingCopy:
         with pytest.raises(OSError, match="simulated"):
             make_working_copy(source, work_dir, HASH, "jpg", _no_op)
         assert list(work_dir.iterdir()) == []
+
+
+@pytest.fixture
+def dest(work_dir: Path) -> Path:
+    work_dir.mkdir()
+    return work_dir / "thumbs" / f"{HASH}.webp"
+
+
+def _names(folder: Path) -> list[str]:
+    return sorted(p.name for p in folder.iterdir())
+
+
+def _link_unsupported(code: int) -> object:
+    def link(src: object, dst: object) -> None:
+        raise OSError(code, "simulated: no hard links")
+
+    return link
+
+
+class TestWriteNew:
+    def test_writes_when_absent_and_creates_the_folder(self, dest: Path) -> None:
+        assert write_new(dest, b"thumb-bytes") is True
+        assert dest.read_bytes() == b"thumb-bytes"
+        assert _names(dest.parent) == [dest.name]
+
+    def test_keeps_an_existing_file(self, dest: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        dest.parent.mkdir()
+        dest.write_bytes(b"made-by-someone-else")
+        before = dest.stat().st_mtime_ns
+        monkeypatch.setattr(os, "link", _link_unsupported(errno.EIO))  # must not get this far
+        assert write_new(dest, b"thumb-bytes") is False  # ING-002.D2
+        assert dest.read_bytes() == b"made-by-someone-else"
+        assert dest.stat().st_mtime_ns == before
+        assert _names(dest.parent) == [dest.name]
+
+    def test_file_appearing_before_the_link_is_kept(
+        self, dest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        real_link = os.link
+
+        def racing_link(src: Path, dst: Path) -> None:
+            Path(dst).write_bytes(b"other-writer")
+            real_link(src, dst)
+
+        monkeypatch.setattr(os, "link", racing_link)
+        assert write_new(dest, b"thumb-bytes") is False
+        assert dest.read_bytes() == b"other-writer"
+        assert _names(dest.parent) == [dest.name]
+
+    def test_stale_temp_from_a_crashed_run_is_replaced(self, dest: Path) -> None:
+        dest.parent.mkdir()
+        (dest.parent / f".{dest.name}.tmp").write_bytes(b"half-written")
+        assert write_new(dest, b"thumb-bytes") is True
+        assert dest.read_bytes() == b"thumb-bytes"
+        assert _names(dest.parent) == [dest.name]
+
+    @pytest.mark.parametrize("code", [errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV])
+    def test_fallback_writes_when_hard_links_are_unsupported(
+        self, dest: Path, monkeypatch: pytest.MonkeyPatch, code: int
+    ) -> None:
+        monkeypatch.setattr(os, "link", _link_unsupported(code))  # FOP-001.D2
+        assert write_new(dest, b"thumb-bytes") is True
+        assert dest.read_bytes() == b"thumb-bytes"
+        assert _names(dest.parent) == [dest.name]
+
+    def test_fallback_keeps_a_file_that_appeared_meanwhile(
+        self, dest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def appearing_then_unsupported(src: object, dst: Path) -> None:
+            Path(dst).write_bytes(b"other-writer")
+            raise OSError(errno.ENOTSUP, "simulated: no hard links")
+
+        monkeypatch.setattr(os, "link", appearing_then_unsupported)  # FOP-001.D2
+        assert write_new(dest, b"thumb-bytes") is False
+        assert dest.read_bytes() == b"other-writer"
+        assert _names(dest.parent) == [dest.name]
+
+    def test_other_link_errors_propagate_and_leave_nothing(
+        self, dest: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(os, "link", _link_unsupported(errno.EIO))
+        with pytest.raises(OSError) as raised:
+            write_new(dest, b"thumb-bytes")
+        assert raised.value.errno == errno.EIO
+        assert _names(dest.parent) == []

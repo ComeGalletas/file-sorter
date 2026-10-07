@@ -1,4 +1,4 @@
-"""The working copy in `.work/` (FOP-001.1).
+"""The working copy in `.work/` and the write-new helper (FOP-001.1).
 
 This module is the only place that removes or replaces a file under `.work/`: its own temp
 files, and a stale working copy left by a crashed run for a `queued` row (R-FOP-6,
@@ -6,6 +6,7 @@ FOP-001.D1). The source is only ever opened for reading (R-FOP-1 step 1, R-SAN-1
 here logs or prints a path or a file name (CLAUDE.md "Hard rules").
 """
 
+import errno
 import hashlib
 import os
 import re
@@ -66,3 +67,42 @@ def make_working_copy(
         tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
         raise
     return WorkingCopy(final, copy_sha256)
+
+
+# FOP-001.D2: the link can't be made on this filesystem (e.g. a Windows bind mount).
+_NO_HARD_LINKS = frozenset({errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV})
+
+
+def write_new(dest: Path, data: bytes) -> bool:
+    """Write `data` to `dest` only if nothing is there yet; never replace a file.
+
+    For small files such as thumbnails (ING-002). An existing `dest` is kept and nothing is
+    written (ING-002.D2). Otherwise `data` goes to `.<name>.tmp` beside it and is published
+    with `os.link`, which fails rather than replace a file that appeared meanwhile. Where
+    hard links aren't supported, an `exists()` check and `os.rename` publish it instead
+    (FOP-001.D2). Returns True if this call wrote `dest`. The temp file never outlives it.
+    """
+    if dest.exists():
+        return False
+    dest.parent.mkdir(exist_ok=True)
+    tmp = dest.with_name(f".{dest.name}.tmp")
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(tmp, dest)
+        except FileExistsError:
+            return False
+        except OSError as exc:
+            if exc.errno not in _NO_HARD_LINKS:
+                raise
+            # FOP-001.D2: the gap between the check and the rename is open only to a second
+            # writer, which M2's single run excludes and the run lock (R-API-6) closes later.
+            if dest.exists():
+                return False
+            os.rename(tmp, dest)
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
