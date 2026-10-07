@@ -15,8 +15,9 @@
 #   main checkout   -> lead:   inside the tree, edits only docs/ and .task;
 #                              merge only with --merge; no mN tags
 #   linked worktree -> worker: own tree minus index/plans/spec; never "repo";
-#                              no tag, no push to main; the only merge is origin/main
-#                              into its own branch, and the only pull is --ff-only (RUN-008)
+#                              no tag, no PR merge, no push to main; the only merge is
+#                              origin/main into its own branch, the only pull --ff-only;
+#                              shell commands detected broadly and failed closed (RUN-008)
 # Shell commands are not path-checked: the guard covers Claude's file tools and the
 # merge/tag/push commands (RUN-005 Results). The human's own sessions are not guarded
 # (RUN-002.D16). Messages are ASCII on purpose (RUN-005.D3). Exit 2 blocks the tool call.
@@ -65,31 +66,51 @@ env_root() {
 
 under() { case "$(lower "$1")" in "$(lower "$2")"|"$(lower "$2")"/*) return 0 ;; esac; return 1; }
 
-# The shell command split into simple commands: one per line, trimmed. Splits on ; & | ( )
-# and backticks, so a merge inside $(...), a subshell or a pipe is still seen on its own.
-segments() { printf '%s\n' "$cmd" | tr ';&|()`' '\n\n\n\n\n\n' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//'; }
+# RUN-008.D4: worker shell commands are checked by DETECT BROADLY, ALLOW EXACTLY, FAIL CLOSED.
+# The command is normalized first: case-folded (Windows runs GIT and Git.exe as git), quotes
+# removed (bash -c "git merge x", git -C "a b" merge x), backslashes turned into slashes,
+# whitespace squeezed, then split into simple commands on ; & | ( ) and backticks.
+norm_segments() {
+  printf '%s\n' "$cmd" | tr 'A-Z' 'a-z' | tr -d "\"'" | tr '\\' '/' \
+    | tr ';&|()`' '\n\n\n\n\n\n' \
+    | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
 
-# A git subcommand anywhere in a segment, also behind global options (git -c k=v merge,
-# git -C dir merge) or a prefix (env X=1 git merge).
-GIT_SUB='(^|[[:space:]])git([[:space:]]+-[cC][[:space:]]+[^[:space:]]+)*[[:space:]]+'
+# A whole word in a normalized segment; a path prefix counts (/usr/bin/git, c:/x/git.exe).
+has_word() { printf '%s' "$1" | grep -Eq "(^| |/)($2)( |\$)"; }
 
-# RUN-008.D1, D2: a worker may bring main into its own branch, finish or abort that merge,
-# and fast-forward its own branch. Every other merge or pull is refused. Each segment that
-# runs `git merge` or `git pull` must be exactly one of the allowed forms.
-worker_sync_ok() {
+# Any segment that mentions git (or gh) together with a guarded word is treated as that
+# operation, whatever comes between (global options, -c/-C values, aliases, a wrapping shell).
+# Only the exact sync forms pass (D1, D2). A commit message that mentions these words must
+# go through `git commit -F <file>`: the false positive is the price of failing closed.
+worker_bash_ok() {
   local seg
   while IFS= read -r seg; do
-    if printf '%s' "$seg" | grep -Eq "${GIT_SUB}merge( |\$)"; then
-      printf '%s' "$seg" | grep -Eq '^git +merge( +--no-edit| +--no-ff)* +origin/main$' && continue
-      printf '%s' "$seg" | grep -Eq '^git +merge +--(abort|continue)$' && continue
-      return 1
+    [ -n "$seg" ] || continue
+    if has_word "$seg" 'gh|gh\.exe' && printf '%s' "$seg" | grep -Eq '(^| |/)merge( |$|\?)'; then
+      why="workers never merge a PR; the lead merges (CLAUDE.md section 1.6)"; return 1
     fi
-    if printf '%s' "$seg" | grep -Eq "${GIT_SUB}pull( |\$)"; then
-      printf '%s' "$seg" | grep -Eq '^git +pull +--ff-only$' && continue
-      return 1
+    has_word "$seg" 'git|git\.exe' || continue
+    case "$seg" in *alias.*)
+      why="no git aliases on a worker desk (RUN-008.D4)"; return 1 ;;
+    esac
+    if has_word "$seg" 'tag'; then
+      why="workers never tag; the mN-approved tags are the human's (CLAUDE.md section 1.6)"; return 1
+    fi
+    if has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)'; then
+      why="workers never push to main; push your task branch and open a PR"; return 1
+    fi
+    if has_word "$seg" 'merge'; then
+      printf '%s' "$seg" | grep -Eq '^git merge( --no-edit| --no-ff)* origin/main$' && continue
+      printf '%s' "$seg" | grep -Eq '^git merge --(abort|continue)$' && continue
+      why="the only merge a worker runs is 'git merge [--no-edit] origin/main' into its own branch, or --abort/--continue (RUN-008.D1). A commit message that mentions merge goes through 'git commit -F <file>'"; return 1
+    fi
+    if has_word "$seg" 'pull'; then
+      [ "$seg" = "git pull --ff-only" ] && continue
+      why="the only pull a worker runs is 'git pull --ff-only' (RUN-008.D2). A commit message that mentions pull goes through 'git commit -F <file>'"; return 1
     fi
   done <<EOF
-$(segments)
+$(norm_segments)
 EOF
   return 0
 }
@@ -128,11 +149,8 @@ where() {
 if in_linked_worktree; then
   case "$tool" in
     Bash)
-      segments | grep -Eq "(^|[[:space:]])gh +pr +merge( |\$)|${GIT_SUB}tag( |\$)" \
-        && deny "workers never merge a PR or tag; the lead merges (CLAUDE.md section 1.6)"
-      worker_sync_ok || deny "the only merge a worker runs is 'git merge [--no-edit] origin/main' into its own branch (or --abort/--continue), and the only pull is 'git pull --ff-only' (RUN-008.D1, D2)"
-      printf '%s' "$cmd" | grep -Eq 'git push.*([ :]main( |$)|HEAD:main)' \
-        && deny "workers never push to main; push your task branch and open a PR"
+      why=""
+      worker_bash_ok || deny "$why"
       ;;
     Edit|Write|MultiEdit|NotebookEdit)
       loc="$(where "$file")" || exit 2

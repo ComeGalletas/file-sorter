@@ -290,6 +290,14 @@ def test_normalization_leaves_ordinary_names_alone(
         "git pull --ff-only",
         "git merge-base --is-ancestor abc HEAD",
         "git log --merges",
+        "GIT MERGE ORIGIN/MAIN",
+        "gh pr view 5 --json mergeable,headRefOid",
+        "gh pr checks 5",
+        "git commit -F msg.txt",
+        "git push -u origin HEAD",
+        "git log origin/main..HEAD",
+        "cat .git/HEAD | grep main",
+        "git commit -F - <<EOF\nRUN-1.1: Bring main in\n\nResolves the merge of the journal\nEOF",
     ],
 )
 def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> None:
@@ -319,6 +327,42 @@ def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> No
         "git pull --ff-only origin office/other-desk",
         "git -c x=y tag v1",
         "gh  pr merge 3 --merge",
+        # PR #39 round 1, finding 1: detection was narrow and failed open.
+        'bash -c "git merge office/other-desk"',
+        "sh -c 'git merge office/other-desk'",
+        'eval "git merge office/other-desk"',
+        "git --no-pager merge office/other-desk",
+        "git --git-dir=.git merge office/other-desk",
+        "git -p merge office/other-desk",
+        'git -C "a b" merge office/other-desk',
+        "git.exe merge office/other-desk",
+        "/usr/bin/git merge office/other-desk",
+        "C:\\Program Files\\Git\\cmd\\git.exe merge office/other-desk",
+        "GIT merge office/other-desk",
+        "Git.exe pull origin main",
+        "git -c alias.m=merge m office/other-desk",
+        "git config alias.sync merge",
+        # finding 4
+        "git merge origin/main~0",
+        "git merge FETCH_HEAD",
+        "git merge --ff-only origin/main",
+        "git merge origin/main && gh pr merge 5",
+        "gh pr merge 5",
+        "git tag v1",
+        # finding 2: the PR-merge, tag and push denials had the same blind spots
+        "git --no-pager tag v1",
+        "gh -R owner/repo pr merge 5",
+        "GH pr merge 5",
+        "gh api -X PUT repos/o/r/pulls/5/merge",
+        "git push origin HEAD:refs/heads/main",
+        "git push origin +HEAD:main",
+        "GIT push origin main",
+        # D4: failing closed refuses a commit message that names a guarded word inline
+        'git commit -m "merge notes"',
+        # D5: a double quote used to hide the rest of the command from the guard
+        'git commit -m "x" && git push origin main',
+        'echo "x"; gh pr merge 5 --merge',
+        'git status && echo "ok" && git merge office/other-desk',
     ],
 )
 def test_worker_other_merges_pulls_and_tags_are_refused(
@@ -330,3 +374,11 @@ def test_worker_other_merges_pulls_and_tags_are_refused(
 def test_lead_merges_are_unchanged_by_the_worker_rule(sandbox: dict[str, Path]) -> None:
     assert guard(sandbox, "repo", bash("git merge --no-edit origin/main")) == 0
     assert guard(sandbox, "repo", bash("gh pr merge 5 --squash")) == 2
+
+
+@pytest.mark.parametrize(
+    "command",
+    ['echo "a" && gh pr merge 5 --squash', 'echo "a" && git tag -a m1-approved -m ok'],
+)
+def test_lead_rules_see_past_a_double_quote(sandbox: dict[str, Path], command: str) -> None:
+    assert guard(sandbox, "repo", bash(command)) == 2
