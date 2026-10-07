@@ -43,7 +43,8 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 ## MOD-001 — Tasks
 
 - [x] MOD-001.1 — The Ollama text client with a transport seam · #50 · acceptance: `tests/unit/models/test_ollama_client.py`
-  - [x] MOD-001.1.1 — `classifier/models/ollama.py` and its unit tests (hash in Results)
+  - [x] MOD-001.1.1 — `classifier/models/ollama.py` and its unit tests · 6852fac
+  - [x] MOD-001.1.2 — A `gpu` round trip against the real `ollama` service (discovered: the `gpu` tier was empty, so pre-push failed with "no tests collected") (hash in Results)
 - [ ] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
 
 ## MOD-001 — Results
@@ -52,9 +53,10 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 - **Built:** `OllamaClient(host, transport=None, timeout=DEFAULT_TIMEOUT)`, `from_env()` (reads `OLLAMA_HOST`, no default URL), `generate_json(model, prompt, schema, options, keep_alive, think=None)` → `POST /api/generate` with `model`, `prompt`, `format`, `options`, `keep_alive`, `stream: false`, and `think` only when set. One `OllamaError` for a refused host, connection error, timeout, HTTP error, a non-JSON body, a body without a text `response`, and an answer that isn't a JSON object. Errors carry the model tag and an 8-hex prompt hash, never the prompt or the answer. The host allow-list is exactly `ollama`, `localhost`, `127.0.0.1`, `::1` and is checked even when a transport is passed. Text only: no `images` field.
 - **Transport seam (for TST-005.1):** the `transport` parameter, a plain `httpx.BaseTransport` handed to `httpx.Client(transport=...)`.
-- **Tests:** `tests/unit/models/test_ollama_client.py`, 41 unit tests through `httpx.MockTransport`. `make test` (unit + db + integration): 483 passed. `make lint`: clean. Tier audit: clean (no Ollama port literal in the unit test).
-- **Status:** DONE.
-- **Self-rating:** 9/10, proud: yes. Gap: no test drives the client against real Ollama yet; MOD-001.2's `gpu` test does that, and records whether the pinned Ollama accepts `think: false` (D2).
+- **Tests:** `tests/unit/models/test_ollama_client.py`, 41 unit tests through `httpx.MockTransport`. `make test` (unit + db + integration): 483 passed. `make lint`: clean. Tier audit: clean (no Ollama port literal in the unit test). `tests/gpu/models/test_ollama_roundtrip.py`: 2 passed against the real service (`models.text_llm`, temperature 0, seed 7, `keep_alive: 0`; one schema-constrained answer, and an unknown tag mapped to `OllamaError`).
+- **Status:** DONE_WITH_CONCERNS.
+  - Concern (medium): the `test` service doesn't start `ollama` (no `depends_on`), so in a worktree's compose project the `gpu` tier reaches Ollama only after `docker compose -p file-sorter-<worktree> up -d ollama` by hand. Before this task the `gpu` tier was empty and pre-push failed on pytest's "no tests collected" exit code. Follow-up: an issue for the RUN owner.
+- **Self-rating:** 9/10, proud: yes. Gap: whether the pinned Ollama accepts `think: false` for the tag is still unchecked; MOD-001.2 records it (D2).
 
 ### MOD-001.2 (worker: ml)
 
