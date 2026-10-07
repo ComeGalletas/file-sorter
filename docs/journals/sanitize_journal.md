@@ -63,6 +63,7 @@ Decisions:
 - **SAN-001.D8** — **Where the sanitized name lives** (lead, 2026-10-07). A new nullable column `files.original_sanitized` holds the sanitized stem. It feeds the `{original_sanitized}` token (R-NAME-2) and the caption hint (DESIGN §4.3). Sanitized folder segments are logged in `sanitize_log` (`field = path_segment`) and not stored anywhere else. DB-002 adds the column.
 - **SAN-001.D9** — **One file is all or nothing** (lead, 2026-10-07). Per file, the node makes the working copy (FOP-001), strips and checks its metadata, redacts the name, writes the thumbnail (ING-002) and its `sanitize_log` rows, then sets `sanitized`. Any failure sets `error` with a fixed reason and writes no log rows for that file. The node never commits; `run` commits once per node (PIPE-001.D3).
 - **SAN-001.D10** — **Recordings never hold real data** (lead, 2026-10-07). Recorded LLM responses (TST-005) are made only from synthetic strings in the `gpu` tier. The gate's entity calls on the human's values are never recorded or printed.
+- **SAN-001.D11** — **The `exif_field` rule's shape** (lead, 2026-10-07, on #47). `{id, type: exif_field, fields: [<tag>, …]}`: the tags SAN-001.2 always removes (D3). `sanitize.example.yaml` gains a placeholder rule only if SAN-001.2 needs one.
 
 ## SAN-001 — Plan
 
