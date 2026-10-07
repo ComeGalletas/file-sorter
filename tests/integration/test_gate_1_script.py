@@ -40,3 +40,32 @@ def test_rerun_passes_and_prints_aggregates_only(
     text = out.out + out.err
     assert "100.0%" in text and "new ledger rows: 0" in text and "PASS" in text
     assert "secret" not in text and str(images) not in text and "notes" not in text
+
+
+def test_tree_of_non_images_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "only-notes"
+    root.mkdir()
+    (root / "notes.txt").write_text("not an image")
+    (root / "more.dat").write_text("still not an image")
+    monkeypatch.setenv("DB_DSN", require_db_dsn())
+    assert gate_1.main(root) == 1
+    out = capsys.readouterr()
+    assert "ingested nothing" in out.out + out.err
+    assert "PASS" not in out.out + out.err
+
+
+def test_an_error_prints_only_its_type(
+    images: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(db_dsn: str, root: Path) -> None:
+        raise RuntimeError(f"secret detail {db_dsn} {root}")
+
+    monkeypatch.setenv("DB_DSN", "postgresql://user:pw@host/db")
+    monkeypatch.setattr(gate_1, "measure", boom)
+    assert gate_1.main(images) == 1
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "run errored (RuntimeError)" in text
+    assert "secret" not in text and "pw" not in text and str(images) not in text

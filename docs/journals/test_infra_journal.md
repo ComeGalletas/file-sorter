@@ -68,7 +68,8 @@ references or host paths here. Use hashes.
 - [x] TST-002.4 — `scripts/gate_1.py`: re-run skips 100%, with 0 new ledger rows · #22 · acceptance: `scripts/gate_1.py`
   - [x] TST-002.4.1 — `scripts/gate_1.py`: prerequisites (`DB_DSN`, `fixtures/images/`), fresh migrated schema, two dry runs, the verdict on run 2 and an aggregates-only report · 1601434
   - [x] TST-002.4.2 — `tests/unit/gate/` (verdict logic, no counts printed, named prerequisites) and `tests/integration/test_gate_1_script.py` (end to end on synthetic images) · 6e6227f
-  - [x] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main · this commit
+  - [x] TST-002.4.3 — Results, and the first push once RUN-009 (PR #40) is on main · 557e1f0
+  - [x] TST-002.4.4 — PR #41 round 1: run 1 must have ingested an image (no vacuous pass), an error prints only its type, `check_roots` after validation · this commit
 
 ## TST-002 — Results
 
@@ -115,7 +116,7 @@ references or host paths here. Use hashes.
 
 - **Status:** DONE.
 - **Triage:** medium; solo; unit and integration tiers plus the gate itself as the acceptance test.
-- **Tests:** 9 new (8 `unit` in `tests/unit/gate/`, 1 `integration`), all green in the test container; ruff clean. `make gate-1` against the real fixtures: skipped on re-run 100.0%, new ledger rows 0, PASS, exit 0 (percentages only, DOC-005.D1). Without the fixtures it fails naming `fixtures/images/`.
+- **Tests:** 13 new (10 `unit` in `tests/unit/gate/`, 3 `integration`), all green in the test container; ruff clean. `make gate-1` against the real fixtures: skipped on re-run 100.0%, new ledger rows 0, PASS, exit 0 (percentages only, DOC-005.D1). Without the fixtures it fails naming `fixtures/images/`.
 - **Self-rating:** 9/10, proud: yes. Gap: it calls `run()` (the entry point `classifier dry-run` uses) rather than the CLI, so the CLI wiring is covered by CLI-002.1's own tests, not by the gate; and the private schema comes from `schema_support.py` until TST-003.
 - **Review:** pending.
 - **Deferred:** none.

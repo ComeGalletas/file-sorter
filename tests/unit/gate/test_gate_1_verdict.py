@@ -20,6 +20,7 @@ def _judge(**over: int):
         "duplicate": 1,
         "rows_before": 8,
         "rows_after": 8,
+        "run1_new": 6,
     }
     return gate_1.judge(**{**args, **over})
 
@@ -72,3 +73,17 @@ def test_missing_dsn_and_fixtures_are_named(tmp_path: Path) -> None:
         gate_1.check_prerequisites("postgresql://x", tmp_path / "nope")
     with pytest.raises(gate_1.GateSetupError, match="empty"):
         gate_1.check_prerequisites("postgresql://x", tmp_path)
+
+
+def test_run1_that_ingested_no_image_fails() -> None:
+    """A tree of non-images: run 2 skips everything and adds no rows, vacuously."""
+    only_unreadable = {"skipped_known": 0, "skipped_unreadable": 5, "duplicate": 0, "run1_new": 0}
+    no_rows = _judge(**only_unreadable, rows_before=0, rows_after=0)
+    assert not no_rows.passed and "ingested nothing" in no_rows.lines[0]
+    # Non-image files still get a `skipped` row, so a non-empty ledger isn't enough either.
+    assert not _judge(**only_unreadable, rows_before=5, rows_after=5).passed
+
+
+def test_run1_failure_message_carries_no_counts() -> None:
+    verdict = _judge(skipped_unreadable=37, skipped_known=0, duplicate=0, run1_new=0)
+    assert not any(ch.isdigit() for ch in verdict.lines[0].replace("1", ""))

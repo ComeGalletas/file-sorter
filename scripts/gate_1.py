@@ -48,9 +48,16 @@ def judge(
     duplicate: int,
     rows_before: int,
     rows_after: int,
+    run1_new: int,
 ) -> Verdict:
-    """Decide the gate from run 2's buckets and the ledger count around it. Prints no counts."""
+    """Decide the gate from run 2's buckets and the ledger count around it. Prints no counts.
+
+    Run 1 must have ingested at least one image (`run1_new`): a tree of non-images leaves
+    run 2 skipping everything with no new rows, which would pass without proving anything.
+    """
     total = new + skipped_known + skipped_unreadable + duplicate
+    if run1_new == 0:
+        return Verdict(False, ("gate 1 FAIL: run 1 ingested nothing; the re-run proves nothing",))
     lines: list[str] = []
     ok = True
     if total == 0:
@@ -97,7 +104,7 @@ def measure(db_dsn: str, images: Path) -> Verdict:
     import psycopg
     import yaml
 
-    from classifier.config import Config
+    from classifier.config import Config, check_roots
     from classifier.graph.run import run
     from tests.integration.schema_support import migrated_schema
 
@@ -106,8 +113,9 @@ def measure(db_dsn: str, images: Path) -> Verdict:
         data["paths"] = {"source_root": str(images), "results_root": results}
         data["db"] = {"dsn": dsn}
         config = Config.model_validate(data)
+        check_roots(config)  # R-FOP-9
 
-        run(config, dry_run=True)
+        first = run(config, dry_run=True).ingest
         with psycopg.connect(dsn) as conn:
             before = conn.execute("select count(*) from files").fetchone()[0]
         second = run(config, dry_run=True).ingest
@@ -121,6 +129,7 @@ def measure(db_dsn: str, images: Path) -> Verdict:
         duplicate=second.duplicate,
         rows_before=before,
         rows_after=after,
+        run1_new=first.new,
     )
 
 
@@ -132,7 +141,11 @@ def main(images: Path = IMAGES) -> int:
     except GateSetupError as exc:
         print(f"gate 1 FAIL: {exc}", file=sys.stderr)
         return 1
-    verdict = measure(dsn, images)
+    try:
+        verdict = measure(dsn, images)
+    except Exception as exc:  # the type only: a message can carry a path or the DSN
+        print(f"gate 1 FAIL: run errored ({type(exc).__name__})", file=sys.stderr)
+        return 1
     print("\n".join(verdict.lines))
     return 0 if verdict.passed else 1
 
