@@ -1,7 +1,8 @@
 """TST-003.1: the shared private-schema fixture (tests/integration/conftest.py).
 
 The module's schema is private, at the single Alembic head, and holds the `files` it reads;
-`empty_ledger` empties it between tests; `migrated_schema` gives each caller its own schema
+`empty_ledger` empties it, and every table that references it (TST-006.1), between tests;
+`migrated_schema` gives each caller its own schema
 and drops it on exit, so no test ever truncates a schema it shares.
 """
 
@@ -77,3 +78,29 @@ def test_each_call_gets_its_own_schema_dropped_on_exit() -> None:
         assert _schema_exists(name_a) and _schema_exists(name_b)
     assert not _schema_exists(name_a)
     assert not _schema_exists(name_b)
+
+
+def test_empty_ledger_empties_tables_that_reference_files(
+    schema_dsn: str, request: pytest.FixtureRequest
+) -> None:
+    """TST-006.1: a child table with a foreign key to `files` doesn't block the truncate."""
+    with psycopg.connect(schema_dsn) as conn:
+        conn.execute(
+            "create table fk_child (source_hash varchar(64) not null "
+            "references files (source_hash))"
+        )
+        conn.execute(INSERT, ("e" * 64, "eeeeeeee"))
+        conn.execute("insert into fk_child (source_hash) values (%s)", ("e" * 64,))
+    try:
+        request.getfixturevalue("empty_ledger")
+        with psycopg.connect(schema_dsn) as conn:
+            owner = conn.execute(
+                "select n.nspname = current_schema() from pg_class c "
+                "join pg_namespace n on n.oid = c.relnamespace where c.oid = 'fk_child'::regclass"
+            ).fetchone()
+            assert owner == (True,), "the child table must live in the module's private schema"
+            assert conn.execute("select count(*) from fk_child").fetchone() == (0,)
+            assert conn.execute("select count(*) from files").fetchone() == (0,)
+    finally:
+        with psycopg.connect(schema_dsn) as conn:
+            conn.execute("drop table if exists fk_child")

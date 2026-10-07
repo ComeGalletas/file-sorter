@@ -26,6 +26,11 @@ def schema_dsn() -> Iterator[str]:
 
 @pytest.fixture
 def empty_ledger(schema_dsn: str) -> None:
-    """Empty `files` in this module's private schema, never a shared one (TST-003)."""
+    """Empty `files` and every table that references it, in this module's private schema.
+
+    `cascade` covers the child tables with a foreign key to `files` (`sanitize_log`, DB-002.D2,
+    and any later one); the unqualified name resolves through the module's `search_path`, so a
+    shared schema is never touched (TST-003, TST-006.1).
+    """
     with psycopg.connect(schema_dsn) as conn:
-        conn.execute("truncate files")
+        conn.execute("truncate files cascade")
