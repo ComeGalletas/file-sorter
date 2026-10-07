@@ -79,7 +79,7 @@ def test_span_not_in_input_is_dropped() -> None:
         ents(
             ("Zorvane Quillby", "PERSON"),  # separator changed
             ("zorvane_quillby", "PERSON"),  # case changed
-            ("Ostrela", "LOCATION"),  # invented
+            ("Vrollmark", "LOCATION"),  # invented
             ("Brakmoor", "LOCATION"),
         )
     )

@@ -68,6 +68,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-001.2.9 — PR #72 round 1: replace real or unconfirmed names in the eval list, re-run the eval · f5dda51
   - [x] MOD-001.2.10 — After TST-005.1 (#71) merged: the gpu test takes `ollama_transport("models")` and records with `--record-ollama`; this task's own recorder and key code are removed. All 21 recordings pass #71's lint, and a `--record-ollama` run wrote nothing new and found no changed answer · d656aee
   - [x] MOD-001.2.11 — PR #72 round 2 (privacy): two real given names in the gpu test replaced with invented ones, their two recordings deleted and re-recorded with `--record-ollama`; three borderline eval names swapped (list v3), eval re-run · d9e27cb. With origin/main 3033ef4 (#74) merged in (055c9f5): `make test` 910 passed, the gpu tier 24 passed, lint clean
+  - [x] MOD-001.2.12 — PR #72 round 3 (privacy, final name sweep): five names swapped for unmistakably artificial coinages in the eval list (v4), the gpu test and one unit-test string; the three recordings holding them deleted and re-recorded with `--record-ollama`; eval re-run (hash in Results)
 
 ## MOD-001 — Results
 
@@ -98,6 +99,9 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   | *Name list v3 (PR #72 round 2, MOD-001.2.11), raw path; recall and false redaction unchanged:* | | | | | | |
   | raw, final prompt, seed 20311, n 50 (tuning draw) | 100.0% | 54.7% | 1.0% | 0.0% | 0.0% | 0.2 s |
   | **raw, final prompt, seed 2, n 150 (held out)** | **98.7%** | 59.1% | 0.3% | **0.0%** | 0.0% | 0.3 s |
+  | *Name list v4 (PR #72 round 3, MOD-001.2.12), raw path; current numbers:* | | | | | | |
+  | raw, final prompt, seed 20311, n 50 (tuning draw) | 100.0% | 53.3% | 1.0% | 0.0% | 0.0% | 0.2 s |
+  | **raw, final prompt, seed 2, n 150 (held out)** | **99.1%** | 55.6% | 0.6% | **0.0%** | 0.0% | 0.3 s |
 
   - Two prompt rules came from the misses: keep a generic word that belongs to a name ("<Name> Works"), and check every capitalised word, including a lone one before "trip". The examples in the prompt are placeholders, not eval names.
   - The remaining misses share one shape: a one-word place at the start of "<Place> trip <year> - <Person>".
@@ -120,7 +124,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
     - `make lint`: clean.
   - `make lint`: clean.
 - **Status:** DONE_WITH_CONCERNS.
-  - Concern (medium): held-out recall is 98.7% with name list v2 (98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
+  - Concern (medium): held-out recall is 99.1% with name list v4 (98.7% with v2 and v3, 98.2% with v1), not 100%. The remaining misses are one shape (a one-word place leading "<Place> trip <year> - <Person>"). Gate 2 allows 0 surviving seeded values, so its entity share could fail on that shape. Follow-up: if gate 2 (TST-005.2) shows survivors, the next step is a new prompt version (`sanitize_entity_v2`) as an ML issue, not more tuning of v1 against the same draws.
   - Concern (low, reviewer note A in round 2): the model sees the neutralized text (MOD-001.2.7). If a name itself holds token characters, the model may copy back the spaced form, which is not in the original, so D2 drops it and that part of the name is missed. Such names are implausible for file names. Follow-up if one turns up: map a returned span from the neutralized text back to the original before the D2 check.
   - ~~Concern (low): the recorder and `recording_key` live in the gpu test until TST-005.1 (#55) lands its replay.~~ Resolved in MOD-001.2.10: the test uses QA's `ollama_transport`, and the keys match.
 - **Self-rating:** 8/10, proud: yes. Gaps against #51 and its R-IDs:
