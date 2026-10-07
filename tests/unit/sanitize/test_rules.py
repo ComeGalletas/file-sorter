@@ -1,19 +1,29 @@
-"""SAN-001.1: load sanitize.yaml (SAN-001.D1, D5, D11). Synthetic values only."""
+"""SAN-001.1: load sanitize.yaml and redact text (SAN-001.D1, D5, D11). Synthetic values only."""
 
+import hashlib
+import hmac
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 import yaml
 
 from classifier.sanitize.rules import (
+    FILENAME,
     LOG_KEY_ENV,
+    PATH_SEGMENT,
     EntityRule,
     ExifFieldRule,
     LiteralRule,
+    Redaction,
     RegexRule,
+    Rules,
+    RulesFile,
     SanitizeConfigError,
     load_rules,
     log_key,
+    sanitize_name,
+    sanitize_text,
 )
 
 KEY = "00112233445566778899aabbccddeeff"
@@ -161,3 +171,173 @@ def test_missing_log_key(tmp_path: Path, env: dict) -> None:
 def test_log_key_reads_the_process_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(LOG_KEY_ENV, KEY)
     assert log_key() == KEY.encode("utf-8")
+
+
+# --- sanitize_text / sanitize_name (SAN-001.D1, R-SAN-4, R-SAN-6) ------------------------
+
+
+def make_rules(*rules: dict, key: str = KEY) -> Rules:
+    data = {"exif": {"mode": "strip_all"}, "rules": list(rules)}
+    parsed = RulesFile.model_validate(data)
+    return Rules(exif=parsed.exif, rules=tuple(parsed.rules), log_key=key.encode("utf-8"))
+
+
+WHO = {"id": "who", "type": "literal", "values": ["zyxwq plonk"], "replace": "[PERSON]"}
+MAIL = {"id": "mail", "type": "regex", "pattern": r"[a-z]+@[a-z]+\.test", "replace": "[EMAIL]"}
+NER = {"id": "ner", "type": "entity", "labels": ["PERSON", "ORG"], "replace": "[{label}]"}
+
+
+def expected_hash(value: str) -> str:
+    return hmac.new(KEY.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    ["zyxwq plonk", "Zyxwq_Plonk", "ZYXWQ-PLONK", "zyxwq.plonk", "zYxWq Plonk"],
+)
+def test_literal_matches_case_and_separator_variants(spelling: str) -> None:
+    text, found = sanitize_text(f"trip {spelling} 01", FILENAME, make_rules(WHO))
+    assert text == "trip [PERSON] 01"
+    assert found == [Redaction("who", FILENAME, expected_hash(spelling), "[PERSON]")]
+
+
+def test_literal_separator_is_one_for_one() -> None:
+    text, found = sanitize_text("zyxwq__plonk", FILENAME, make_rules(WHO))
+    assert text == "zyxwq__plonk" and found == []
+
+
+def test_literal_has_no_word_boundary() -> None:
+    text, _ = sanitize_text("xxzyxwq_plonk2020", FILENAME, make_rules(WHO))
+    assert text == "xx[PERSON]2020"
+
+
+def test_longest_literal_wins() -> None:
+    short = {"id": "first", "type": "literal", "values": ["zyxwq"], "replace": "[FIRST]"}
+    text, found = sanitize_text("zyxwq plonk and zyxwq", FILENAME, make_rules(short, WHO))
+    assert text == "[PERSON] and [FIRST]"
+    assert [r.rule_id for r in found] == ["who", "first"]
+
+
+def test_one_redaction_per_match() -> None:
+    text, found = sanitize_text("zyxwq-plonk, Zyxwq.Plonk", FILENAME, make_rules(WHO))
+    assert text == "[PERSON], [PERSON]"
+    assert [r.before_hash for r in found] == [
+        expected_hash("zyxwq-plonk"),
+        expected_hash("Zyxwq.Plonk"),
+    ]
+
+
+def test_literal_replacement_is_not_matched_again() -> None:
+    echo = {"id": "echo", "type": "literal", "values": ["person"], "replace": "[PERSON]"}
+    text, found = sanitize_text("zyxwq plonk", FILENAME, make_rules(WHO, echo))
+    assert text == "[PERSON]" and len(found) == 1
+
+
+def test_regex_runs_after_literals() -> None:
+    # The literal removes the name first, so the regex sees only what is left.
+    mail = {**MAIL, "pattern": r"[a-z ]+@[a-z]+\.test"}
+    text, found = sanitize_text("zyxwq plonk@host.test", FILENAME, make_rules(mail, WHO))
+    assert text == "[PERSON]@host.test"
+    assert [r.rule_id for r in found] == ["who"]
+
+
+def test_regex_replacement_is_literal() -> None:
+    rule = {"id": "num", "type": "regex", "pattern": r"(\d+)", "replace": r"[\1]"}
+    text, _ = sanitize_text("a 42 b", FILENAME, make_rules(rule))
+    assert text == r"a [\1] b"
+
+
+def test_regex_empty_match_redacts_nothing() -> None:
+    rule = {"id": "maybe", "type": "regex", "pattern": r"\d*", "replace": "[N]"}
+    text, found = sanitize_text("ab7c", FILENAME, make_rules(rule))
+    assert text == "ab[N]c"
+    assert [r.before_hash for r in found] == [expected_hash("7")]
+
+
+def test_entity_sees_text_after_literal_and_regex() -> None:
+    seen: list[tuple[str, list[str]]] = []
+
+    def entity(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+        seen.append((text, list(labels)))
+        return [("Qorvath Ltd", "ORG")]
+
+    text, found = sanitize_text(
+        "zyxwq plonk joe@host.test Qorvath Ltd", FILENAME, make_rules(NER, MAIL, WHO), entity
+    )
+    assert seen == [("[PERSON] [EMAIL] Qorvath Ltd", ["PERSON", "ORG"])]
+    assert text == "[PERSON] [EMAIL] [ORG]"
+    assert [r.rule_id for r in found] == ["who", "mail", "ner"]
+    assert found[-1] == Redaction("ner", FILENAME, expected_hash("Qorvath Ltd"), "[ORG]")
+
+
+def test_entity_drops_absent_spans_and_unasked_labels() -> None:
+    def entity(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+        return [("Nowhere Inc", "ORG"), ("Velmora", "LOCATION"), ("Drax", "PERSON")]
+
+    text, found = sanitize_text("Velmora with Drax", FILENAME, make_rules(NER), entity)
+    assert text == "Velmora with [PERSON]"
+    assert len(found) == 1
+
+
+def test_entity_longer_span_first() -> None:
+    def entity(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+        return [("Drax", "PERSON"), ("Drax Holdings", "ORG")]
+
+    text, found = sanitize_text("Drax Holdings, Drax", FILENAME, make_rules(NER), entity)
+    assert text == "[ORG], [PERSON]"
+    assert [r.after_value for r in found] == ["[ORG]", "[PERSON]"]
+
+
+def test_entity_rule_is_skipped_without_a_callable() -> None:
+    text, found = sanitize_text("Drax", FILENAME, make_rules(NER))
+    assert text == "Drax" and found == []
+
+
+def test_redactions_never_hold_the_value() -> None:
+    _, found = sanitize_text("zyxwq plonk", FILENAME, make_rules(WHO))
+    assert "zyxwq" not in repr(found).lower()
+    assert len(found[0].before_hash) == 64
+
+
+def test_hash_depends_on_the_key() -> None:
+    other = make_rules(WHO, key="ffeeddccbbaa99887766554433221100")
+    _, mine = sanitize_text("zyxwq plonk", FILENAME, make_rules(WHO))
+    _, theirs = sanitize_text("zyxwq plonk", FILENAME, other)
+    assert mine[0].before_hash != theirs[0].before_hash
+
+
+def test_exif_field_rules_do_not_touch_text() -> None:
+    gps = {"id": "gps", "type": "exif_field", "fields": ["GPSLatitude"]}
+    assert sanitize_text("GPSLatitude", FILENAME, make_rules(gps)) == ("GPSLatitude", [])
+
+
+def test_sanitize_name_redacts_segments_and_stem_not_the_extension() -> None:
+    ext = {"id": "ext", "type": "literal", "values": ["jpg"], "replace": "[X]"}
+    name = sanitize_name("zyxwq_plonk/2020 jpg/zyxwq.plonk.jpg", make_rules(WHO, ext))
+    assert name.segments == ("[PERSON]", "2020 [X]")
+    assert name.stem == "[PERSON]"
+    assert name.suffix == ".jpg"
+    assert [(r.rule_id, r.field) for r in name.redactions] == [
+        ("who", PATH_SEGMENT),
+        ("ext", PATH_SEGMENT),
+        ("who", FILENAME),
+    ]
+
+
+def test_sanitize_name_file_at_the_root() -> None:
+    name = sanitize_name("Zyxwq-Plonk.png", make_rules(WHO))
+    assert (name.segments, name.stem, name.suffix) == ((), "[PERSON]", ".png")
+
+
+@pytest.mark.parametrize("bad", ["/source/a.jpg", "../a.jpg", "", "a/../b.jpg"])
+def test_sanitize_name_needs_a_relative_path(bad: str) -> None:
+    with pytest.raises(ValueError, match="relative to source_root"):
+        sanitize_name(bad, make_rules(WHO))
+
+
+def test_sanitize_name_keeps_only_an_image_extension_out_of_the_rules() -> None:
+    upper = sanitize_name("Zyxwq Plonk.JPG", make_rules(WHO))
+    assert (upper.stem, upper.suffix) == ("[PERSON]", ".JPG")
+    # Not an image extension: the dotted tail is part of the name and is redacted.
+    tail = sanitize_name("zyxwq.plonk", make_rules(WHO))
+    assert (tail.stem, tail.suffix) == ("[PERSON]", "")

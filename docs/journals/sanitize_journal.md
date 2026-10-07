@@ -74,7 +74,7 @@ Decisions:
 
 ## SAN-001 — Tasks
 
-- [ ] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py`
+- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 2b6d919, SAN-001.1.2 (hash in the PR)
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
@@ -83,7 +83,15 @@ Decisions:
 
 ### SAN-001.1 (worker: pipeline)
 
-- **Status:**
+- **Built:** `classifier/sanitize/rules.py`: `load_rules`, `sanitize_text` and `sanitize_name`.
+  - Load errors name `make init` and the key location only. Pydantic and YAML errors are rebuilt from location and type, unknown keys aren't named, and nothing is chained.
+  - `field` values are `filename` and `path_segment` (DB-002.D1).
+  - The entity callable is `entity(text, labels) -> [(span, label)]`, for SAN-001.3 to adapt.
+  - `sanitize_name` keeps only an image extension (ingest's `IMAGE_EXTENSIONS`) out of the rules. Any other dotted tail is redacted as part of the name: fail closed, P-2.
+- **Tests:** `tests/unit/sanitize/test_rules.py` (acceptance), unit tier: 48 passed. `make lint` clean. Default tiers: at pre-push.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Gap: the entity callable's shape is this task's choice; SAN-001.3 confirms it against MOD-001.2's detector. Entity spans are matched case-sensitively, as the detector returns them from the text.
+- **Reviewer / Privacy auditor:** (lead)
 
 ### SAN-001.2 (worker: pipeline)
 
