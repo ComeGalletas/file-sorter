@@ -80,8 +80,8 @@ Decisions:
 
 - [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
 - [ ] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
-  - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14)
-  - [ ] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops
+  - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14) · `2a03903`
+  - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops
   - [ ] SAN-001.2.3 — Results
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`

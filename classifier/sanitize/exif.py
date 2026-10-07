@@ -248,6 +248,30 @@ def _allowed(tag: Tag, rules: Rules) -> bool:
     return any(tag.matches(entry) for entry in rules.exif.keep)
 
 
+def _write(args: list[str], file: Path) -> None:
+    done = _exiftool([*_WRITE_ARGS, *args, str(file)])
+    if done is None or done.returncode != 0:
+        raise MetadataStripError("metadata strip: exiftool could not rewrite the file")
+
+
+def _strip_all(file: Path, rules: Rules) -> None:
+    dropped = {entry for rule in rules.of_type(ExifFieldRule) for entry in rule.fields}
+    copied = [f"-{entry}" for entry in rules.exif.keep if entry not in dropped]
+    # Keep entries are TagName-validated at load, so none can carry `=` or a value.
+    _write([*_STRIP_ARGS, *(["-tagsFromFile", "@", *copied] if copied else [])], file)
+
+
+def _delete_leftovers(leftovers: list[Tag], file: Path) -> bool:
+    """Delete each tag `-all=` left (TIFF keeps IFD0). False if one can't be named safely."""
+    args = []
+    for tag in leftovers:
+        if not (_NAME.fullmatch(tag.group1) and _NAME.fullmatch(tag.name)):
+            return False
+        args.append(f"-{tag.group1}:{tag.name}=")
+    _write(sorted(set(args)), file)
+    return True
+
+
 def _redactions(before: Tags, after: Tags, rules: Rules) -> list[Redaction]:
     """One row per tag value present before and gone after (SAN-001.D3, D12)."""
     remaining = Counter(after.entries)
@@ -259,3 +283,29 @@ def _redactions(before: Tags, after: Tags, rules: Rules) -> list[Redaction]:
         rule_id = _drop_rule(tag, rules) or STRIP_ALL_RULE_ID
         rows.append(Redaction(rule_id, log_field(tag), before_hash(tag.value, rules.log_key), None))
     return rows
+
+
+def strip_metadata(path: str | Path, rules: Rules) -> list[Redaction]:
+    """Strip every tag outside the keep list from the working copy at `path`, losslessly.
+
+    The keep list (`rules.exif.keep`) is copied back unless an `exif_field` rule names the
+    tag. The ICC profile, Adobe APP14 and file-structure tags stay. A read-back must show
+    nothing else, or `MetadataStripError` is raised (SAN-001.D2, D3). BMP can't be
+    written by exiftool and carries no metadata block, so it is only read back.
+    Returns one `Redaction` per removed tag value.
+    """
+    file = _absolute(path)
+    before = read_tags(file)
+    if before.file_type != "BMP":
+        _strip_all(file, rules)
+    after = read_tags(file)
+    leftovers = [tag for tag in after.entries if not _allowed(tag, rules)]
+    if leftovers and before.file_type != "BMP":
+        if _delete_leftovers(leftovers, file):
+            after = read_tags(file)
+            leftovers = [tag for tag in after.entries if not _allowed(tag, rules)]
+    if leftovers:
+        raise MetadataStripError(
+            f"metadata read-back: {len(leftovers)} tag(s) left outside the keep list"
+        )
+    return _redactions(before, after, rules)
