@@ -1,10 +1,14 @@
-"""PIPE-001.1: a private, migrated schema for tests whose code under test commits.
+"""TST-003.1: a private, migrated schema for tests whose code under test commits (PIPE-001.1).
 
 `run` opens its own connection and commits once per node (PIPE-001.D3), so the shared `db`
 fixture (a rolled-back transaction in the session schema) can't hold it, and truncating the
-shared schema would make other db tests order-dependent. Each module that needs this builds
-its own uuid-named schema, migrated once, and drops it with `cascade` at teardown, the way
+shared schema would make other db tests order-dependent. `migrated_schema` builds a
+uuid-named schema, migrates it once, and drops it with `cascade` on exit, the way
 tests/db/ledger/test_files_migration.py does.
+
+Integration tests take it through the `schema_dsn` and `empty_ledger` fixtures in
+tests/integration/conftest.py. Call the context manager directly only outside pytest's
+fixtures, as scripts/gate_1.py does.
 """
 
 import uuid

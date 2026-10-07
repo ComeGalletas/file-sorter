@@ -150,6 +150,7 @@ references or host paths here. Use hashes.
 ## TST-003 — Tasks
 
 - [ ] TST-003.1 — A shared private-schema fixture for integration tests; the existing tests moved onto it · #53 · acceptance: `tests/integration/test_dry_run_graph.py` (unchanged behaviour)
+  - [x] TST-003.1.1 — `tests/integration/conftest.py`: module-scoped `schema_dsn`, opt-in `empty_ledger`; `schema_support.py` documented as the shared helper
 
 ## TST-003 — Results
 
