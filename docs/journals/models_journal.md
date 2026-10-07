@@ -1,7 +1,7 @@
 # Models — journal
 
-**ID:** MOD-001 · **Systems:** MOD (+ SAN, TST) · **Type:** feature · **Status:** proposed · **Milestone:** m2 ·
-**Issues:** MOD-001.1 #50, MOD-001.2 #51 · **Branch:** per task (`office/*`)
+**ID:** MOD-001 · **Systems:** MOD (+ SAN, TST) · **Type:** feature · **Status:** in progress (MOD-001.1 done: PR #64, merged as `3d48f7e`; MOD-001.2 in PR #72) · **Milestone:** m2 ·
+**Issues:** MOD-001.1 #50 (PR #64), MOD-001.2 #51 (PR #72) · **Branch:** per task (`office/*`)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,

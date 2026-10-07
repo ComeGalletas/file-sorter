@@ -717,3 +717,21 @@ and then (PR #43 review round 2):
   - **Regression check:** against round 2's guard, exactly the reviewer's two quote-confusion repros fail.
   - **Live check on the host's Git Bash, as a worker:** both repros and `g{i,}t merge` are refused. A quoted jq object, a heredoc commit with an apostrophe and `stash@{0}` are allowed. The tests also run the same scan in the Debian test container.
 - **Self-rating:** 9/10, proud: yes. Gap: pruning happens at `make init`, so leftovers from desks that finish between inits wait for the next desk (or `make prune-test`).
+
+---
+
+## RUN-011 — Requirement (lead, from PR #64's review, 2026-10-07)
+
+- **Objective:** Let the `gpu` tier reach Ollama from a desk's worktree without starting it by hand.
+- **Details:** In a linked worktree, `make test-gpu` and the pre-push gate (which runs `gpu` when `classifier/models/` or `prompts/` change) use the worktree's own compose project (`file-sorter-<worktree>`). Its `test` service has no `depends_on: ollama`, so `ollama` isn't running there and the `gpu` tests fail with their prerequisite message. The ML desks on #50 and #51 worked around it with `docker compose -p <project> up -d ollama`. The model volume is shared by name (RUN-002.D2), so nothing is re-downloaded.
+- **Options for the human:** start `ollama` for the `gpu` tier only (a Makefile or `compose_test` step), or add `depends_on: ollama` to `test` (it then starts for every tier, and costs GPU memory on a busy box).
+- **Constraint:** Human-side (RUN-002.D16): compose, the Makefile and the hooks. The lead only records it. It isn't blocking: the workaround works, and the tests fail loudly, never skip.
+- **Implements:** CLAUDE.md §3 (`gpu` tier), RUN-002.D2.
+
+## RUN-011 — Tasks
+
+- [ ] RUN-011.1 — `ollama` available to the `gpu` tier in worktree projects · human-side PR, when the human schedules it
+
+## RUN-011 — Results
+
+- **Status:** proposed.

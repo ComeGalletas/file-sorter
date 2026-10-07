@@ -1,6 +1,6 @@
 # Ingest — journal
 
-**ID:** ING-001 (+ ING-002) · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** ING-001 done (.1–.3); ING-002 proposed · **Milestone:** m1 (ING-002: m2) ·
+**ID:** ING-001 (+ ING-002) · **Systems:** ING (+ PIPE, DB) · **Type:** feature · **Status:** done (ING-001 .1–.3, ING-002) · **Milestone:** m1 (ING-002: m2) ·
 **Issues:** #15 (PR #27), #16 (PR #33), #34 (PR #36), #49 (ING-002.1) · **Branch:** `office/nibble-b6b2` (.1), `office/pixel-a032` (.2), `office/nibble-42bc` (.3)
 
 <!--
@@ -149,9 +149,9 @@ references or host paths here. Use hashes.
 
 - [x] ING-002.1 — `make_thumbnail` from the sanitized copy · #49 · acceptance: `tests/unit/ingest/test_thumbnails.py` · branch `office/byte-60e5`
   - [x] ING-002.1.1 — `classifier/fileops/thumbs.py` and its unit tests · `b0d540c`
-  - [x] ING-002.1.2 — journal tick and Results · the commit that carries this line
+  - [x] ING-002.1.2 — journal tick and Results · `8704815`
   - [x] ING-002.1.3 — (found while rating) scale 16-bit grey to 8 bits before the RGB conversion, with a regression test · `e7a61dc`
-  - [x] ING-002.1.4 — (review round 1) decode from memory and raise a fixed, unchained `OSError`, so no error names the working copy; APNG and animated WebP first-frame tests · the commit that carries this line
+  - [x] ING-002.1.4 — (review round 1) decode from memory and raise a fixed, unchained `OSError`, so no error names the working copy; APNG and animated WebP first-frame tests · `84cfd07`
 
 ## ING-002 — Results
 
@@ -186,7 +186,7 @@ references or host paths here. Use hashes.
 - **Review:** round 1 at `8704815`: Reviewer REQUEST_CHANGES, Privacy auditor PASS.
   - **Major:** Pillow's error named the working-copy path. Fixed by ING-002.1.4: the copy is decoded from `io.BytesIO(read_bytes())`, and any read or decode `OSError` is re-raised after its `except` block with a fixed message carrying only the exception type, as in PR #65.
   - **Minor:** the APNG and animated WebP first-frame tests were missing. Added in ING-002.1.4.
-  - Re-review pending.
+  - Round 2 at `84cfd07`: Reviewer APPROVE and Privacy auditor PASS (exhaustive). Merged as `d708ab8` (PR #66), closing #49. The verdict comments are on the PR. Carried to SAN-001.4 (SAN-001.D16): record only fixed reasons or the exception type, never `str(exc)`.
 - **Deferred:**
   - **No sRGB conversion** (lead, on #49). A working copy that keeps a wide-gamut ICC profile (SAN-001.D4) gives a thumbnail with no profile, so its colours are read as sRGB and look slightly off. This is colour fidelity for the review UI, not a privacy item. Possible M4 follow-up: convert through `ImageCms` to sRGB before the strip.
   - The two low-severity edge cases named under Self-rating.

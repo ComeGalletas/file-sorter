@@ -1,6 +1,6 @@
 # Sanitize — journal
 
-**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** proposed · **Milestone:** m2 ·
+**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** in progress (SAN-001.1, .2 and FOP-001 done) · **Milestone:** m2 ·
 **Issues:** SAN-001.1 #47, SAN-001.2 #48, SAN-001.3 #52, SAN-001.4 #56, FOP-001.1 #46 · **Branch:** per task (`office/*`)
 
 <!--
@@ -68,6 +68,10 @@ Decisions:
 - **SAN-001.D13** — **Adobe APP14 is a file-structure tag, like ICC** (lead, 2026-10-07, on #48). `DCTEncodeVersion`, `APP14Flags0/1` and `ColorTransform` decide how an Adobe CMYK/YCCK JPEG decodes, so the strip keeps them. JFIF, which can carry a thumbnail, is still removed.
 - **SAN-001.D14** — **Tag names read from a file are free text** (lead, 2026-10-07, on #48). A PNG text keyword or an unknown XMP namespace becomes exiftool's tag or group name. So `field = exif:<group0>:<tag>` only when `<tag>` is in exiftool's own known-tag list (`exiftool -list`), else `exif:<group0>:unknown`; it fits DB-002.D1's check. Exceptions and `repr` never carry a tag name read from a file.
 - **SAN-001.D15** — **An `exif_field` rule beats the keep list, never the structure or ICC tags** (lead, 2026-10-07, on #48). Removing a structure tag (a TIFF's `ImageWidth` or `StripOffsets`) corrupts the image.
+- **SAN-001.D16** — **The node's error handling** (lead, 2026-10-07, from the PR #66, #72 and #73 audits). SAN-001.4 must:
+  - treat **any** exception from `make_working_copy`, `strip_metadata`, `read_tags`, `make_thumbnail` or the entity rule as a failed file. That includes a bare `RecursionError` and a decode error from Pillow. The file then goes to `error` with a fixed reason (D2), recorded as text or `type(exc).__name__`, never `str(exc)`;
+  - check that the working copy's resolved path lies under the results `.work/` and never under `source_root`, because a symlinked parent folder could redirect a write;
+  - log only hashes, counts and fixed reasons, checked with a planted-secret test over the captured logs.
 
 ## SAN-001 — Plan
 
@@ -78,13 +82,13 @@ Decisions:
 
 ## SAN-001 — Tasks
 
-- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 (PR #65 round 3, hash in the PR)
+- [x] SAN-001.1 — Rules loader and literal/regex `sanitize_text` · #47 · acceptance: `tests/unit/sanitize/test_rules.py` · SAN-001.1.1 03abdcd, SAN-001.1.2 ce2a55a, SAN-001.1.3 866a1be, SAN-001.1.4 c093623 + ce407f4, SAN-001.1.5 57f025b
 - [x] SAN-001.2 — Lossless metadata strip and read-back through exiftool · #48 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-001.2.1 — `read_tags`, `Tags`, the structure allow-list and the guarded `field` names (D14) · `f8a4008`
   - [x] SAN-001.2.2 — `strip_metadata`: strip, targeted second pass, read-back check, redactions and `exif_field` drops · `c883721`
   - [x] SAN-001.2.3 — Results · `e269df7`
   - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task) · `51e1b95`
-  - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only
+  - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only · `fbb228d`
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
@@ -109,7 +113,7 @@ Decisions:
     - `Redaction.after_value` and `SanitizedName`'s stem, segments and redactions are hidden from `repr`;
     - `before_hash` encodes with `surrogatepass`, and a log key that isn't clean UTF-8 is refused, naming only `SANITIZE_LOG_KEY` and `make init`, unchained;
     - rule ids must match `^[a-z0-9][a-z0-9_-]{0,63}$`, or the load fails without echoing the id.
-  - Re-review pending.
+  - Round 4 at `57f025b`: Reviewer APPROVE, Privacy auditor PASS (exhaustive). Merged as `bb06ff8` (PR #65), closing #47. The verdict comments are on the PR. Carried forward: SAN-001.3 wraps the detector's errors, unchained (the entity callable gets the raw text). The human should keep rule ids generic, because they are stored as `sanitize_log.rule_id`.
 
 ### SAN-001.2 (worker: pipeline)
 
@@ -139,7 +143,8 @@ Decisions:
   - `read_tags` fails closed on a key that isn't `<group>:<tag>` or `<group0>:<group1>:<tag>` (other than `SourceFile`). Before, such a key was skipped and escaped the read-back check. It also fails closed on JSON of an unexpected shape, and on a read with no `File:FileType`.
   - `_known_tags` takes only the indented lines under `Available tags:`, so header words and the command-line shortcuts aren't known tag names.
   - The Plan line now shows `strip_metadata(path, rules)`.
-  - Tests: `test_exif.py` 51 passed; `tests/unit/sanitize/` with `tests/devtools` 191 passed. Re-review pending.
+  - Tests: `test_exif.py` 51 passed; `tests/unit/sanitize/` with `tests/devtools` 191 passed.
+  - Round 2 at `fbb228d`: Reviewer APPROVE, Privacy auditor PASS (exhaustive). Merged as `58077bf` (PR #73), closing #48. The verdict comments are on the PR. The auditor's caller-side notes go to SAN-001.4 (SAN-001.D16).
 
 ### SAN-001.3 (worker: pipeline)
 
@@ -187,5 +192,8 @@ Decisions:
   - **Mutation checks, each reverted:** (1) fallback without the `exists()` check: 1 failed. (2) `os.link` → `os.replace`: 3 failed. (3) temp clean-up removed: 7 failed. (4) hash taken before the transform: 2 failed.
   - **Lint:** `make lint` clean. **Default tiers:** the pre-push gate ran 501 passed (unit 438, db 42, integration 21), then the acceptance test, 35 passed.
 - **Self-rating:** 9/10, proud: yes. Gap: the `os.link` path on the real Windows bind mount isn't exercised here. Unit tests run on the container's own filesystem, so the fallback is proven only by monkeypatching. Which path is actually taken there is first seen when the `sanitize` node writes thumbnails into the real results mount (SAN-001, ING-002).
-- **Review:** pending, PR #62.
-- **Deferred:** the R-FOP-6 grep test for unlink/remove calls outside `delete.py`/`copy_move.py` (not in this issue), and R-FOP-3 clean-on-start (not in M2, see above).
+- **Review:** PR #62, merged as `72ea66c`, closing #46. Reviewer APPROVE (full, 2 minor) at `8c4e1d4`, then a lead hand check of the journal-only `0b86e42`. Privacy auditor PASS. The verdict comment is on the PR.
+- **Deferred:**
+  - the R-FOP-6 grep test for unlink/remove calls outside `delete.py`/`copy_move.py` (not in this issue);
+  - R-FOP-3 clean-on-start (not in M2, see above);
+  - **from PR #62's review (lead):** a leftover `.<hash>.<ext>.tmp` that is a symlink would be followed by `open("wb")`. The risk is low, because `.work/` is the app's own. Fix by unlinking a stale temp before opening it, or opening with `O_NOFOLLOW`. It is a FOP follow-up, to be allocated when the M2 run allows.
