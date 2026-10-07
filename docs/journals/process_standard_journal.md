@@ -83,3 +83,30 @@
 - **Status:** DONE.
 - **Triage:** small. Rule text only, in docs and briefs, with no behavior change. The tests come from the pre-push gate.
 - **Self-rating:** 9/10, proud: yes. Gap: ownership of `tests/` is now split by path and purpose rather than by one folder. The tier audit and the reviewer are what catch a worker editing shared infrastructure.
+
+---
+
+## DOC-005 — Requirement (human, 2026-10-06)
+
+**Objective:** the public repo states nothing about the human's image folder or labels, aggregates included.
+
+**Details:** PR #23's privacy audit failed two lead lines that gave a count and a file-type mix, and the lead found the same kind of text already on `main`: the target folder profile in DESIGN.md §1, the gate wording, and counts and distributions in four journals. None named or captioned an image, but the auditor reads the hard rule's "anything that describes the human's images" as covering aggregates, and `main` should meet the standard it enforces.
+
+**Constraint:** a rule change in its own PR (RUN-007.D2); human-side (RUN-002.D16), so the index row is the lead's (RUN-002.D13). `main`'s history can't be rewritten (no force-push), so the removed text stays in the history.
+
+## DOC-005 — Confirmed reading
+
+- **DOC-005.D1:** **No aggregates about the human's folder or labels in the public repo**: no counts, sizes, file-type mix, content profile or label distributions. Gates are stated against `fixtures/labels.csv` ("every real image labelled"), not a number; the numbers live in the git-ignored files. CLAUDE.md's hard rule and the privacy auditor's check 4 now say so explicitly. (human, 2026-10-06)
+- The design itself stays: the format and topic vocabularies, the decisions' rules and their example folder mappings describe the classifier, not the folder.
+
+## DOC-005 — Tasks
+
+- [x] DOC-005.1 — Rule text (CLAUDE.md, the privacy auditor's check 4); scrub DESIGN.md (§1 profile, `products` note, M3/M4 gates, Q-8) and the categories, design review, workspace and bootstrap journals
+- [x] DOC-005.2 — Review round 1: the gate 3 and gate 5 stubs' docstrings and `CRITERION` strings (finding 1, missed because the first search skipped `*.py`); DESIGN.md §4.3's filename hint stated as the Windows default (finding 2)
+
+## DOC-005 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Docs, journals and one auditor-brief clause; no behavior change. Tests from the pre-push gate.
+- **Check:** the first search skipped `*.py` and missed two gate stubs (review round 1, finding 1). The repeat search covers every tracked file, scripts included, and finds no count, size or profile of the human's folder. No test asserts a gate's `CRITERION` text. The only remaining numbers are the archived plan's own sample size in `docs/PLAN.md` (the original plan, not the human's folder) and model download sizes in `scripts/fetch_models.py`.
+- **Self-rating:** 9/10, proud: yes. Gap: the old text remains in `main`'s public history; only a history rewrite would remove it, which the rules forbid.

@@ -64,7 +64,7 @@
 
 - **Status:** DONE_WITH_CONCERNS.
 - **RUN-001.7 (2026-10-05):**
-  - The privacy sweep checked all 75 files: host paths, user names, emails, secrets, image files, private files and the 110 words specific to the human's labels. Its one real hit, an example row echoing a real label, was fixed in CLS-001.7.
+  - The privacy sweep checked all 75 files: host paths, user names, emails, secrets, image files, private files and the words specific to the human's labels. Its one real hit, an example row echoing a real label, was fixed in CLS-001.7.
   - `gh repo create ComeGalletas/file-sorter --public`. The first push of `main` went through the pre-push gate (3 passed) with `ALLOW_MAIN_PUSH=1`, the bootstrap exception.
   - GitHub's file tree shows 75 files and none forbidden.
   - The commit author is the human's existing identity, so its email is public. Switching future commits to the GitHub noreply address is offered to the human.

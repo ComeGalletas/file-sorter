@@ -46,7 +46,7 @@
 - [x] DOC-003.1 — Rewrite WSL → Windows-native in DESIGN.md and CLAUDE.md → `pre-repo`
 - [x] DOC-003.2 — Create `file-sorter\` with CLAUDE.md, DESIGN.md, `docs/PLAN.md`, `.env` and `.gitignore` → `pre-repo`
 - [x] DOC-003.3 — Rename the workspace to `file-sorter-full` (human) → done 2026-10-05
-- [x] DOC-003.5 — Runbook step 2, fixtures (human labels + copy), 2026-10-05: `fixtures/labels.csv` has 150 rows (CLS-001). `fixtures/images/` holds 150 files, 266.1 MiB, each SHA-256-verified against its source; the source was only read. Both are git-ignored.
+- [x] DOC-003.5 — Runbook step 2, fixtures (human labels + copy), 2026-10-05: `fixtures/labels.csv` has one row per labelled image (CLS-001). `fixtures/images/` holds a copy of each, SHA-256-verified against its source; the source was only read. Both are git-ignored.
 - [x] DOC-003.4 — Runbook step 1, host prerequisites (human), verified 2026-10-05:
   - GPU: `docker run --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi` shows the RTX 5080 (driver 610.62, 16 GB).
   - Docker: engine 29.6.2.

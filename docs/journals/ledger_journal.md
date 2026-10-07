@@ -1,7 +1,7 @@
 # Ledger — journal
 
-**ID:** DB-001 · **Systems:** DB · **Type:** feature · **Status:** proposed · **Milestone:** m1 ·
-**Issues:** #14 · **Branch:** per task, named by agent-office (`office/*`)
+**ID:** DB-001 · **Systems:** DB · **Type:** feature · **Status:** done · **Milestone:** m1 ·
+**Issues:** #14 · **Branch:** `office/pixel-7049` (DB-001.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -37,15 +37,23 @@ references or host paths here. Use hashes.
 
 ## DB-001 — Tasks
 
-- [ ] DB-001.1 — Alembic set-up and the `files` migration · #14 · acceptance: `tests/db/ledger/test_files_migration.py`
+- [x] DB-001.1 — Alembic set-up and the `files` migration · #14 · acceptance: `tests/db/ledger/test_files_migration.py`
+  - [x] DB-001.1.1 — Alembic set-up: `alembic.ini`, `env.py`, DSN through `load_config` · ac31e11
+  - [x] DB-001.1.2 — SQLAlchemy `File` model and `FileStatus` enum · 34f81e8
+  - [x] DB-001.1.3 — Migration `0001_files` with its db-tier test (the acceptance test) · c3a8f70
+  - [x] DB-001.1.4 — Journal Results, and a db test that env.py loads the DSN through `load_config` · 9967104
 
 ## DB-001 — Results
 
 ### DB-001.1 (worker: pipeline)
 
-- **Status:**
-- **Triage:**
-- **Tests:**
-- **Self-rating:**
-- **Review:**
+- **Status:** DONE
+- **Triage:** medium. Alembic set-up, models and the first migration, all inside `classifier/db/`. Tests: unit and db tiers plus lint; no gpu or eval, since no models or prompts are touched. Solo.
+- **Tests:** `make test` (unit + db + integration): 168 passed. Acceptance `tests/db/ledger/test_files_migration.py`: 6 passed. It covers the columns and their nullability, the primary key, the enum order, the indexes, the defaults and checks, the downgrade round trip, a single head, no model/migration drift, and that `env.py` takes the DSN from `load_config`. Unit: `tests/unit/db/` has 8 tests, for the URL helper and the model. `make lint` is clean.
+- **Self-rating:** 9/10, proud: yes. Pass 1: rated 8, because `env.py`'s `load_config` path was untested. Pass 2: added that test. The remaining point is that `reference_id` is a bigint with no FK, and its final type is decided when `references` arrives (R-RAG), which is a deferral, not a defect.
+- **Review:** PR #30, merged as `72a24e0`, closing #14. Reviewer APPROVE (full, 3 minor), Privacy auditor PASS, at `9967104`; the verdict comment is on the PR. Minor 1, the bare `KeyError` on a missing `DB_DSN`, was fixed by TST-002.1 (PR #31). Minor 2 is closed here. Minor 3 (the `vector` extension stays after downgrade) is intended.
 - **Deferred:**
+  - `reference_id` type and FK, until the `references` table lands (a later migration).
+  - `updated_at` refreshes only through the ORM (`onupdate`, per the lead's note). Raw SQL updates must set it.
+  - `status` is a native Postgres enum. Adding a value later needs `alter type ... add value` in its own migration.
+  - Test isolation: the tests run in a throwaway schema dropped with `cascade`, so the shared `db-test` is left as found (see the test docstring).

@@ -12,7 +12,7 @@
 - **Constraint:** The plan's decisions are final unless the human changes them, so every deviation is confirmed individually.
 - **Implements:** DESIGN.md as a whole; §13 lists the deviations and §14 the questions.
 
-and then: the human gave the source and results folders and described the folder's contents (a mix of mostly images, a few adult ones, many screenshots and snips).
+and then: the human gave the source and results folders and described the folder's contents (not recorded here: public repo, DOC-005.D1).
 
 and then: the human confirmed the M3 gate for the real folder, named the agent-office fork, and asked to check a candidate adult VLM.
 
@@ -43,7 +43,7 @@ The decisions below are the outcomes of DESIGN.md §13 (C-1 to C-20, each confir
 - **DOC-002.D21 (Q-6):** Originals are never deleted after sorting. Deletion is a separate function, disabled by default (P-1, R-FOP-0, R-FOP-8).
 - **DOC-002.D22 (Q-2):** The repo is on GitHub and **public**. The public-repo rules follow from that: no image names, host paths or real names in anything committed.
 - **DOC-002.D23 (Q-7):** `fixtures/labels.csv` is git-ignored, and a 5-row synthetic `labels.example.csv` is committed.
-- **DOC-002.D24 (Q-8):** The M3 gate is measured on the whole real folder (~150 images): at least 90% category agreement overall, every adult image caught, and no safe image flagged as adult.
+- **DOC-002.D24 (Q-8):** The M3 gate is measured on the whole real folder: at least 90% category agreement overall, every adult image caught, and no safe image flagged as adult.
 - **DOC-002.D25 (Q-1):** The adult VLM stays open until M5 planning. The candidate `huihui_ai/qwen3-vl-abliterated:8b-instruct` was checked against the registry: qwen3vl family, 8.8B parameters, Q4_K_M, 6.1 GB, stock qwen3-vl-instruct renderer, default temperature 1.0.
 - **DOC-002.D26:** The folder profile added three requirements:
   - R-ING-8: OS metadata files are ignored silently.
@@ -70,8 +70,31 @@ The decisions below are the outcomes of DESIGN.md §13 (C-1 to C-20, each confir
 
 - **Status:** DONE_WITH_CONCERNS.
   - Q-1 (adult VLM tag) is open by design until M5.
-  - The M5 gate still says "500 names". The real folder has ~150 images, so the 500 names must come from several templates per image or from seeded synthetic names. M5 G0 must settle how (proposed decision for the M5 plan).
+  - The M5 gate still says "500 names". The real folder holds fewer images than that, so the 500 names must come from several templates per image or from seeded synthetic names. M5 G0 must settle how (proposed decision for the M5 plan).
 - **Triage:** large (contract: the whole spec) · no tests (pre-code) · solo.
 - **Self-rating:** 8/10, proud: yes. Gaps:
   - The M5 sample size is above.
   - Nothing is enforced until the bootstrap hooks exist.
+
+---
+
+## DOC-006 — Requirement (human, 2026-10-06)
+
+**Objective:** make R-ING-9's `animated` rule an allow-list, so multi-page and multi-image files that aren't animations don't get the `{animated}` token or the `Animated/` subfolder.
+
+**Details:** while building ING-001.1, the Pipeline desk asked whether a multi-page TIFF counts as animated (ING-001.D3). R-ING-9 named GIF, WebP and APNG but defined the test as Pillow's `is_animated`, which is also true for a multi-page TIFF, an MPO JPEG and a HEIC sequence. A spec clarification, so a human-side PR (RUN-002.D16) on its own (RUN-007.D2).
+
+## DOC-006 — Confirmed reading
+
+- **DOC-006.D1 (= ING-001.D3):** **`animated` is an allow-list.** It is true only when Pillow's format is `GIF`, `WEBP` or `PNG` (APNG) and `is_animated` is true. Multi-page TIFF, MPO JPEG and HEIC sequences are not animated. (human, 2026-10-06)
+- **DOC-006.D2:** R-ING-6 now covers every multi-frame or multi-page file the same way: it is read from its first frame, page or image. Before, it named only GIF and TIFF.
+
+## DOC-006 — Tasks
+
+- [x] DOC-006.1 — DESIGN.md R-ING-6 and R-ING-9
+
+## DOC-006 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Spec text only. The behavior already shipped: ING-001.1.4 implements the allow-list with a test per case (PR #27), so this PR brings the spec in line with the code.
+- **Self-rating:** 9/10, proud: yes. Gap: none for the text; ING-001.1's tests prove the behavior.
