@@ -95,6 +95,27 @@ def load_recording(path: Path) -> dict[str, Any]:
     return recording
 
 
+def lint_recordings(root: Path = RECORDINGS) -> list[str]:
+    """Every problem with the `*.json` files under `root`, one line each (TST-005.1.3).
+
+    Each file sits in `<package>/`, follows the format, is named by its request's key, and
+    its request is text only (P-3: never an `images` field).
+    """
+    problems = []
+    for path in sorted(root.rglob("*.json")):
+        rel = path.relative_to(root).as_posix()
+        parts = path.relative_to(root).parts
+        try:
+            if len(parts) != 2:
+                raise RecordingError(f"{rel} must sit directly in tests/recordings/<package>/")
+            package_dir(parts[0], root)
+            if "images" in load_recording(path)["request"]:
+                raise RecordingError(f"recording {rel} carries images; recordings are text only")
+        except RecordingError as exc:
+            problems.append(str(exc))
+    return problems
+
+
 def _request_body(request: httpx.Request) -> dict[str, Any]:
     if request.method != "POST" or request.url.path != GENERATE_PATH:
         raise RecordingError(f"only POST {GENERATE_PATH} is recorded, not {request.method}")

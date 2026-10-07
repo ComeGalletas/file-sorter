@@ -19,6 +19,7 @@ from tests.recordings.replay import (
     RecordingTransport,
     ReplayTransport,
     canonical_request,
+    lint_recordings,
     load_recording,
     package_dir,
     recording_key,
@@ -401,3 +402,39 @@ def test_record_option_is_refused_when_other_tiers_are_selected(inner: pytest.Py
     result = run_inner(inner, "--record-ollama")
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*--record-ollama is for the gpu tier only*"])
+
+
+# --- the committed recordings (TST-005.1.3) ---
+
+
+def test_every_committed_recording_follows_the_format() -> None:
+    # The real tree: every workers' recording under tests/recordings/ (TST-005.D1).
+    assert lint_recordings() == []
+
+
+def test_lint_accepts_a_good_recording_in_any_whitespace(tmp_path: Path) -> None:
+    path = write_recording(tmp_path, body(think=False), answer())
+    path.write_text(json.dumps(json.loads(path.read_text("utf-8")), indent=4), encoding="utf-8")
+    assert lint_recordings(tmp_path) == []
+
+
+def test_lint_reports_each_bad_file_privately(tmp_path: Path) -> None:
+    good = write_recording(tmp_path, body(), answer())
+    (tmp_path / "loose.json").write_text("{}", encoding="utf-8")
+    nested = tmp_path / "pkg" / "deeper"
+    nested.mkdir()
+    (nested / good.name).write_bytes(good.read_bytes())
+    misnamed = write_recording(tmp_path, body(prompt="other"), answer())
+    misnamed.rename(misnamed.with_name("0" * 64 + ".json"))
+    write_recording(tmp_path, body(prompt="with images", images=["aGVsbG8="]), answer())
+    (tmp_path / "Bad").mkdir()
+    (tmp_path / "Bad" / good.name).write_bytes(good.read_bytes())
+
+    problems = lint_recordings(tmp_path)
+    assert len(problems) == 5
+    assert any("loose.json" in p for p in problems)
+    assert any("pkg/deeper/" in p for p in problems)
+    assert any("not named by the key" in p for p in problems)
+    assert any("carries images" in p for p in problems)
+    assert any("'Bad'" in p for p in problems)
+    assert all(SECRET not in p for p in problems)
