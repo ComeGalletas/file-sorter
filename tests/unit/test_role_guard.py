@@ -298,6 +298,9 @@ def test_normalization_leaves_ordinary_names_alone(
         "git log origin/main..HEAD",
         "cat .git/HEAD | grep main",
         "git commit -F - <<EOF\nRUN-1.1: Bring main in\n\nResolves the merge of the journal\nEOF",
+        'git push -u origin "$(git branch --show-current)"',
+        'git commit -m "$(cat msg.txt)"',
+        "git log --oneline -3 $(git merge-base HEAD origin/main)..HEAD",
     ],
 )
 def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> None:
@@ -363,6 +366,24 @@ def test_worker_may_sync_with_main(sandbox: dict[str, Path], command: str) -> No
         'git commit -m "x" && git push origin main',
         'echo "x"; gh pr merge 5 --merge',
         'git status && echo "ok" && git merge office/other-desk',
+        # PR #39 round 2, findings 1-3 (D6): backslashes, line continuations, indirection
+        r"gi\t merge office/other-desk",
+        r"g\it merge office/other-desk",
+        r"git mer\ge office/other-desk",
+        r"git ta\g v1",
+        r"git pu\sh origin main",
+        r"gh pr mer\ge 5",
+        "git \\\nmerge office/other-desk",
+        "git merge \\\n  office/other-desk",
+        "$(echo git) merge office/other-desk",
+        "x=git; $x merge office/other-desk",
+        "git $(echo merge) office/other-desk",
+        "m=merge; git ${m} office/other-desk",
+        "eval git merge office/other-desk",
+        "`echo git` merge office/other-desk",
+        # round 2, finding 5: pushes that include main
+        "git push --all origin",
+        "git push --mirror origin",
     ],
 )
 def test_worker_other_merges_pulls_and_tags_are_refused(
@@ -382,3 +403,8 @@ def test_lead_merges_are_unchanged_by_the_worker_rule(sandbox: dict[str, Path]) 
 )
 def test_lead_rules_see_past_a_double_quote(sandbox: dict[str, Path], command: str) -> None:
     assert guard(sandbox, "repo", bash(command)) == 2
+
+
+@pytest.mark.parametrize("where", ["repo", "wt"])
+def test_unreadable_shell_command_is_refused(sandbox: dict[str, Path], where: str) -> None:
+    assert guard(sandbox, where, {"tool_name": "Bash", "tool_input": {}}) == 2

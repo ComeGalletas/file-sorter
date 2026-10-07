@@ -592,8 +592,19 @@ and then (PR #39 review round 1):
   - **The cost:** a commit message that names one of these words inline is refused too, so it goes through `git commit -F <file>`. The deny message says so.
 - **RUN-008.D5:** **The hooks read JSON string values whole.** Round 2 found a pre-existing bug in `json_field`: its pattern stopped at the first escaped quote, so the guard never saw anything after the first `"` in a command. `git commit -m "x" && git push origin main` reached it as `git commit -m \`, for the lead's rules as well as the workers'. `json_field` now reads to the first *unescaped* quote and unescapes `\\`, `\"`, `\n` and `\t`, so a heredoc's lines are checked one by one. `log_event.sh` writes `file_path` with forward slashes, so its JSON line stays valid.
 
+and then (PR #39 review round 2):
+
+- **RUN-008.D6:** **The worker checks also read commands the way bash does.**
+  - **Line continuations:** a backslash-newline is joined first, so `git \` plus a newline plus `merge x` is one command.
+  - **Backslashes, read both ways:** each command is read once with backslashes dropped (bash runs `gi\t mer\ge` as `git merge`) and once with them as path separators (`C:\…\git.exe`). A segment that fails either reading is refused.
+  - **Indirection:** a command built at run time (`$(...)`, backticks, `${...}`, `eval`, or a variable as the program) is refused if it names merge, pull or tag anywhere (`m=merge` included), or a push with `main`. Plain uses still pass, such as `git push -u origin "$(git branch --show-current)"`.
+  - **Pushes:** `git push --all` and `--mirror` are refused, because they include `main`.
+  - **Unreadable commands:** a shell call whose command can't be read is refused, for the lead too.
+- **RUN-008.D7:** **The guard's threat model.** The guard stops accidents and obvious workarounds by desks following their briefs; it is not a sandbox. A desk set on getting around it can: a script file, a Python subprocess, or a variable passed as an argument. Those limits are documented, not chased. The backstops are the reviewer on every PR, merges by the lead only, the pre-push hook, and `main` changing only through `gh pr merge`. Reviews judge the guard against this model. (human, 2026-10-07)
+
 ## RUN-008 — Tasks
 
+- [x] RUN-008.3 — Review round 2: line continuations, both backslash readings, indirection, `push --all`/`--mirror` and unreadable commands (D6); the threat model (D7); 16 more denied cases, 3 more allowed ones and the unreadable-command test for both roles
 - [x] RUN-008.2 — Review round 1: broad, fail-closed detection (D4) for merges, pulls, PR merges, tags and pushes to `main`; `json_field` reads quoted values whole (D5); 33 more denied worker cases, 8 more allowed ones, 2 lead cases and `tests/unit/test_hook_json.py`; D1 records `--ff-only`; Results record the limits
 - [x] RUN-008.1 — Guard: `worker_sync_ok` (D1, D2) and the per-command check for PR merges and tags (D3); 30 new cases in `tests/unit/test_role_guard.py` (one old case moved from refused to allowed); CLAUDE.md (§1.6, the guard bullet, migrations, the worktree base), the roles README (step 0), and the lead, Pipeline and RAG briefs
 
@@ -613,4 +624,13 @@ and then (PR #39 review round 1):
     - A command built from variables (`g=git; $g merge x`) or a script file never names `git` and `merge` together.
     - An alias already in the user's global git config can't be seen in the command.
     - In all three, the reviewer is the backstop, as for every Bash rule (RUN-005 Results), and nothing reaches `main` without the lead's merge.
-- **Self-rating:** 9/10, proud: yes. Gap: the limits above; the guard checks command text, not git's behavior.
+- **Round 3 (RUN-008.3):** D6 and the threat model (D7).
+  - The default tiers pass, 368 tests. `make lint` is clean.
+  - **Regression check:** against round 2's guard, 16 of the new tests fail: the 6 backslash forms, the line continuation, 5 indirection forms, `push --all`/`--mirror`, and the unreadable command for both roles. With round 3's guard, all pass.
+  - **Residual limits, by D7 documented and not chased:**
+    - a script file, or a Python or Node subprocess, that runs `git merge`;
+    - a variable passed as an argument (`git $m x`), which the guard can't expand;
+    - `gh api graphql` with `mergePullRequest`;
+    - an alias already in the global git config;
+    - `origin/main` shadowing (above).
+- **Self-rating:** 9/10, proud: yes. Gap: the residual limits, by design (D7).
