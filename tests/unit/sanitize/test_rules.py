@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 import yaml
+from pydantic import ValidationError
 
 from classifier.sanitize.rules import (
     FILENAME,
@@ -55,10 +56,14 @@ def load_error(tmp_path: Path, data: object, env: dict | None = None) -> str:
     message = str(info.value)
     assert "make init" in message
     assert "Zyxwq" not in message and "Plonk" not in message
-    # No chained exception in the traceback: pydantic's and YAML's errors quote the input.
-    assert info.value.__cause__ is None
-    assert info.value.__context__ is None or info.value.__suppress_context__
+    assert_unchained(info.value)
     return message
+
+
+def assert_unchained(error: BaseException) -> None:
+    # Not even a suppressed __context__: pydantic's, YAML's and re's errors quote the input.
+    assert error.__cause__ is None
+    assert error.__context__ is None
 
 
 def test_valid_file_loads_into_typed_rules(tmp_path: Path) -> None:
@@ -77,6 +82,24 @@ def test_valid_file_loads_into_typed_rules(tmp_path: Path) -> None:
 def test_the_key_never_appears_in_repr(tmp_path: Path) -> None:
     rules = load_rules(write(tmp_path, rules_data()), env=ENV)
     assert KEY not in repr(rules)
+
+
+PATTERN_SECRET = "Qwvplk"  # a made-up value embedded in a regex
+
+
+def test_repr_and_str_never_show_values_patterns_or_fields(tmp_path: Path) -> None:
+    data = rules_data()
+    data["rules"][1]["pattern"] = rf"{PATTERN_SECRET}\d+"
+    data["rules"][3]["fields"] = ["Zyxwqtag"]
+    rules = load_rules(write(tmp_path, data), env=ENV)
+    shown = [repr(rules), str(rules)]
+    shown += [text for rule in rules.rules for text in (repr(rule), str(rule))]
+    shown += [repr(list(rules.rules)), repr(RulesFile.model_validate(data))]
+    for text in shown:
+        for secret in ("Zyxwq", "Plonk", PATTERN_SECRET, KEY):
+            assert secret not in text, text
+    # Ids and types stay visible, so a printed Rules is still useful.
+    assert repr(rules).endswith("rules=[who:literal, mail:regex, ner:entity, gps:exif_field])")
 
 
 def test_the_example_file_loads() -> None:
@@ -105,6 +128,22 @@ def test_broken_yaml_never_quotes_the_file(tmp_path: Path) -> None:
         load_rules(path, env=ENV)
     assert "make init" in str(info.value) and "line" in str(info.value)
     assert "Zyxwq" not in str(info.value)
+    assert_unchained(info.value)
+
+
+def test_bad_regex_error_carries_no_chained_re_error(tmp_path: Path) -> None:
+    data = rules_data()
+    data["rules"][1]["pattern"] = f"[{PATTERN_SECRET}"
+    with pytest.raises(SanitizeConfigError) as info:
+        load_rules(write(tmp_path, data), env=ENV)
+    assert PATTERN_SECRET not in str(info.value)
+    assert_unchained(info.value)
+    # The validator's own ValueError is raised outside its except block too.
+    with pytest.raises(ValidationError) as raw:
+        RegexRule.model_validate(data["rules"][1])
+    inner = raw.value.errors()[0]["ctx"]["error"]
+    assert_unchained(inner)
+    assert PATTERN_SECRET not in repr(inner)
 
 
 def test_unknown_key(tmp_path: Path) -> None:

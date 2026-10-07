@@ -42,7 +42,7 @@ class ExifSettings(_Strict):
 class LiteralRule(_Strict):
     id: str = Field(min_length=1)
     type: Literal["literal"]
-    values: list[str] = Field(min_length=1)
+    values: list[str] = Field(min_length=1, repr=False)  # the human's values: never printed
     replace: str
 
     @field_validator("values")
@@ -57,16 +57,21 @@ class LiteralRule(_Strict):
 class RegexRule(_Strict):
     id: str = Field(min_length=1)
     type: Literal["regex"]
-    pattern: str = Field(min_length=1)
+    pattern: str = Field(min_length=1, repr=False)  # may embed a value
     replace: str
 
     @field_validator("pattern")
     @classmethod
     def _compiles(cls, pattern: str) -> str:
+        # Raised outside the except block: re.error keeps the pattern, and a chained
+        # __context__ would carry it along.
         try:
             re.compile(pattern)
+            valid = True
         except re.error:
-            raise ValueError("invalid regex") from None
+            valid = False
+        if not valid:
+            raise ValueError("invalid regex")
         return pattern
 
 
@@ -81,8 +86,11 @@ class EntityRule(_Strict):
     def _formats(cls, replace: str) -> str:
         try:
             replace.format(label="PERSON")
+            valid = True
         except (KeyError, IndexError, ValueError):
-            raise ValueError("replace may only use the {label} placeholder") from None
+            valid = False
+        if not valid:
+            raise ValueError("replace may only use the {label} placeholder")
         return replace
 
 
@@ -91,7 +99,7 @@ class ExifFieldRule(_Strict):
 
     id: str = Field(min_length=1)
     type: Literal["exif_field"]
-    fields: list[str] = Field(min_length=1)
+    fields: list[str] = Field(min_length=1, repr=False)
 
 
 Rule = Annotated[LiteralRule | RegexRule | EntityRule | ExifFieldRule, Field(discriminator="type")]
@@ -112,11 +120,18 @@ class RulesFile(_Strict):
 
 @dataclass(frozen=True)
 class Rules:
-    """The loaded rules plus the HMAC key for `before_hash` (never printed)."""
+    """The loaded rules plus the HMAC key for `before_hash`.
+
+    Its repr shows rule ids and types only: never a value, pattern or the key.
+    """
 
     exif: ExifSettings
-    rules: tuple[Rule, ...]
+    rules: tuple[Rule, ...] = field(repr=False)
     log_key: bytes = field(repr=False)
+
+    def __repr__(self) -> str:
+        listed = ", ".join(f"{rule.id}:{rule.type}" for rule in self.rules)
+        return f"Rules(exif={self.exif!r}, rules=[{listed}])"
 
     def of_type[T](self, kind: type[T]) -> list[T]:
         return [rule for rule in self.rules if isinstance(rule, kind)]
@@ -167,25 +182,25 @@ def load_rules(path: str | Path, env: Mapping[str, str] | None = None) -> Rules:
     file = Path(path)
     if not file.is_file():
         raise SanitizeConfigError(f"rules file not found: {file}; run make init")
+    # Each error is raised after its except block, from the location and type only, so the
+    # original exception (which quotes the rules text) is not even kept as __context__.
+    problem = None
     try:
         data = yaml.safe_load(file.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        # The YAML error quotes the offending text, so only its line number is kept.
         mark = getattr(exc, "problem_mark", None)
         line = f" at line {mark.line + 1}" if mark is not None else ""
-        raise SanitizeConfigError(
-            f"rules file is not valid YAML{line}: {file}; compare it with "
-            "sanitize.example.yaml (make init)"
-        ) from None
+        problem = f"rules file is not valid YAML{line}: {file}"
+    if problem is not None:
+        raise SanitizeConfigError(f"{problem}; compare it with sanitize.example.yaml (make init)")
     if not isinstance(data, dict):
         raise SanitizeConfigError(f"rules file is empty or not a mapping: {file}; run make init")
     try:
         parsed = RulesFile.model_validate(data)
     except ValidationError as exc:
-        raise SanitizeConfigError(
-            f"invalid rules file {file}: {_describe(exc)}; compare it with "
-            "sanitize.example.yaml (make init)"
-        ) from None
+        problem = f"invalid rules file {file}: {_describe(exc)}"
+    if problem is not None:
+        raise SanitizeConfigError(f"{problem}; compare it with sanitize.example.yaml (make init)")
     return Rules(exif=parsed.exif, rules=tuple(parsed.rules), log_key=log_key(env))
 
 
