@@ -233,6 +233,9 @@ else
       if printf '%s' "$cmd" | grep -Eq 'gh pr merge'; then
         printf '%s' "$cmd" | grep -Eq -- '--(squash|rebase|admin)' && deny "merge with --merge only (DOC-001.D12)"
         printf '%s' "$cmd" | grep -Eq -- '--merge( |$)' || deny "merge with --merge (DOC-001.D12)"
+        # RUN-013.D1: GitHub itself refuses the merge if the head moved past the reviewed commit,
+        # so a retry can't skip the head check (the PR #72 slip).
+        printf '%s' "$cmd" | grep -Eq -- '--match-head-commit[= ]+[0-9a-fA-F]{7,40}( |$)'           || deny "merge with --match-head-commit <the Reviewed at sha>, so GitHub refuses it if the head moved (RUN-013.D1)"
       fi
       ;;
     Edit|Write|MultiEdit|NotebookEdit)

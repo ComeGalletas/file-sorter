@@ -10,7 +10,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
 5. **The human's changes come as PRs from the human's own session** (RUN-002.D16). That is the human, or Claude working in the human's session, from any branch or worktree. They may touch DESIGN.md, CLAUDE.md, `.claude/` and the hooks. The role guard doesn't apply to them, because it only acts on agent-office desks. Like every PR, they get the reviewer and the privacy auditor, and the lead merges them. They never edit `docs/journals/INDEX.md`: the lead reconciles the index (RUN-002.D13).
 
-**Current phase:** M1 is done and approved (`m1-approved`, 2026-10-07): the config loader, the ledger, ingest, the batch graph and `classifier dry-run`, with gate 1 passing on the real fixtures. Next: M2 G0, Sanitize (the lead plans M2; the human approves `docs/plans/m2.md`). DESIGN.md §14 lists the open questions; ask the human, don't assume.
+**Current phase:** M2 (Sanitize) is in progress, with its plan approved on 2026-10-07; M1 is approved (`m1-approved`). Next: M2 G1, when gate 2 runs. DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
 ## Hard rules — never
 
@@ -110,7 +110,7 @@ Journals live in `docs/journals/<feature>_journal.md`; copy `docs/journals/TEMPL
   - the triage block (§2.1);
   - which tiers and acceptance test ran, with their counts;
   - the completion status (§2.3) and the self-rating (§2.4).
-- **Merging:** the lead merges with a merge commit (`gh pr merge --merge --delete-branch`), so each subtask commit and its ID stay in `main`'s history and no merged branch is left behind. Workers never merge a PR. A worker whose open PR falls behind or conflicts with `main` runs `git fetch && git merge --no-edit origin/main` in its own branch, resolves any conflict, and pushes normally: never a rebase or force-push once the PR is open, so `Reviewed at` stays in the history (RUN-008.D1, RUN-006.D7). **That merge commit carries the task ID too:** before pushing, rename it with `git commit --amend -F <file>`, subject `<task ID>: Merge origin/main` (the file keeps the guard from reading the message as a merge command). Human-side branches follow the same rule (RUN-010.D4).
+- **Merging:** the lead merges with a merge commit (`gh pr merge <n> --merge --delete-branch --match-head-commit <Reviewed at sha>`; the guard requires the last flag, so GitHub refuses the merge if the head moved after the review, RUN-013.D1), so each subtask commit and its ID stay in `main`'s history and no merged branch is left behind. Workers never merge a PR. A worker whose open PR falls behind or conflicts with `main` runs `git fetch && git merge --no-edit origin/main` in its own branch, resolves any conflict, and pushes normally: never a rebase or force-push once the PR is open, so `Reviewed at` stays in the history (RUN-008.D1, RUN-006.D7). **That merge commit carries the task ID too:** before pushing, rename it with `git commit --amend -F <file>`, subject `<task ID>: Merge origin/main` (the file keeps the guard from reading the message as a merge command). Human-side branches follow the same rule (RUN-010.D4).
 
 ### 1.7 Hand-tuned values — flag and ask
 
@@ -242,13 +242,13 @@ make models        # pull Ollama tags + HF weights (SigLIP, NSFW) into the share
 make test          # unit + db + integration in the test profile
 make test-gpu      # gpu tier (real models) in the test profile; starts ollama (RUN-011)
 make lint          # ruff check + ruff format --check inside the app image
-make gate-N        # docker compose --profile test run --rm test python scripts/gate_N.py
+make gate-N        # docker compose --profile test run --rm test python scripts/gate_N.py; starts ollama (RUN-011)
 docker compose run --rm app classifier <command>   # e.g. dry-run, categories list
 ```
 
 The UI will be at `http://127.0.0.1:8000` from M4. `app` sits on an internal-only network, so the port is published through a localhost-only proxy that M4 adds (RUN-001.D5). Never add `app` to the `egress` network to expose it.
 
-In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2). The git-ignored `fixtures/images/` exists only in the main checkout: every `test` container mounts it read-only at `/app/fixtures/images`, from the main checkout in a worktree, so the `gate` and `gpu` tiers work on any desk. Never copy or link the images into a worktree (RUN-009.D1). `ollama` starts only for the `gpu` tier and the gates, in the same project (`make test-gpu`, `make gate-N`, and the pre-push gate's `gpu` and gate runs), so a desk holds GPU memory only while those run; never start it by hand (RUN-011.D1). When a session ends, its test stack goes down: a desk's whole project (`db-test`, `ollama`, the network), and on the main checkout only an idle `db-test`, never the app stack. `SessionStart` and `make init` prune the projects of desks closed without that hook (RUN-012.D1, D2).
+In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2). The git-ignored `fixtures/images/` exists only in the main checkout: every `test` container mounts it read-only at `/app/fixtures/images`, from the main checkout in a worktree, so the `gate` and `gpu` tiers work on any desk. Never copy or link the images into a worktree (RUN-009.D1). `ollama` starts only for the `gpu` tier and the gates, in the same project (`make test-gpu`, `make gate-N`, and the pre-push gate's `gpu` and gate runs), so a desk holds GPU memory only while those run; never start it by hand (RUN-011.D1). When a session ends (and on `/clear` or a resume, which end the session too), its test stack goes down: a desk's whole project (`db-test`, `ollama`, the network), and on the main checkout only an idle `db-test`, never the app stack. `SessionStart` and `make init` prune the projects of desks closed without that hook (RUN-012.D1, D2).
 
 ## Roles and file ownership
 

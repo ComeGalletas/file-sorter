@@ -36,7 +36,7 @@ On start:
      - `gh pr view <n> --json headRefOid` still equals the `Reviewed at` commit.
      
      If the head moved, review the new commits first.
-   - Merge only when both pass, with `gh pr merge <n> --merge --delete-branch`. Never squash, and leave no merged branch behind on GitHub.
+   - Merge only when both pass, with `gh pr merge <n> --merge --delete-branch --match-head-commit <Reviewed at sha>`. The guard refuses a merge without that flag, and GitHub refuses one whose head moved past the reviewed commit, retries included (RUN-013.D1). If GitHub refuses, review the new commits first. Never squash, and leave no merged branch behind on GitHub.
    - If a PR conflicts with `main`, ask its desk to run `git fetch && git merge --no-edit origin/main` and push. Never ask for a rebase. Then re-review only the merge commit (RUN-008.D1).
    - After merging: `git pull --ff-only` on `main`, and check the journal's Results section for that task is complete. Ask the worker on the issue if it isn't.
    - **The index lags GitHub on purpose** (RUN-002.D13). Between checkpoints, the issue's open or closed state is the live status. Bring every row in line with GitHub (status, issue numbers, branch) in your next docs PR, and at G1 at the latest.

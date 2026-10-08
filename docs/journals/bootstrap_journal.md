@@ -776,3 +776,33 @@ and then (PR #43 review round 2):
   - the main checkout's idle `db-test`, which this hook now removes;
   - other projects' exited containers outside file-sorter, which are left alone.
 - **Self-rating:** 9/10, proud: yes. Gap: whether agent-office lets `SessionEnd` run when it sends a desk home isn't verified live. D2's `SessionStart` prune and `make init` cover that case either way.
+
+---
+
+## RUN-013 — Requirement (human, 2026-10-08)
+
+- **Objective:** make the lead's pre-merge head check mechanical, and close PR #76's minor follow-ups.
+- **Details:**
+  1. On PR #72 the lead's head check stopped a merge, but a retry ran `gh pr merge` without it. The PR merged one commit past `Reviewed at`. That commit was verified harmless: an automatic merge of `main`, whose tree is identical to git's own merge, adding only the separately reviewed PR #76. Still, the check depended on the lead remembering it.
+  2. PR #76's review left four minor items: `session_end.sh` wasn't executable; `make test-gpu`/`gate-N` stopped on a failed Ollama start while `compose_test` carried on; `/clear` and resume also end a session and reset its `db-test`; CLAUDE.md's `make gate-N` line didn't mention Ollama. CLAUDE.md's "Current phase" was also stale.
+- **Constraint:** human-side (RUN-002.D16): the guard, the Makefile, CLAUDE.md and the lead's brief.
+- **Implements:** RUN-006.D7, RUN-011, RUN-012.
+
+## RUN-013 — Confirmed reading
+
+- **RUN-013.D1:** **The lead's `gh pr merge` must carry `--match-head-commit <sha>`**, with the `Reviewed at` commit as 7 to 40 hex characters. The guard refuses a merge without it, and GitHub refuses one whose head has moved past that commit, retries included, so the head check can't be skipped. CLAUDE.md §1.6 and the lead's brief give the full command. (human, 2026-10-08)
+- **RUN-013.D2:** **A failed Ollama start never stops `make test-gpu` or `make gate-N`**, the same as in `compose_test` (RUN-011.D1). The tests then fail and name the missing prerequisite, so both paths behave the same.
+- **RUN-013.D3:** `session_end.sh` is executable like the other hooks; CLAUDE.md says a session also ends on `/clear` or resume, which resets the desk's `db-test` (recreated by the next run); the `make gate-N` line mentions Ollama; and "Current phase" says M2 is in progress.
+
+## RUN-013 — Tasks
+
+- [x] RUN-013.1 — The guard's merge rule (D1) and its tests; the Makefile (D2); the hook's mode, CLAUDE.md and the lead's brief (D3)
+
+## RUN-013 — Results
+
+- **Status:** DONE.
+- **Triage:** small to medium. One guard rule with its tests; the rest is the Makefile, a file mode and docs.
+- **Tests:** the default tiers, 929 passed; `make lint` clean. Six new lead cases: a merge with no SHA, a bare flag or `HEAD` is refused; a 7-hex SHA or the `=` form passes; `--squash` stays refused. The old allowed case now carries a SHA.
+- **Regression check:** against `main`'s guard, exactly the 3 merges without a valid SHA pass, and they shouldn't.
+- **`gh` check:** the installed `gh` 2.101.0 has `--match-head-commit SHA` ("Commit SHA that the pull request head must match to allow merge").
+- **Self-rating:** 9/10, proud: yes. Gap: the guard checks that a SHA is there, not that it's the `Reviewed at` one; the lead's brief says which SHA to use, and GitHub enforces whichever is given.

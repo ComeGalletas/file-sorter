@@ -57,7 +57,7 @@ test: ## unit + db + integration tiers (CLAUDE.md §3)
 	$(TEST)
 
 test-gpu: ## gpu tier: real SigLIP, NSFW and Ollama (starts ollama, RUN-011)
-	@$(OLLAMA_UP) >/dev/null
+	@$(OLLAMA_UP) >/dev/null 2>&1 || true   # RUN-013.D2: the tests then fail naming it
 	$(TEST) pytest -m gpu
 
 lint: ## ruff check + format check (container, nothing installed on the host)
@@ -68,5 +68,5 @@ format: ## ruff format in place
 	$(RUFF) format .
 
 gate-%: ## Milestone gate N, e.g. make gate-3 (starts ollama, RUN-011)
-	@$(OLLAMA_UP) >/dev/null
+	@$(OLLAMA_UP) >/dev/null 2>&1 || true   # RUN-013.D2: the tests then fail naming it
 	$(TEST) python scripts/gate_$*.py
