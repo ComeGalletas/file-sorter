@@ -89,7 +89,9 @@ Decisions:
   - [x] SAN-001.2.3 — Results · `e269df7`
   - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task) · `51e1b95`
   - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only · `fbb228d`
-- [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
+- [x] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
+  - [x] SAN-001.3.1 — `classifier/sanitize/entity.py`: `EntityDetector`, `EntityUnavailableError` (D2), `check_backend` (D6), and the acceptance tests · `7534f9a`
+  - [x] SAN-001.3.2 — Results
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
 ## SAN-001 — Results
@@ -148,7 +150,21 @@ Decisions:
 
 ### SAN-001.3 (worker: pipeline)
 
-- **Status:**
+- **Built:** `classifier/sanitize/entity.py` (SAN-001.3.1, `7534f9a`).
+  - `EntityDetector(client, model, detect=detect_entities)` is the `entity(text, labels) -> [(span, label)]` callable that `sanitize_text` and `sanitize_name` take. `rules.py` is unchanged: the shape SAN-001.1 chose fits MOD-001.2's `detect_entities`.
+  - **Fail closed (D2):** any `Exception` from the detector or the client, and any answer that isn't a list of `Entity` with `str` fields, raises `EntityUnavailableError`. Its `reason` is `sanitize_entity_unavailable` and its message is fixed text. It is raised after the `except` block, so `__cause__` and `__context__` are `None`. A `BaseException` escapes, so a missing replay recording (`RecordingError`) fails a test instead of passing as a fail-closed file (lead, #52).
+  - Spans not literally in the text, blank spans and unasked labels are dropped, as MOD-001.D2 already does.
+  - The `repr` shows the model tag only. Nothing is logged.
+  - **The backend (D6):** `entity_detector(config, client)` calls `check_backend`, which refuses `sanitizer.backend: claude` with a `SanitizeConfigError` naming the key. `sanitizer.ocr` is checked in SAN-001.4 (lead, #52).
+  - **For SAN-001.4:** map `EntityUnavailableError.reason` (`sanitize_entity_unavailable`) and `MetadataStripError.reason` (`sanitize_metadata_residual`) to `error`. Build the callable with `entity_detector`, not `EntityDetector` directly, so the backend check runs.
+- **Tests:** `tests/unit/sanitize/test_entity.py` (acceptance), unit tier: 39 passed. `tests/unit/sanitize`, `tests/unit/models` and `tests/devtools`: 397 passed. `make lint` clean. Default tiers: at pre-push.
+  - A fake detector covers pass-through, the filters, every exception type and every answer out of shape. Wired into `sanitize_text`, the detector sees only the text after literal and regex, and the redactions come out in order. `sanitize_name` raises with no partial result.
+  - The real `detect_entities` runs on `httpx.MockTransport`: connect error, timeout, HTTP 500, a non-JSON body, a non-JSON answer, no list, a bad item, and a cut-off answer all fail closed. A well-formed answer passes through.
+  - **Planted secret:** a synthetic secret goes into the text, every exception message and the answer. It is absent from the error's `str` and `repr`, from the full `traceback.format_exception`, from the adapter's `repr`, and from `caplog` and `capsys`.
+  - **Mutation checks, each reverted:** raising inside `except`: 16 failed. Catching `BaseException`: 1 failed. Dropping the span filter: 4 failed. Dropping the shape check: 9 failed. Skipping `check_backend`: 1 failed.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Gap: the backend check runs only through `entity_detector`, so a caller that builds `EntityDetector` directly skips it. It is noted above for SAN-001.4. Live Ollama isn't exercised here; MOD-001.2's `gpu` test covers that.
+- **Reviewer / Privacy auditor:** pending.
 
 ### SAN-001.4 (worker: pipeline)
 
