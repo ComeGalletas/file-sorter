@@ -109,7 +109,7 @@ Decisions:
   - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests
   - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`)
   - [x] SAN-001.4.4 — Entity wiring through SAN-001.3's `entity_detector(config, client)` (never `EntityDetector` directly), with the replayed (MOD-001.2's recordings) and fail-closed entity tests; a replay miss propagates (after #52 merged)
-  - [ ] SAN-001.4.5 — Results
+  - [x] SAN-001.4.5 — Results
   - [x] SAN-001.4.6 — (found while rating) the batch acts on a failure after its handler, not inside it (D16); a source replaced by a symlink after ingest is never followed (`sanitize_working_copy_failed`, ING-001.D6); regression test
 
 ## SAN-001 — Results
@@ -186,7 +186,48 @@ Decisions:
 
 ### SAN-001.4 (worker: pipeline)
 
-- **Status:**
+- **Triage:** large (graph contract: `NodeContext`, `REGISTRY`, `RunResult`), solo. All default tiers plus lint; no `gpu` or eval, because nothing in `classifier/models/` or `prompts/` changed and the entity calls replay MOD-001.2's recordings.
+- **Built:**
+  - `classifier/graph/sanitize.py`: the `sanitize` node, registered after `ingest`. It takes `queued` rows to `sanitized` one file at a time, all or nothing (D9). The name is redacted first, before any write. Then come the working copy (the strip is its transform), the thumbnail, and one savepoint holding the `sanitize_log` rows (replacing earlier ones, D18), `original_sanitized` and the status. It returns `SanitizeResult(sanitized, errored, by_reason)`.
+  - **Pre-flight, before any file is touched:** `sanitizer.ocr: true` and a non-local backend (`check_backend`) fail naming the key (D6). The rules and `SANITIZE_LOG_KEY` load. An Ollama client opens only for an `entity` rule, and the detector is built only through `entity_detector(config, client)`. `.work/` and `.work/thumbs/` are resolved and checked before and after `mkdir`: never a link elsewhere, never overlapping `source_root` (D16). A re-run with nothing queued touches nothing.
+  - **Per file (D16, D17):** each step runs under `_attempt`, which turns any `Exception` into one of the seven fixed reasons. Only the type name is kept, nothing is chained, and the failure is acted on after its handler. Each published copy and thumbnail is checked by its resolved path. A source swapped for a symlink after ingest isn't followed. `RecordingError` and other `BaseException`s propagate, and `run` rolls the node back.
+  - **Contract:** `NodeContext` gains `results_root`, `config` and a test-only `ollama_transport`. `run(..., ollama_transport=None)` passes them, and `RunResult.sanitize` returns the typed result.
+  - **SAN-001.4.1:** `exif.is_structure_tag(tag)` and `exif.is_allowed(tag, rules)` are public for gate 2 (#58), on the strip's own allow-list.
+  - **SAN-001.4.2:** the temp files of `make_working_copy` and `write_new` are unlinked, then opened `O_EXCL | O_NOFOLLOW`. A planted symlink can't redirect a write, which closes FOP-001's stale-temp symlink item.
+  - **The PIL log cap (approved under D16):** the planted-secret test showed that Pillow's TIFF plugin logs each tag's raw bytes at DEBUG while ingest decodes an original. So a run with DEBUG logging would have written EXIF values to the logs. The `PIL` logger is now capped at INFO in `ingest_files.py` and `thumbs.py`.
+- **Tests:**
+  - **Acceptance:** `tests/integration/test_sanitize_node.py`, 27 passed, on synthetic images seeded through exiftool, synthetic names in synthetic folders, and a synthetic rules file. It covers:
+    - ingest then sanitize: names, HMAC log rows per segment, stem and tag, copies holding only allowed tags, thumbnails;
+    - only `.work/` under `results_root`, and the source tree unchanged (sizes and mtimes);
+    - a re-run is a no-op;
+    - the node never commits, and an autocommit connection is refused;
+    - five injected exceptions, each carrying a planted secret, each giving its fixed reason with no log rows; the secret is absent from logs, output, the ledger and the result;
+    - a rejected log row rolling back only its file;
+    - retry after an error, and D18's replaced rows;
+    - `.work` and `results_root` linked into the source, refused before any write;
+    - a copy published outside `.work/`, and a source swapped for a link;
+    - pre-flight: `ocr`, `backend`, a missing rules file, a missing log key, a missing `OLLAMA_HOST`;
+    - entity: MOD-001.2's recorded texts, replayed, redact person, org, place and a folder segment. The model receives exactly the five stems and segments, never a path or extension. A refused and a non-JSON backend fail every file closed, and the next run retries them. A replay miss propagates.
+  - **Unit:** `test_exif.py` 76 passed (+25); `tests/unit/fileops` 40 passed (+5); `tests/unit/graph` (`REGISTRY`, `RunResult.sanitize`).
+  - **Changed for the new node:** in `test_dry_run_graph.py`, the PIPE-001 mechanics run ingest alone. Both dry-run modules use a synthetic rules file and allow `.work/`.
+  - **Mutation checks, each reverted:**
+    - no PIL cap: 5 failed;
+    - `str(exc)` as the reason: 6 failed;
+    - no savepoint: 1 failed;
+    - no D18 clear: 1 failed;
+    - no pre-`mkdir` check: 2 failed;
+    - no per-file path check: 1 failed;
+    - no `EntityUnavailableError` mapping: 2 failed;
+    - no source-link check: 1 failed;
+    - `tmp.open("wb")` back in `copy_move.py`: 5 failed.
+  - **Default tiers:** before #78, `make test` gave 1019 passed and 1 failed, in QA's `test_gate_1_script.py`, because `scripts/gate_1.py` ran the default `REGISTRY` on the local rules file. TST-007.1 (#78) pins gate 1 to ingest. After the rebase onto `fb07cc0`, `make test` (unit + db + integration) gives 1028 passed, 24 deselected. `make lint` clean.
+- **Self-rating:**
+  - Pass 1: 8/10, proud: no. Gaps: the batch logged and wrote the `error` row inside its `except` handler (against D16's pattern), and a source replaced by a link after ingest would have been followed. Both fixed in SAN-001.4.6, with a regression test.
+  - Pass 2: 9/10, proud: yes. Gaps:
+    - the `os.link` path of `write_new` on the real Windows bind mount is first exercised by a real dry run, not here (FOP-001's open item);
+    - the node test covers JPEG, PNG and TIFF, and the other formats only through `test_exif.py`.
+- **Status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 
