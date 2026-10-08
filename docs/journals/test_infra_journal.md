@@ -256,8 +256,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing · `456c5b7`
 - [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
   - [x] TST-005.2.1 — The seed draw (fixed shares, one random stream per purpose, literals with replacement), the gate's own residual matcher and the names judge; `tests/unit/gate/test_gate_2_names.py` · `205d52b`
-  - [x] TST-005.2.2 — The synthetic seeded images (7 formats, ICC, Adobe APP14) and the metadata judge, plus the marker-bytes check; `tests/unit/gate/test_gate_2_metadata.py`. The judge takes the structure predicate as an argument. The test against #56's public `is_structure_tag` comes with TST-005.2.4.
-  - [ ] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub
+  - [x] TST-005.2.2 — The synthetic seeded images (7 formats, ICC, Adobe APP14) and the metadata judge, plus the marker-bytes check; `tests/unit/gate/test_gate_2_metadata.py`. The judge takes the structure predicate as an argument. The test against #56's public `is_structure_tag` comes with TST-005.2.4. · `77aec2b`
+  - [x] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub. The ingest and sanitize nodes are picked by name, as TST-007.1 pins gate 1.
   - [ ] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results
 
 ## TST-005 — Results

@@ -10,6 +10,11 @@ Runs inside the `test` container (`make gate-2`), in two halves:
     into a relative path, which goes through `sanitize_name` with the real entity rule on live
     Ollama. No file is ever named with a seed. A seed whose value survives is a residue: 0% is
     required.
+  - metadata (R-SAN-2; SAN-001.D3, D4, D13; TST-005.D6, D7): ingest and the sanitize node run
+    end to end, in a fresh schema and a removed temp results tree, over a synthetic set seeded
+    with EXIF, XMP, IPTC, GPS and comment markers, then over fixtures/images/. Every queued
+    input must reach `sanitized`, and every working copy may carry only keep-list, structure,
+    ICC and Adobe APP14 tags. No synthetic marker may remain in any results file.
 QA owns this file. Output is PASS or FAIL and percentages only: never a count, a pool size, a
 per-source split, a name or a value (DOC-005.D1, TST-005.D4). Every error is fixed text.
 """
@@ -457,9 +462,303 @@ def make_seeded_images(folder: Path, seed: int = SEED) -> tuple[str, ...]:
     return tuple(markers)
 
 
-def main() -> int:
-    print(f"gate 2 NOT IMPLEMENTED: {CRITERION}", file=sys.stderr)
-    return 1
+def judge_leak(leaked: bool) -> tuple[bool, str]:
+    """The marker-bytes check over every file the synthetic run left in its results tree."""
+    status = "FAIL" if leaked else "ok"
+    return not leaked, f"metadata, synthetic: seeded values in results files: {status}"
+
+
+@dataclass(frozen=True)
+class Verdict:
+    passed: bool
+    lines: tuple[str, ...]
+
+
+def verdict(*judged: tuple[bool, str]) -> Verdict:
+    ok = all(passed for passed, _ in judged)
+    lines = (*(line for _, line in judged), f"gate 2 {'PASS' if ok else 'FAIL'}: {CRITERION}")
+    return Verdict(ok, lines)
+
+
+# --- The run (inside the `test` container) ----------------------------------------------
+# Every error below is raised after its `except` block, from fixed text: an exception from
+# the rules, the detector or the filesystem may quote a value or a path.
+
+PROBE_TEXT = "Zorvane Quillby at Brakmoor Works"  # fictional (entity_synthetic.yaml)
+NODES = ("ingest", "sanitize")
+
+
+class GateRunError(Exception):
+    """A step failed while measuring; fixed text only, like `GateSetupError`."""
+
+
+def gate_nodes(registry: Sequence[Any]) -> tuple[Any, ...]:
+    """The ingest and sanitize nodes, in that order: the gate never runs a later node."""
+    picked = tuple(node for name in NODES for node in registry if node.name == name)
+    if tuple(node.name for node in picked) != NODES:
+        raise GateSetupError(
+            "the node registry must hold exactly one `ingest` and one `sanitize` node "
+            "(SAN-001.4, #56)"
+        )
+    return picked
+
+
+def structure_predicate() -> Callable[[Any], bool]:
+    """exif.py's public structure-tag predicate (TST-005.D8), never a private one."""
+    from classifier.sanitize import exif
+
+    predicate = getattr(exif, "is_structure_tag", None)
+    if not callable(predicate):
+        raise GateSetupError(
+            "classifier/sanitize/exif.py has no public is_structure_tag: it comes with "
+            "SAN-001.4 (#56)"
+        )
+    return predicate
+
+
+def load_entity_names(path: Path) -> EntityNames:
+    import yaml
+
+    data = None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        data = None
+    if data is None:
+        raise GateSetupError(
+            "eval/data/entity_synthetic.yaml is missing or unreadable (MOD-001.2): gate 2 "
+            "seeds its fictional names from it"
+        )
+    return entity_names(data)
+
+
+def load_config(source: Path, results: str, dsn: str) -> Any:
+    import yaml
+
+    from classifier.config import Config, check_roots
+
+    data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    data["paths"] = {"source_root": str(source), "results_root": results}
+    data["db"] = {"dsn": dsn}
+    config = Config.model_validate(data)
+    check_roots(config)  # R-FOP-9
+    return config
+
+
+def load_local_rules(path: Path) -> Any:
+    """The rules file, or a fixed message: SanitizeConfigError's text is value-free, but the
+    gate prints only fixed text about the human's file (TST-005.D4)."""
+    import os
+
+    from classifier.sanitize.rules import LOG_KEY_ENV, SanitizeConfigError, load_rules
+
+    if not os.environ.get(LOG_KEY_ENV, "").strip():
+        raise GateSetupError(f"{LOG_KEY_ENV} is not set: run make init, then make gate-2")
+    rules = None
+    try:
+        rules = load_rules(path)
+    except SanitizeConfigError:
+        rules = None
+    if rules is None:
+        raise GateSetupError(
+            "sanitize.yaml is missing or invalid: run make init and compare it with "
+            "sanitize.example.yaml"
+        )
+    return rules
+
+
+def probe_entity(entity: Callable[[str, Sequence[str]], Any]) -> None:
+    """One call on a fictional string: Ollama is up and `models.text_llm` answers."""
+    failed = False
+    try:
+        entity(PROBE_TEXT, ["PERSON"])
+    except Exception:
+        failed = True
+    if failed:
+        raise GateSetupError(
+            "the entity rule can't reach Ollama or models.text_llm: run make models; "
+            "make gate-2 starts ollama (RUN-011)"
+        )
+
+
+def real_entity(config: Any) -> Callable[[str, Sequence[str]], Any]:
+    from classifier.models.ollama import OllamaClient
+    from classifier.sanitize.entity import entity_detector
+
+    client = None
+    try:
+        client = OllamaClient.from_env()
+    except Exception:
+        client = None
+    if client is None:
+        raise GateSetupError("OLLAMA_HOST is not set or invalid: run the gate with make gate-2")
+    return entity_detector(config, client)
+
+
+def measure_names(
+    rules: Any, names: EntityNames, entity: Callable[[str, Sequence[str]], Any]
+) -> tuple[bool, str]:
+    """The names half (TST-005.D6): `sanitize_name` on string paths, never on files."""
+    from classifier.sanitize.rules import sanitize_name
+
+    seeds = draw_seeds(literal_values(rules.rules), names)
+    tokens = replacement_tokens(rules.rules)
+    residues = []
+    for seed in seeds:
+        sanitized = None
+        try:
+            name = sanitize_name(seed.path, rules, entity)
+            sanitized = "/".join((*name.segments, name.stem))
+        except Exception:
+            sanitized = None
+        if sanitized is None:
+            raise GateRunError(
+                "names: sanitize_name failed on a seed (the entity rule fails closed with "
+                "sanitize_entity_unavailable): check Ollama and models.text_llm"
+            )
+        residues.append(has_residue(seed, sanitized, tokens))
+    return judge_names(residues)
+
+
+def _clean_output(
+    work: Path,
+    source_hash: str,
+    rules: Any,
+    is_structure: Callable[[Any], bool],
+    markers: Sequence[str],
+) -> bool:
+    from classifier.sanitize.exif import MetadataStripError, read_tags
+    from classifier.sanitize.rules import ExifFieldRule
+
+    copies = list(work.glob(f"{source_hash}.*"))
+    if len(copies) != 1:
+        return False
+    dropped = [entry for rule in rules.of_type(ExifFieldRule) for entry in rule.fields]
+    clean = False
+    try:
+        entries = read_tags(copies[0]).entries
+        clean = output_clean(entries, rules.exif.keep, dropped, is_structure)
+        clean = clean and not carries_marker(copies[0].read_bytes(), markers)
+    except (MetadataStripError, OSError):
+        clean = False
+    return clean
+
+
+def measure_metadata(
+    dsn: str,
+    source: Path,
+    name: str,
+    rules: Any,
+    is_structure: Callable[[Any], bool],
+    nodes: Sequence[Any],
+    markers: Sequence[str] = (),
+) -> list[tuple[bool, str]]:
+    """Ingest and sanitize `source` into a fresh schema and a removed temp results tree
+    (TST-005.D6), then judge every input the ingest queued (TST-005.D7)."""
+    import tempfile
+
+    import psycopg
+
+    from classifier.graph.run import run
+    from tests.integration.schema_support import migrated_schema
+
+    with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
+        run(load_config(source, results, schema), dry_run=True, nodes=tuple(nodes))
+        with psycopg.connect(schema) as conn:
+            rows = conn.execute(
+                "select source_hash, status::text from files where status <> 'skipped'"
+            ).fetchall()
+        work = Path(results) / ".work"  # SAN-001.D7, FOP-001
+        sanitized = [digest for digest, status in rows if status == "sanitized"]
+        clean = sum(_clean_output(work, d, rules, is_structure, markers) for d in sanitized)
+        judged = [judge_metadata(name, len(rows), len(sanitized), clean)]
+        if markers:
+            leaked = any(
+                carries_marker(path.read_bytes(), markers)
+                for path in Path(results).rglob("*")
+                if path.is_file()
+            )
+            judged.append(judge_leak(leaked))
+    return judged
+
+
+def check_prerequisites(dsn: str | None, images: Path) -> str:
+    """Return the DSN, or raise naming what is missing."""
+    import shutil
+
+    if not dsn:
+        raise GateSetupError(
+            "DB_DSN is not set: gate 2 needs the throwaway Postgres of the `test` compose "
+            "profile. Run it with `make gate-2`."
+        )
+    if not images.is_dir() or not any(images.iterdir()):
+        raise GateSetupError(
+            "fixtures/images/ is missing or empty: gate 2 sanitizes the human's real "
+            "fixtures, mounted read-only into the `test` container (RUN-009). Run it with "
+            "`make gate-2`."
+        )
+    if shutil.which("exiftool") is None:
+        raise GateSetupError("exiftool is not on PATH: rebuild the test image (make build)")
+    return dsn
+
+
+def measure(
+    dsn: str,
+    images: Path,
+    entity_data: Path,
+    rules_path: Path | None = None,
+    entity: Callable[[str, Sequence[str]], Any] | None = None,
+    is_structure: Callable[[Any], bool] | None = None,
+) -> Verdict:
+    import tempfile
+
+    from classifier.graph import nodes as graph_nodes
+
+    names = load_entity_names(entity_data)
+    with tempfile.TemporaryDirectory() as scratch:
+        config = load_config(images, scratch, dsn)
+    if rules_path is None:
+        rules_path = Path(config.sanitizer.rules_file)
+        rules_path = rules_path if rules_path.is_absolute() else REPO / rules_path
+    rules = load_local_rules(rules_path)
+    if not literal_values(rules.rules):
+        draw_seeds((), names)  # raises the TST-005.D4 message before any model call
+    entity = entity or real_entity(config)
+    probe_entity(entity)
+    nodes = gate_nodes(graph_nodes.REGISTRY)
+    is_structure = is_structure or structure_predicate()
+
+    judged = [measure_names(rules, names, entity)]
+    with tempfile.TemporaryDirectory() as folder:
+        markers = make_seeded_images(Path(folder))
+        judged += measure_metadata(
+            dsn, Path(folder), "synthetic", rules, is_structure, nodes, markers
+        )
+    judged += measure_metadata(dsn, images, "real fixtures", rules, is_structure, nodes)
+    return verdict(*judged)
+
+
+def main(
+    images: Path = IMAGES,
+    entity_data: Path = ENTITY_DATA,
+    rules_path: Path | None = None,
+    entity: Callable[[str, Sequence[str]], Any] | None = None,
+    is_structure: Callable[[Any], bool] | None = None,
+) -> int:
+    """`rules_path`, `entity` and `is_structure` are test seams; `make gate-2` passes none."""
+    import os
+
+    try:
+        dsn = check_prerequisites(os.environ.get("DB_DSN"), images)
+        result = measure(dsn, images, entity_data, rules_path, entity, is_structure)
+    except (GateSetupError, GateRunError) as exc:  # fixed text by construction
+        print(f"gate 2 FAIL: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # the type only: a message can carry a value, a path or the DSN
+        print(f"gate 2 FAIL: run errored ({type(exc).__name__})", file=sys.stderr)
+        return 1
+    print("\n".join(result.lines))
+    return 0 if result.passed else 1
 
 
 if __name__ == "__main__":
