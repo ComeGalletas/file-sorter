@@ -110,6 +110,7 @@ Decisions:
   - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`)
   - [x] SAN-001.4.4 — Entity wiring through SAN-001.3's `entity_detector(config, client)` (never `EntityDetector` directly), with the replayed (MOD-001.2's recordings) and fail-closed entity tests; a replay miss propagates (after #52 merged)
   - [ ] SAN-001.4.5 — Results
+  - [x] SAN-001.4.6 — (found while rating) the batch acts on a failure after its handler, not inside it (D16); a source replaced by a symlink after ingest is never followed (`sanitize_working_copy_failed`, ING-001.D6); regression test
 
 ## SAN-001 — Results
 

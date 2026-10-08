@@ -27,7 +27,7 @@ import httpx
 import psycopg
 
 from classifier.config import Config
-from classifier.fileops.copy_move import make_working_copy
+from classifier.fileops.copy_move import WorkingCopy, make_working_copy
 from classifier.fileops.thumbs import make_thumbnail
 from classifier.models.ollama import OllamaClient
 from classifier.sanitize.entity import EntityUnavailableError, check_backend, entity_detector
@@ -235,14 +235,13 @@ def _sanitize_one(
     def transform(tmp: Path) -> None:
         stripped[:] = strip_metadata(tmp, rules)
 
-    copy = _attempt(
-        WORKING_COPY_FAILED,
-        partial(
-            make_working_copy, Path(row.source_path), folders.work, row.source_hash, row.ext,
-            transform,
-        ),
-        {MetadataStripError: METADATA_RESIDUAL},
-    )  # fmt: skip
+    def working_copy() -> WorkingCopy:
+        original = Path(row.source_path)
+        if original.is_symlink():  # ING-001.D6: replaced by a link since ingest; never followed
+            raise OSError("the source file is a symbolic link")
+        return make_working_copy(original, folders.work, row.source_hash, row.ext, transform)
+
+    copy = _attempt(WORKING_COPY_FAILED, working_copy, {MetadataStripError: METADATA_RESIDUAL})
     _published(copy.path, folders.work, f"{row.source_hash}.{row.ext}", folders)
 
     thumb = _attempt(
@@ -309,14 +308,17 @@ def _batch(
     sanitized = 0
     reasons: Counter[str] = Counter()
     for row in rows:
+        failed = None
         try:
             _sanitize_one(conn, row, source_root, folders, rules, entity, thumb_size)
-        except _FileFailed as failed:
-            conn.execute(_ERROR, (failed.reason, row.source_hash))
-            reasons[failed.reason] += 1
-            log.warning("sanitize: %s error %s (%s)", row.short_hash, failed.reason, failed.kind)
+        except _FileFailed as caught:
+            failed = caught  # D16: recorded here, acted on after the handler
+        if failed is None:
+            sanitized += 1
             continue
-        sanitized += 1
+        conn.execute(_ERROR, (failed.reason, row.source_hash))
+        reasons[failed.reason] += 1
+        log.warning("sanitize: %s error %s (%s)", row.short_hash, failed.reason, failed.kind)
     result = SanitizeResult(
         sanitized, sum(reasons.values()), MappingProxyType(dict(sorted(reasons.items())))
     )

@@ -420,6 +420,23 @@ class TestPaths:
 
         assert _tree(source) == before
 
+    def test_a_source_replaced_by_a_link_after_ingest_is_not_followed(
+        self, tmp_path: Path, source: Path, results: Path, config: Config, schema_dsn: str
+    ) -> None:
+        images = _populate(source)
+        target = _hash(images["plain"])
+        run(config, dry_run=True, nodes=INGEST_ONLY)
+        outside = _image(tmp_path / "outside" / "other.png", "PNG", 250)
+        images["plain"].unlink()  # the test's own synthetic source, not the app writing it
+        images["plain"].symlink_to(outside)
+
+        result = run(config, dry_run=True)
+
+        assert dict(result.sanitize.by_reason) == {"sanitize_working_copy_failed": 1}
+        assert _files(schema_dsn)[target] == ("error", "sanitize_working_copy_failed", None)
+        assert not (results / ".work" / f"{target}.png").exists()
+        assert _hash(outside) not in {_hash(p) for p in (results / ".work").glob("*.png")}
+
     def test_a_copy_published_outside_work_fails_that_file(
         self, source: Path, config: Config, schema_dsn: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
