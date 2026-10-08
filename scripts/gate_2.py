@@ -369,7 +369,7 @@ def judge_metadata(
     of outputs that are clean, both 100.0% required. Never a count.
 
     `shares=False` prints the verdict only: on a small real set, a share below 100% would
-    reveal the set's size (85.7% is 6 of 7; PR #84's privacy audit).
+    reveal the set's size (PR #84's privacy audit).
     """
     if inputs == 0:
         return False, f"metadata, {name}: nothing reached the sanitize node: FAIL"

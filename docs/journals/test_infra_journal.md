@@ -261,7 +261,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub. The ingest and sanitize nodes are picked by name, as TST-007.1 pins gate 1. · `1632b49`
   - [ ] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results. First run (2026-10-08, main `b020c31`): FAIL on the names half only. The reason class is reported on #58; the lead decides.
   - [x] TST-005.2.5 — After #56: the node reads the gate's own rules file (`sanitizer.rules_file`); tests against the public `is_structure_tag`/`is_allowed`, and a metadata PASS through the real sanitize node; the repo goes on `sys.path` at import (the first `make gate-2` died with `ModuleNotFoundError`), with a regression test · `12b2038`
-  - [x] TST-005.2.6 — PR #84 privacy audit, round 1: the real-fixtures metadata line prints a verdict only (a share would reveal a small set's size), with tests. The journal and the PR body drop the per-source split and the description of the human's local rules.
+  - [x] TST-005.2.6 — PR #84 privacy audit, round 1: the real-fixtures metadata line prints a verdict only (a share would reveal a small set's size), with tests. The journal and the PR body drop the per-source split and the description of the human's local rules. · `2bcf6bd`
+  - [x] TST-005.2.7 — PR #84 privacy audit, round 2 (text only): the recorded run block shows the real-fixtures line in its verdict-only form, the synthetic set is named where 100.0% is quoted, and the worked numbers leave `judge_metadata`'s docstring.
 
 ## TST-005 — Results
 
@@ -324,7 +325,7 @@ references or host paths here. Use hashes.
   - **Concern (medium; config, not code):** the real gate fails on the names half. That is configuration, not code: the human's local rule set is incomplete; the committed example is fixed in #82 (TST-005.D9). Follow-ups: the human's local `sanitize.yaml`, #82 (SAN-002.1) for the example file, and the lead's G1 re-run of `make gate-2` on `main`.
 - **Tests:**
   - `tests/unit/gate/test_gate_2_names.py`: 32 tests; `tests/unit/gate/test_gate_2_metadata.py`: 28 (23 before TST-005.2.6); `tests/integration/test_gate_2_script.py`: 20. Synthetic data only: a planted-secret rules file, a fake detector over `entity_synthetic.yaml`, and seeded images.
-  - The names half runs through the real `load_rules` and `sanitize_name`. The metadata half runs through SAN-001.2's real strip and through ingest plus #56's node, which gives 100.0% sanitized and clean. The judge agrees with `exif.is_allowed` on every tag of the seeded set.
+  - The names half runs through the real `load_rules` and `sanitize_name`. The metadata half runs through SAN-001.2's real strip and through ingest plus #56's node, which gives 100.0% sanitized and clean on the synthetic set. The judge agrees with `exif.is_allowed` on every tag of the seeded set.
   - Privacy: every prerequisite fails through `main`, naming it, and the planted secret appears in no output, error or traceback. An unexpected error prints its type only.
   - Regression: `python scripts/gate_2.py` died with `ModuleNotFoundError`. The test loads the script in `python -I` from outside the repo, and it fails without the fix.
   - `make test` (default tiers): 1103 passed, 24 deselected; ruff clean.
@@ -334,11 +335,11 @@ references or host paths here. Use hashes.
   names: residual seeded values 8.0% (required 0.0%): FAIL
   metadata, synthetic: 100.0% sanitized, 100.0% of outputs clean (required 100.0% and 100.0%): ok
   metadata, synthetic: seeded values in results files: ok
-  metadata, real fixtures: 100.0% sanitized, 100.0% of outputs clean (required 100.0% and 100.0%): ok
+  metadata, real fixtures: every input sanitized and clean (required): ok
   gate 2 FAIL: 50 seeded names come out with 0 residual sensitive values; EXIF on outputs contains only the allow-list.
   ```
 
-  These are the lines as that run printed them. Since TST-005.2.6, the real-fixtures line prints a verdict only, without a percentage.
+  The real-fixtures line is shown in the verdict-only form that TST-005.2.6 introduced; the run itself predates it.
 - **Self-rating:** 8/10, proud: yes. Gaps:
   1. The acceptance gate hasn't passed for real yet: it waits on the human's config (above).
   2. No single integration test runs `main` to PASS. The names half needs the entity rule, and the node would then call live Ollama, which the integration tier forbids. So the two halves are tested separately, and `main`'s composition with a stubbed `measure`.
