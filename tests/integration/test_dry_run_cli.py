@@ -5,6 +5,7 @@ the module has its own migrated schema (`schema_dsn`, tests/integration/conftest
 """
 
 import csv
+from collections.abc import Callable
 from hashlib import sha256
 from pathlib import Path
 
@@ -260,3 +261,65 @@ def test_planted_names_reach_only_the_csv_source_path(tmp_path: Path, schema_dsn
         for column, value in row.items():
             if column != "source_path":
                 assert SECRET not in value, column
+
+
+def _absent_rules(data: dict) -> None:
+    data["sanitizer"]["rules_file"] = str(Path(data["paths"]["results_root"]).parent / "absent")
+
+
+def _entity_rule(data: dict) -> None:
+    entity = {"id": "test-entity", "type": "entity", "labels": ["PERSON"], "replace": "[E]"}
+    rules = {**RULES, "rules": [*RULES["rules"], entity]}
+    Path(data["sanitizer"]["rules_file"]).write_text(yaml.safe_dump(rules), encoding="utf-8")
+
+
+PRE_FLIGHT: dict[str, tuple[Callable[[dict], None] | None, dict[str, None], str]] = {
+    # case → (config change, environment unset, a fixed phrase the message must hold)
+    "claude-backend": (lambda d: d["sanitizer"].update(backend="claude"), {}, "sanitizer.backend"),
+    "missing-log-key": (None, {"SANITIZE_LOG_KEY": None}, "SANITIZE_LOG_KEY"),
+    "missing-rules-file": (_absent_rules, {}, "make init"),
+    "no-ollama-host": (_entity_rule, {"OLLAMA_HOST": None}, "OLLAMA_HOST"),
+    "ocr": (lambda d: d["sanitizer"].update(ocr=True), {}, "sanitizer.ocr"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(PRE_FLIGHT))
+def test_a_sanitize_pre_flight_failure_exits_2_with_fixed_text(
+    case: str, tmp_path: Path, schema_dsn: str
+) -> None:
+    """CLI-003.1.3: SanitizeConfigError and the client's OllamaError, with no traceback."""
+    source, results, config = _setup(tmp_path)
+    _plant(source)
+    change, unset, phrase = PRE_FLIGHT[case]
+    if change is not None:
+        data = yaml.safe_load(config.read_text(encoding="utf-8"))
+        change(data)
+        config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    result = CliRunner().invoke(
+        app, ["dry-run", "--config", str(config), "--csv"], env={"DB_DSN": schema_dsn, **unset}
+    )
+    assert result.exit_code == 2, result.output
+    assert isinstance(result.exception, SystemExit)
+    assert result.stderr.startswith("error: ")
+    assert phrase in result.stderr
+    assert result.stdout == ""
+    _assert_clean(result)
+    assert not results.exists()  # refused before .work/ or reports/
+    with psycopg.connect(schema_dsn) as conn:
+        statuses = {row[0] for row in conn.execute("select status from files")}
+    assert "sanitized" not in statuses  # the node rolled back; ingest's rows stay queued
+
+
+def test_a_work_folder_linked_elsewhere_exits_2(tmp_path: Path, schema_dsn: str) -> None:
+    """CLI-003.1.3: WorkDirError (SAN-001.D16) is fixed text too."""
+    source, results, config = _setup(tmp_path)
+    _plant(source)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    results.mkdir()
+    (results / ".work").symlink_to(elsewhere, target_is_directory=True)
+    result = _invoke(config, schema_dsn)
+    assert result.exit_code == 2, result.output
+    assert result.stderr.startswith("error: results_root/.work")
+    _assert_clean(result)
+    assert list(elsewhere.iterdir()) == []
