@@ -2,7 +2,8 @@
 
 CLI-002.D1: the CSV lists ledger rows under the scanned root, not per-run outcomes. The
 container path in `source_path` is allowed in `results_root/reports/` only (DOC-004.D3);
-nothing here prints or logs it.
+nothing here prints or logs it. `sanitized_name` sits beside it (CLI-003.1, ING-001.D2
+option A, DOC-007.D1): `files.original_sanitized`, empty until the sanitize node sets it.
 """
 
 import csv
@@ -13,11 +14,19 @@ from typing import NamedTuple
 
 import psycopg
 
-COLUMNS = ("source_hash", "short_hash", "source_path", "status", "reason", "proposed_output")
+COLUMNS = (
+    "source_hash",
+    "short_hash",
+    "source_path",
+    "sanitized_name",
+    "status",
+    "reason",
+    "proposed_output",
+)
 
 # `starts_with`, not LIKE: a root containing `%` or `_` must match literally.
 _UNDER_ROOT = """
-select source_hash, short_hash, source_path, status, error
+select source_hash, short_hash, source_path, original_sanitized, status, error
   from files
  where starts_with(source_path, %(prefix)s)
  order by source_path, source_hash
@@ -28,6 +37,7 @@ class LedgerRow(NamedTuple):
     source_hash: str
     short_hash: str
     source_path: str
+    sanitized_name: str | None
     status: str
     reason: str | None
 
@@ -80,6 +90,14 @@ def write_csv(results_root: str, stamp: datetime, rows: Sequence[LedgerRow]) -> 
         writer.writerow(COLUMNS)
         for row in rows:
             writer.writerow(
-                [row.source_hash, row.short_hash, row.source_path, row.status, row.reason or "", ""]
+                [
+                    row.source_hash,
+                    row.short_hash,
+                    row.source_path,
+                    row.sanitized_name or "",
+                    row.status,
+                    row.reason or "",
+                    "",
+                ]
             )
     return path

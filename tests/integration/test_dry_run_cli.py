@@ -1,20 +1,24 @@
-"""CLI-002.1: `classifier dry-run [--csv]` (the acceptance test).
+"""CLI-002.1, CLI-003.1: `classifier dry-run [--csv]` (the acceptance test).
 
 Synthetic images only, generated under `tmp_path`. The command runs `run`, which commits, so
 the module has its own migrated schema (`schema_dsn`, tests/integration/conftest.py).
 """
 
 import csv
+from collections.abc import Callable
+from hashlib import sha256
 from pathlib import Path
 
 import psycopg
 import pytest
 import yaml
+from click.testing import Result
 from PIL import Image
 from typer.testing import CliRunner
 
 from classifier.cli import app
 from classifier.cli.dry_run_report import COLUMNS
+from classifier.graph import sanitize as node
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
@@ -74,6 +78,9 @@ def test_prints_the_run_counts_without_names(tmp_path: Path, schema_dsn: str) ->
     assert "ledger skipped, " in out and out.count("ledger skipped, ") == 1
     assert not any(name in out for name in SOURCE_NAMES)
     assert "/source" not in out
+    assert "sanitized: 2" in out  # CLI-003.1: the duplicate shares its original's row
+    assert "sanitize errors: 0" in out
+    assert "sanitize error, " not in out
 
 
 def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> None:
@@ -96,6 +103,10 @@ def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> N
     assert skipped["reason"]
     assert all(row["proposed_output"] == "" for row in body)
     assert all(row["short_hash"] == row["source_hash"][:8] for row in body)
+    # CLI-003.1: the sanitized stem beside the path; empty where the node hasn't run.
+    for row in body:
+        expected = Path(row["source_path"]).stem if row["status"] == "sanitized" else ""
+        assert row["sanitized_name"] == expected
 
 
 def test_writes_only_work_and_reports_under_results_and_nothing_under_source(
@@ -186,3 +197,129 @@ def test_database_error_exits_non_zero_without_echoing_the_dsn(tmp_path: Path) -
     assert "database error" in result.output
     assert "hunter2" not in result.output
     assert "127.0.0.1" not in result.output
+
+
+# --- CLI-003.1: the sanitize node in the report ------------------------------------------
+
+# Made-up. SECRET is planted in a folder and a file name and matched by the literal rule:
+# it may appear only in the CSV's source_path column. EXC_SECRET rides in an exception.
+SECRET = "Zorvane"
+EXC_SECRET = "Vexmarrow-exception-secret"
+NAMED = Path(f"{SECRET} trip") / f"{SECRET}_beach.png"
+
+
+def _plant(source: Path) -> Path:
+    named = source / NAMED
+    named.parent.mkdir()
+    Image.new("RGB", (8, 6), (90, 20, 200)).save(named)
+    return named
+
+
+def _assert_clean(result: Result) -> None:
+    for secret in (SECRET, EXC_SECRET):
+        assert secret not in result.stdout
+        assert secret not in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_a_failed_file_prints_only_its_fixed_reason(
+    tmp_path: Path, schema_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, _, config = _setup(tmp_path)
+    target = sha256((source / "bravo.png").read_bytes()).hexdigest()
+    real = node.make_thumbnail
+
+    def failing(copy: Path, *args: object) -> Path:
+        if target in copy.name:
+            raise OSError(2, EXC_SECRET, f"/source/{SECRET}/{EXC_SECRET}")
+        return real(copy, *args)
+
+    monkeypatch.setattr(node, "make_thumbnail", failing)
+    result = _invoke(config, schema_dsn)
+    assert result.exit_code == 0, result.output
+    assert "sanitized: 1" in result.stdout
+    assert "sanitize errors: 1" in result.stdout
+    assert "sanitize error, sanitize_thumbnail_failed: 1" in result.stdout
+    assert result.stdout.count("sanitize error, ") == 1
+    _assert_clean(result)
+
+
+def test_planted_names_reach_only_the_csv_source_path(tmp_path: Path, schema_dsn: str) -> None:
+    source, results, config = _setup(tmp_path)
+    named = _plant(source)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    assert "sanitized: 3" in result.stdout
+    _assert_clean(result)
+    (report,) = (results / "reports").glob("dry-run-*.csv")
+    assert report.resolve().parent == (results / "reports").resolve()
+    with report.open(encoding="utf-8", newline="") as handle:
+        body = list(csv.DictReader(handle))
+    planted = next(row for row in body if row["source_path"] == str(named))
+    assert planted["sanitized_name"] == "[P]_beach"  # the literal rule ran on the stem
+    for row in body:
+        for column, value in row.items():
+            if column != "source_path":
+                assert SECRET not in value, column
+
+
+def _absent_rules(data: dict) -> None:
+    data["sanitizer"]["rules_file"] = str(Path(data["paths"]["results_root"]).parent / "absent")
+
+
+def _entity_rule(data: dict) -> None:
+    entity = {"id": "test-entity", "type": "entity", "labels": ["PERSON"], "replace": "[E]"}
+    rules = {**RULES, "rules": [*RULES["rules"], entity]}
+    Path(data["sanitizer"]["rules_file"]).write_text(yaml.safe_dump(rules), encoding="utf-8")
+
+
+PRE_FLIGHT: dict[str, tuple[Callable[[dict], None] | None, dict[str, None], str]] = {
+    # case → (config change, environment unset, a fixed phrase the message must hold)
+    "claude-backend": (lambda d: d["sanitizer"].update(backend="claude"), {}, "sanitizer.backend"),
+    "missing-log-key": (None, {"SANITIZE_LOG_KEY": None}, "SANITIZE_LOG_KEY"),
+    "missing-rules-file": (_absent_rules, {}, "make init"),
+    "no-ollama-host": (_entity_rule, {"OLLAMA_HOST": None}, "OLLAMA_HOST"),
+    "ocr": (lambda d: d["sanitizer"].update(ocr=True), {}, "sanitizer.ocr"),
+}
+
+
+@pytest.mark.parametrize("case", sorted(PRE_FLIGHT))
+def test_a_sanitize_pre_flight_failure_exits_2_with_fixed_text(
+    case: str, tmp_path: Path, schema_dsn: str
+) -> None:
+    """CLI-003.1.3: SanitizeConfigError and the client's OllamaError, with no traceback."""
+    source, results, config = _setup(tmp_path)
+    _plant(source)
+    change, unset, phrase = PRE_FLIGHT[case]
+    if change is not None:
+        data = yaml.safe_load(config.read_text(encoding="utf-8"))
+        change(data)
+        config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    result = CliRunner().invoke(
+        app, ["dry-run", "--config", str(config), "--csv"], env={"DB_DSN": schema_dsn, **unset}
+    )
+    assert result.exit_code == 2, result.output
+    assert isinstance(result.exception, SystemExit)
+    assert result.stderr.startswith("error: ")
+    assert phrase in result.stderr
+    assert result.stdout == ""
+    _assert_clean(result)
+    assert not results.exists()  # refused before .work/ or reports/
+    with psycopg.connect(schema_dsn) as conn:
+        statuses = {row[0] for row in conn.execute("select status from files")}
+    assert "sanitized" not in statuses  # the node rolled back; ingest's rows stay queued
+
+
+def test_a_work_folder_linked_elsewhere_exits_2(tmp_path: Path, schema_dsn: str) -> None:
+    """CLI-003.1.3: WorkDirError (SAN-001.D16) is fixed text too."""
+    source, results, config = _setup(tmp_path)
+    _plant(source)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    results.mkdir()
+    (results / ".work").symlink_to(elsewhere, target_is_directory=True)
+    result = _invoke(config, schema_dsn)
+    assert result.exit_code == 2, result.output
+    assert result.stderr.startswith("error: results_root/.work")
+    _assert_clean(result)
+    assert list(elsewhere.iterdir()) == []

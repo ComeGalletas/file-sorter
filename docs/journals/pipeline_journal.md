@@ -146,10 +146,26 @@ references or host paths here. Use hashes.
 
 ## CLI-003 — Tasks
 
-- [ ] CLI-003.1 — The sanitize counts and the sanitized name in the dry-run report · #57 · acceptance: `tests/integration/test_dry_run_cli.py`
+- [x] CLI-003.1 — The sanitize counts and the sanitized name in the dry-run report · #57 · acceptance: `tests/integration/test_dry_run_cli.py`
+  - [x] CLI-003.1.1 — the console prints `sanitized`, `sanitize errors` and one line per SAN-001.D17 reason, from `RunResult.sanitize` · `tests/integration/test_dry_run_cli.py` · commit: 723da8f
+  - [x] CLI-003.1.2 — `sanitized_name` (`files.original_sanitized`) beside `source_path` in the CSV (ING-001.D2 option A, DOC-007.D1); the planted-name test · `tests/integration/test_dry_run_cli.py`, `tests/unit/cli/test_dry_run_report.py` · commit: 04d51c8
+  - [x] CLI-003.1.3 — `SanitizeConfigError`, `WorkDirError` and the client's `OllamaError` exit 2 with fixed text, unchained (deferred from #56) · `tests/integration/test_dry_run_cli.py` (5 pre-flight cases and the linked `.work/`) · commit: adbfcea
+  - [x] CLI-003.1.4 — Results · commit: (this commit)
 
 ## CLI-003 — Results
 
 ### CLI-003.1 (worker: pipeline)
 
-- **Status:**
+- **Status:** DONE (commits 723da8f, 04d51c8, adbfcea).
+- **Triage:** medium, solo, `classifier/cli/` only: no schema, config or graph-state change (`RunResult.sanitize` and `SanitizeResult` came with SAN-001.4, #81).
+- **What changed:**
+  - Console: `sanitized: n`, `sanitize errors: n`, then one `sanitize error, <reason>: n` line per SAN-001.D17 reason, sorted. Counts and fixed reasons only.
+  - CSV: `sanitized_name` (`files.original_sanitized`) right after `source_path`, empty until the sanitize node sets it (ING-001.D2 option A, DOC-007.D1). It stays under `results_root/reports/` (DOC-004.D3).
+  - Errors: `SanitizeConfigError` and `WorkDirError` print `error: <message>` (fixed text naming the key; the rules-file path at most, approved on #57 like the config path in CFG-002), and the pre-flight `OllamaError` prints fixed text. All exit 2, `from None`, with no traceback.
+- **Tests:**
+  - integration (acceptance): `tests/integration/test_dry_run_cli.py`, 18 passed: the sanitize counts; a failed thumbnail printing only `sanitize_thumbnail_failed` while its exception's made-up secret stays out of stdout and stderr; a made-up name planted in a folder and a file name, which reaches only the CSV's `source_path` column (never `sanitized_name`, which shows the literal rule's replacement), with the report under `reports/`; five pre-flight cases (missing rules file, missing `SANITIZE_LOG_KEY`, `ocr: true`, `backend: claude`, an entity rule without `OLLAMA_HOST`), each exit 2 with only `error:` on stderr, nothing under `results_root` and no row left `sanitized`; and a `.work/` linked elsewhere exits 2 with nothing written there.
+  - unit: `tests/unit/cli/test_dry_run_report.py` and the rest of `tests/unit/cli/`, 15 passed (adds the column's position and its empty value for a null name).
+  - `make test` (unit + db + integration): 1037 passed, 24 deselected. `make lint`: clean. No gpu tier or eval: no model, prompt or threshold is touched.
+  - The commit bodies overstate the per-file counts by one or two (they read 13/12, 14/13 and 20). The counts measured per stage are 11 integration and 14 unit (CLI-003.1.1), 12 and 15 (CLI-003.1.2), and 18 integration (CLI-003.1.3). The commits weren't reworded, because the task lines above cite their hashes.
+- **Self-rating:** 9/10, proud: yes. Gap: the tests check that a failure exits 2 through `SystemExit` with no traceback in the output, but not the exception's suppressed context itself; the code raises `from None` like CFG-002. Any `OllamaError` that reached the CLI would get the pre-flight message, but per-file Ollama failures become `sanitize_entity_unavailable` inside the node (SAN-001.D17), so only `from_env` can reach the CLI.
+- **Deferred:** none.
