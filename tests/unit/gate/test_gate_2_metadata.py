@@ -2,7 +2,8 @@
 D15; TST-005.D7).
 
 Synthetic images only, generated here and seeded through exiftool, as SAN-001.2's tests do.
-The judge gets a stand-in structure predicate; the real `is_structure_tag` comes with #56.
+The judge gets a stand-in structure predicate, and #56's public `is_structure_tag` against
+the real strip.
 """
 
 import importlib.util
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from classifier.sanitize.exif import Tag, read_tags, strip_metadata
+from classifier.sanitize.exif import Tag, is_allowed, is_structure_tag, read_tags, strip_metadata
 from classifier.sanitize.rules import LOG_KEY_ENV, ExifFieldRule, ExifSettings, Rules, log_key
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "gate_2.py"
@@ -151,6 +152,26 @@ def test_no_marker_survives_the_real_strip(
         assert not gate_2.carries_marker(copy.read_bytes(), markers)
         left = {tag.name for tag in read_tags(copy).entries}
         assert not left & {"Artist", "GPSLatitude", "Creator", "By-line", "Comment"}
+
+
+@pytest.mark.parametrize("drops", [(), ("Orientation",)])
+def test_the_judge_with_is_structure_tag_passes_every_real_strip(
+    seeded: tuple[Path, tuple[str, ...]], tmp_path: Path, drops: tuple[str, ...]
+) -> None:
+    """TST-005.2.4: with #56's public predicate, every stripped copy is clean, and the gate's
+    judge agrees with the strip's own `is_allowed` on every tag before and after."""
+    folder, _ = seeded
+    rule = (ExifFieldRule(id="drop", type="exif_field", fields=list(drops)),) if drops else ()
+    rules = Rules(exif=ExifSettings(mode="strip_all", keep=KEEP), rules=rule, log_key=KEY)
+    for path in sorted(folder.iterdir()):
+        before = read_tags(path).entries
+        copy = tmp_path / f"copy{path.suffix}"
+        shutil.copyfile(path, copy)
+        strip_metadata(copy, rules)
+        after = read_tags(copy).entries
+        assert gate_2.output_clean(after, KEEP, drops, is_structure_tag)
+        for tag in (*before, *after):
+            assert gate_2.tag_allowed(tag, KEEP, drops, is_structure_tag) is is_allowed(tag, rules)
 
 
 def test_an_exif_field_rule_on_a_kept_tag_shows_in_the_judge(

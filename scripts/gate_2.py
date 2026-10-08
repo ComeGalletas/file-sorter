@@ -32,6 +32,11 @@ IMAGES = REPO / "fixtures" / "images"
 CONFIG = REPO / "config.yaml"
 ENTITY_DATA = REPO / "eval" / "data" / "entity_synthetic.yaml"
 
+# `python scripts/gate_2.py` puts scripts/, not the repo, on sys.path; the lazy imports of
+# `classifier` and `tests` below need the repo.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
 CRITERION = (
     "50 seeded names come out with 0 residual sensitive values; EXIF on outputs contains "
     "only the allow-list."
@@ -532,7 +537,9 @@ def load_entity_names(path: Path) -> EntityNames:
     return entity_names(data)
 
 
-def load_config(source: Path, results: str, dsn: str) -> Any:
+def load_config(source: Path, results: str, dsn: str, rules_path: Path | None = None) -> Any:
+    """config.yaml with the gate's roots and schema. With `rules_path`, the sanitize node
+    reads the same rules file the gate judges by."""
     import yaml
 
     from classifier.config import Config, check_roots
@@ -540,6 +547,8 @@ def load_config(source: Path, results: str, dsn: str) -> Any:
     data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     data["paths"] = {"source_root": str(source), "results_root": results}
     data["db"] = {"dsn": dsn}
+    if rules_path is not None:
+        data["sanitizer"] = {**data.get("sanitizer", {}), "rules_file": str(rules_path)}
     config = Config.model_validate(data)
     check_roots(config)  # R-FOP-9
     return config
@@ -649,12 +658,14 @@ def measure_metadata(
     source: Path,
     name: str,
     rules: Any,
+    rules_path: Path,
     is_structure: Callable[[Any], bool],
     nodes: Sequence[Any],
     markers: Sequence[str] = (),
 ) -> list[tuple[bool, str]]:
     """Ingest and sanitize `source` into a fresh schema and a removed temp results tree
-    (TST-005.D6), then judge every input the ingest queued (TST-005.D7)."""
+    (TST-005.D6), then judge every input the ingest queued (TST-005.D7). The node reads
+    `rules_path`, the file `rules` was loaded from."""
     import tempfile
 
     import psycopg
@@ -663,7 +674,8 @@ def measure_metadata(
     from tests.integration.schema_support import migrated_schema
 
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
-        run(load_config(source, results, schema), dry_run=True, nodes=tuple(nodes))
+        config = load_config(source, results, schema, rules_path)
+        run(config, dry_run=True, nodes=tuple(nodes))
         with psycopg.connect(schema) as conn:
             rows = conn.execute(
                 "select source_hash, status::text from files where status <> 'skipped'"
@@ -732,9 +744,9 @@ def measure(
     with tempfile.TemporaryDirectory() as folder:
         markers = make_seeded_images(Path(folder))
         judged += measure_metadata(
-            dsn, Path(folder), "synthetic", rules, is_structure, nodes, markers
+            dsn, Path(folder), "synthetic", rules, rules_path, is_structure, nodes, markers
         )
-    judged += measure_metadata(dsn, images, "real fixtures", rules, is_structure, nodes)
+    judged += measure_metadata(dsn, images, "real fixtures", rules, rules_path, is_structure, nodes)
     return verdict(*judged)
 
 

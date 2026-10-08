@@ -7,6 +7,8 @@ knows eval/data/entity_synthetic.yaml stands in for Ollama. The real fixtures on
 
 import importlib.util
 import re
+import subprocess
+import sys
 import traceback
 from collections.abc import Sequence
 from pathlib import Path
@@ -50,6 +52,14 @@ rules:
     type: entity
     labels: [PERSON, ORG, LOCATION]
     replace: "[{{label}}]"
+"""
+
+NODE_RULES = f"""
+exif:
+  mode: strip_all
+  keep: [Orientation, DateTimeOriginal]
+rules:
+  - {{id: mine, type: literal, values: ["{SECRET}"], replace: "[PERSON]"}}
 """
 
 NO_LITERAL = """
@@ -173,6 +183,7 @@ def test_without_the_sanitize_node_nothing_is_sanitized(tmp_path: Path, rules_pa
         folder,
         "synthetic",
         gate_2.load_local_rules(rules_path),
+        rules_path,
         lambda tag: False,
         ingest,
         markers,
@@ -188,6 +199,43 @@ def test_without_the_sanitize_node_nothing_is_sanitized(tmp_path: Path, rules_pa
     assert sorted(p.name for p in folder.iterdir()) == sorted(
         f"synthetic_{i:02d}.{ext}" for i, (ext, _, _) in enumerate(gate_2.SYNTHETIC_FORMATS)
     )  # the source set is untouched
+
+
+def test_the_metadata_half_passes_through_the_real_sanitize_node(tmp_path: Path) -> None:
+    """TST-005.2.4: ingest and #56's node on the seeded set, judged with the public
+    is_structure_tag. No entity rule here, so the node never calls Ollama (CLAUDE.md §3)."""
+    from classifier.graph import nodes as graph_nodes
+
+    path = tmp_path / "node-rules.yaml"
+    path.write_text(NODE_RULES, encoding="utf-8")
+    folder = tmp_path / "synthetic"
+    folder.mkdir()
+    markers = gate_2.make_seeded_images(folder)
+    judged = gate_2.measure_metadata(
+        require_db_dsn(),
+        folder,
+        "synthetic",
+        gate_2.load_local_rules(path),
+        path,
+        gate_2.structure_predicate(),
+        gate_2.gate_nodes(graph_nodes.REGISTRY),
+        markers,
+    )
+    assert judged == [
+        (
+            True,
+            "metadata, synthetic: 100.0% sanitized, 100.0% of outputs clean "
+            "(required 100.0% and 100.0%): ok",
+        ),
+        (True, "metadata, synthetic: seeded values in results files: ok"),
+    ]
+
+
+def test_the_registry_holds_the_gate_nodes_and_the_public_predicate() -> None:
+    from classifier.graph import nodes as graph_nodes
+
+    assert [n.name for n in gate_2.gate_nodes(graph_nodes.REGISTRY)] == ["ingest", "sanitize"]
+    assert gate_2.structure_predicate() is exif.is_structure_tag
 
 
 def test_a_working_copy_is_judged_by_tags_and_markers(tmp_path: Path, rules_path: Path) -> None:
@@ -208,6 +256,22 @@ def test_a_working_copy_is_judged_by_tags_and_markers(tmp_path: Path, rules_path
 
 
 # --- prerequisites: each fails naming what is missing, never skips ------------------------
+
+
+def test_the_script_reaches_the_app_from_a_clean_interpreter(tmp_path: Path) -> None:
+    """Regression: `python scripts/gate_2.py` failed with ModuleNotFoundError, because only
+    scripts/ was on sys.path. -I drops PYTHONPATH; the cwd is outside the repo."""
+    code = (
+        "import importlib.util as u\n"
+        f"s = u.spec_from_file_location('gate_2', {str(SCRIPT)!r})\n"
+        "m = u.module_from_spec(s)\n"
+        "s.loader.exec_module(m)\n"
+        "import classifier.config, classifier.graph.run, tests.integration.schema_support\n"
+    )
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", code], cwd=tmp_path, capture_output=True, check=False
+    )
+    assert done.returncode == 0, done.stderr.decode(errors="replace")[-300:]
 
 
 def test_the_node_pair_is_picked_in_order() -> None:
