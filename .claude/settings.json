@@ -64,7 +64,16 @@
       }
     ],
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" SessionStart" } ] }
+      { "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" SessionStart" },
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/prune_test_projects.sh\" >/dev/null 2>&1; exit 0", "timeout": 120 }
+      ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/log_event.sh\" SessionEnd" },
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_end.sh\"", "timeout": 120 }
+      ] }
     ],
     "PostToolUse": [
       {

@@ -12,15 +12,38 @@ in_linked_worktree() {
   [ "$(git rev-parse --path-format=absolute --git-dir)" != "$(git rev-parse --path-format=absolute --git-common-dir)" ]
 }
 
+# RUN-002.D2: a linked worktree's compose project, file-sorter-<worktree> (the Makefile's slug).
+# Empty in the main checkout, whose project is the default (file-sorter).
+wt_project() {
+  in_linked_worktree || return 0
+  printf 'file-sorter-%s' "$(basename "$(git rev-parse --show-toplevel)" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-')"
+}
+
+# RUN-011.D1: Ollama is started only for the gpu tier and the gates: a tests/gpu/ path, `-m gpu`
+# or a gate script among the arguments. Unit, db and integration runs never start it, so a
+# desk's Ollama holds GPU memory only while its gpu tests or gates run.
+needs_ollama() {
+  local a prev=""
+  for a in "$@"; do
+    case "$a" in tests/gpu|tests/gpu/*|scripts/gate_*) return 0 ;; esac
+    [ "$prev" = "-m" ] && [ "$a" = gpu ] && return 0
+    prev="$a"
+  done
+  return 1
+}
+
 # RUN-002.D2: each linked worktree runs tests in its own compose project.
 # RUN-009.D1: ...and mounts the main checkout's git-ignored fixtures/images/, read-only.
 compose_test() {
-  local project=() fixtures=()
-  if in_linked_worktree; then
-    local wt
-    wt="$(basename "$(git rev-parse --show-toplevel)" | tr 'A-Z.' 'a-z-' | tr -cd 'a-z0-9_-')"
-    project=(-p "file-sorter-$wt")
+  local project=() fixtures=() p
+  p="$(wt_project)"
+  if [ -n "$p" ]; then
+    project=(-p "$p")
     fixtures=("FIXTURE_IMAGES=$(main_checkout)/fixtures/images")
+  fi
+  if needs_ollama "$@"; then
+    # A failed start isn't fatal here: the gpu tests then fail with their prerequisite message.
+    docker compose "${project[@]}" up -d ollama >/dev/null 2>&1 || true
   fi
   env "${fixtures[@]}" docker compose "${project[@]}" --profile test run --rm -T test "$@"
 }

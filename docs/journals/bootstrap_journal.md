@@ -728,10 +728,51 @@ and then (PR #43 review round 2):
 - **Constraint:** Human-side (RUN-002.D16): compose, the Makefile and the hooks. The lead only records it. It isn't blocking: the workaround works, and the tests fail loudly, never skip.
 - **Implements:** CLAUDE.md §3 (`gpu` tier), RUN-002.D2.
 
+## RUN-011 — Confirmed reading
+
+- **RUN-011.D1:** **Ollama starts only for the `gpu` tier and the gates** (option 1). This happens in `make test-gpu`, in `make gate-N`, and in `compose_test` when its arguments name a `tests/gpu/` path, `-m gpu` or a gate script, which covers the pre-push gate's `gpu` and acceptance runs. It starts in the worktree's own project, and the model volume is shared (RUN-002.D2). Unit, db and integration runs never start it. Option 2 (`depends_on: ollama` on `test`) was rejected, because every tier would then hold an Ollama container. On a box where one loaded 8B model already takes most of the 16 GB, a second desk loading one could run out of memory. (human, 2026-10-07)
+
 ## RUN-011 — Tasks
 
-- [ ] RUN-011.1 — `ollama` available to the `gpu` tier in worktree projects · human-side PR, when the human schedules it
+- [x] RUN-011.1 — `needs_ollama` and `wt_project` in `common.sh`; `compose_test` starts `ollama` first when needed; the Makefile's `test-gpu` and `gate-%` do the same; CLAUDE.md and the roles README · human-side PR, with RUN-012
 
 ## RUN-011 — Results
 
-- **Status:** proposed.
+- **Status:** DONE (with RUN-012, in one human-side PR).
+- **Tests:** `tests/unit/test_compose_lifecycle.py`. A `gpu` path, `-m gpu` or a gate script starts `ollama` in the desk's project before the run. Plain runs, an acceptance test outside `tests/gpu/`, and `-m 'not gpu …'` never start it.
+- **Live check, in a linked worktree:** a `gpu` run started `file-sorter-<worktree>-ollama-1` beside its `db-test`.
+
+---
+
+## RUN-012 — Requirement (human, 2026-10-07)
+
+- **Objective:** When an agent session ends, check for and shut down the containers and test databases it leaves unused.
+- **Details:** each desk's compose project keeps its `db-test`, its network and (with RUN-011) its `ollama` running after the desk's session ends. Pruning at `make init` (RUN-010.D5) only catches them when the next desk starts. A live check on 2026-10-07 found the main checkout's `db-test` idle for two hours. It also found one desk's Ollama holding most of the GPU's memory.
+- **Constraint:** human-side (RUN-002.D16): hooks and `settings.json`. Never fail or block a session; never touch the human's app stack.
+- **Implements:** RUN-002.D2, RUN-010.D5, RUN-011.D1.
+
+## RUN-012 — Confirmed reading
+
+- **RUN-012.D1:** **A `SessionEnd` hook cleans up** (`.claude/hooks/session_end.sh`).
+  - **In a linked worktree (a desk):** its whole project, `file-sorter-<worktree>`, goes down: `db-test`, `ollama`, any test runs, and the network.
+  - **In the main checkout (the lead):** only an idle `db-test` is removed. The app stack (`db`, `ollama`, `searxng`, `app`) is the human's and is never touched, and a test run still in progress keeps its `db-test`.
+  - It then runs the prune, and always exits 0. (human, 2026-10-07)
+- **RUN-012.D2:** **`SessionStart` runs the prune too.** A session can end without its `SessionEnd` hook running, for example when agent-office kills a desk. The next session in any checkout then shuts down that desk's leftovers, as `make init` already does (RUN-010.D5).
+
+## RUN-012 — Tasks
+
+- [x] RUN-012.1 — `session_end.sh`; the `SessionEnd` and `SessionStart` hooks in `settings.json`; tests in `tests/unit/test_compose_lifecycle.py`; CLAUDE.md and the roles README
+
+## RUN-012 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. New hooks and a runtime change, with no product code.
+- **Tests:** a desk's session end runs `down` on its own project only. The lead's removes only an idle `db-test`, never runs `down` on the main project, and leaves a running test alone. The hook exits 0 even when `docker` fails. `settings.json` wires both hooks.
+- **Regression check:** against `main`'s `common.sh` and without `session_end.sh`, 12 of the 13 new tests error or fail. The one left is the settings check, which reads the new `settings.json`.
+- **Live check, in a linked worktree:** after a `gpu` run had started `ollama` and `db-test`, `session_end.sh` exited 0 and left no container for that project.
+- **Housekeeping found at the time (2026-10-07):**
+  - no stale file-sorter projects, because RUN-010's prune at `make init` had already cleared the old desks;
+  - one live desk's `db-test` and `ollama`, in use;
+  - the main checkout's idle `db-test`, which this hook now removes;
+  - other projects' exited containers outside file-sorter, which are left alone.
+- **Self-rating:** 9/10, proud: yes. Gap: whether agent-office lets `SessionEnd` run when it sends a desk home isn't verified live. D2's `SessionStart` prune and `make init` cover that case either way.
