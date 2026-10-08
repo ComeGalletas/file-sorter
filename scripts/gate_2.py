@@ -17,9 +17,10 @@ per-source split, a name or a value (DOC-005.D1, TST-005.D4). Every error is fix
 import random
 import re
 import sys
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Protocol
 
 REPO = Path(__file__).resolve().parents[1]
 IMAGES = REPO / "fixtures" / "images"
@@ -303,6 +304,157 @@ def judge_names(residues: Sequence[bool]) -> tuple[bool, str]:
     ok = not any(residues)
     share = _pct_up(sum(residues), len(residues))
     return ok, f"names: residual seeded values {share} (required 0.0%): {'ok' if ok else 'FAIL'}"
+
+
+# --- Metadata: the judge (R-SAN-2; SAN-001.D3, D4, D13, D15; TST-005.D7) ---------------
+
+
+class TagLike(Protocol):
+    """`classifier.sanitize.exif.Tag`, as the judge uses it."""
+
+    def matches(self, entry: str) -> bool: ...
+
+
+def tag_allowed(
+    tag: TagLike,
+    keep: Sequence[str],
+    dropped: Sequence[str],
+    is_structure: Callable[[Any], bool],
+) -> bool:
+    """A tag may stay when it is a file-structure, ICC or Adobe APP14 tag (`is_structure`,
+    from exif.py), or in the keep list and not named by an `exif_field` rule (D15)."""
+    if is_structure(tag):
+        return True
+    if any(tag.matches(entry) for entry in dropped):
+        return False
+    return any(tag.matches(entry) for entry in keep)
+
+
+def output_clean(
+    entries: Iterable[TagLike],
+    keep: Sequence[str],
+    dropped: Sequence[str],
+    is_structure: Callable[[Any], bool],
+) -> bool:
+    return all(tag_allowed(tag, keep, dropped, is_structure) for tag in entries)
+
+
+def carries_marker(data: bytes, markers: Iterable[str]) -> bool:
+    """True when any seeded metadata marker is in `data`, in UTF-8 or UTF-16 (either order).
+
+    Independent of the tag read: a value that exiftool lists under a structure tag, or
+    doesn't list at all, still fails here.
+    """
+    return any(
+        marker.encode(encoding) in data
+        for marker in markers
+        for encoding in ("utf-8", "utf-16-le", "utf-16-be")
+    )
+
+
+def judge_metadata(name: str, inputs: int, sanitized: int, clean: int) -> tuple[bool, str]:
+    """One line per set: the share of inputs the node sanitized (TST-005.D7) and the share
+    of outputs that are clean, both 100.0% required. Never a count."""
+    if inputs == 0:
+        return False, f"metadata, {name}: nothing reached the sanitize node: FAIL"
+    ok = sanitized == inputs and clean == sanitized
+    clean_share = _pct_down(clean, sanitized) if sanitized else "0.0%"
+    return ok, (
+        f"metadata, {name}: {_pct_down(sanitized, inputs)} sanitized, {clean_share} of outputs "
+        f"clean (required 100.0% and 100.0%): {'ok' if ok else 'FAIL'}"
+    )
+
+
+# --- Metadata: the synthetic set ---------------------------------------------------------
+
+# (extension, Pillow format, mode). The CMYK JPEG carries Adobe APP14 (SAN-001.D13); every
+# format that takes one carries an sRGB ICC profile (SAN-001.D4).
+SYNTHETIC_FORMATS = (
+    ("jpg", "JPEG", "RGB"),
+    ("jpg", "JPEG", "CMYK"),
+    ("png", "PNG", "RGB"),
+    ("tif", "TIFF", "RGB"),
+    ("webp", "WEBP", "RGB"),
+    ("heic", "HEIF", "RGB"),
+    ("gif", "GIF", "P"),
+)
+# Text tags seeded with a marker each: EXIF, XMP, IPTC and file comments.
+MARKED_TAGS = (
+    "EXIF:Artist",
+    "EXIF:Copyright",
+    "EXIF:ImageDescription",
+    "EXIF:Make",
+    "EXIF:Model",
+    "EXIF:Software",
+    "EXIF:UserComment",
+    "EXIF:SerialNumber",
+    "XMP-dc:Creator",
+    "XMP-dc:Description",
+    "XMP-dc:Subject",
+    "XMP-photoshop:City",
+    "IPTC:By-line",
+    "IPTC:Caption-Abstract",
+    "IPTC:Keywords",
+    "IPTC:City",
+    "Comment",
+)
+GPS_SEED = ("-GPSLatitude=12.3456", "-GPSLatitudeRef=N", "-GPSLongitude=65.4321",
+            "-GPSLongitudeRef=W", "-GPSAltitude=123")  # fmt: skip
+KEEP_SEED = ("-Orientation#=6", "-DateTimeOriginal=2031:04:05 10:15:32")
+EXIFTOOL_TIMEOUT = 120
+
+
+def _picture(mode: str) -> Any:
+    from PIL import Image
+
+    image = Image.new("RGB", (24, 16), (10, 200, 30))
+    for x in range(24):
+        image.putpixel((x, 5), (x * 10, 0, 255))
+        image.putpixel((x, 9), (255, x * 10, 0))
+    return image.convert(mode)
+
+
+def make_seeded_images(folder: Path, seed: int = SEED) -> tuple[str, ...]:
+    """Write the synthetic set into `folder` and return its markers.
+
+    Raises `GateSetupError` when an image can't be written or seeded: a set that carries
+    no metadata would pass the gate without proving anything.
+    """
+    import subprocess
+
+    from PIL import ImageCms
+    from pillow_heif import register_heif_opener
+
+    register_heif_opener()
+    srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    rng = _rng(seed, "metadata")
+    markers: list[str] = []
+    for index, (ext, fmt, mode) in enumerate(SYNTHETIC_FORMATS):
+        path = folder / f"synthetic_{index:02d}.{ext}"
+        options: dict[str, object] = {} if fmt == "GIF" else {"icc_profile": srgb}
+        if fmt == "WEBP":
+            options["lossless"] = True
+        _picture(mode).save(path, fmt, **options)
+        own = [f"G2SEED{index:02d}x{rng.getrandbits(40):010x}" for _ in MARKED_TAGS]
+        args = [f"-{tag}={marker}" for tag, marker in zip(MARKED_TAGS, own, strict=True)]
+        try:
+            seeded = subprocess.run(
+                ["exiftool", "-m", "-q", "-q", "-overwrite_original", *args, *GPS_SEED,
+                 *KEEP_SEED, str(path)],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=EXIFTOOL_TIMEOUT,
+                check=False,
+            ).returncode == 0 and carries_marker(path.read_bytes(), own)  # fmt: skip
+        except (OSError, subprocess.TimeoutExpired):  # raised below, unchained
+            seeded = False
+        if not seeded:
+            raise GateSetupError(
+                "the synthetic images could not be seeded with metadata: check exiftool "
+                "in the test image (make build)"
+            )
+        markers.extend(own)
+    return tuple(markers)
 
 
 def main() -> int:
