@@ -76,6 +76,11 @@ def dry_run(
     typer.echo(f"total: {counts.total}")
     for reason, count in dry_run_report.skip_reasons(rows).items():
         typer.echo(f"ledger skipped, {reason}: {count}")
+    sanitized = result.sanitize  # CLI-003.1: counts and the fixed SAN-001.D17 reasons only
+    typer.echo(f"sanitized: {sanitized.sanitized}")
+    typer.echo(f"sanitize errors: {sanitized.errored}")
+    for reason, count in sorted(sanitized.by_reason.items()):
+        typer.echo(f"sanitize error, {reason}: {count}")
     if csv:
         target = dry_run_report.write_csv(config.paths.results_root, started, rows)
         typer.echo(f"report: {target.name} ({len(rows)} rows)")

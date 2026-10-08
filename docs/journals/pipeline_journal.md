@@ -147,6 +147,10 @@ references or host paths here. Use hashes.
 ## CLI-003 — Tasks
 
 - [ ] CLI-003.1 — The sanitize counts and the sanitized name in the dry-run report · #57 · acceptance: `tests/integration/test_dry_run_cli.py`
+  - [x] CLI-003.1.1 — the console prints `sanitized`, `sanitize errors` and one line per SAN-001.D17 reason, from `RunResult.sanitize` · `tests/integration/test_dry_run_cli.py` · commit: (this commit)
+  - [ ] CLI-003.1.2 — `sanitized_name` (`files.original_sanitized`) beside `source_path` in the CSV (ING-001.D2 option A, DOC-007.D1); the planted-name test
+  - [ ] CLI-003.1.3 — `SanitizeConfigError`, `WorkDirError` and the client's `OllamaError` exit 2 with fixed text, unchained (deferred from #56)
+  - [ ] CLI-003.1.4 — Results
 
 ## CLI-003 — Results
 

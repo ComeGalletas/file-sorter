@@ -1,20 +1,23 @@
-"""CLI-002.1: `classifier dry-run [--csv]` (the acceptance test).
+"""CLI-002.1, CLI-003.1: `classifier dry-run [--csv]` (the acceptance test).
 
 Synthetic images only, generated under `tmp_path`. The command runs `run`, which commits, so
 the module has its own migrated schema (`schema_dsn`, tests/integration/conftest.py).
 """
 
 import csv
+from hashlib import sha256
 from pathlib import Path
 
 import psycopg
 import pytest
 import yaml
+from click.testing import Result
 from PIL import Image
 from typer.testing import CliRunner
 
 from classifier.cli import app
 from classifier.cli.dry_run_report import COLUMNS
+from classifier.graph import sanitize as node
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
@@ -74,6 +77,9 @@ def test_prints_the_run_counts_without_names(tmp_path: Path, schema_dsn: str) ->
     assert "ledger skipped, " in out and out.count("ledger skipped, ") == 1
     assert not any(name in out for name in SOURCE_NAMES)
     assert "/source" not in out
+    assert "sanitized: 2" in out  # CLI-003.1: the duplicate shares its original's row
+    assert "sanitize errors: 0" in out
+    assert "sanitize error, " not in out
 
 
 def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> None:
@@ -186,3 +192,39 @@ def test_database_error_exits_non_zero_without_echoing_the_dsn(tmp_path: Path) -
     assert "database error" in result.output
     assert "hunter2" not in result.output
     assert "127.0.0.1" not in result.output
+
+
+# --- CLI-003.1: the sanitize node in the report ------------------------------------------
+
+# Made-up. EXC_SECRET rides in an exception that names a made-up SECRET path.
+SECRET = "Zorvane"
+EXC_SECRET = "Vexmarrow-exception-secret"
+
+
+def _assert_clean(result: Result) -> None:
+    for secret in (SECRET, EXC_SECRET):
+        assert secret not in result.stdout
+        assert secret not in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_a_failed_file_prints_only_its_fixed_reason(
+    tmp_path: Path, schema_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, _, config = _setup(tmp_path)
+    target = sha256((source / "bravo.png").read_bytes()).hexdigest()
+    real = node.make_thumbnail
+
+    def failing(copy: Path, *args: object) -> Path:
+        if target in copy.name:
+            raise OSError(2, EXC_SECRET, f"/source/{SECRET}/{EXC_SECRET}")
+        return real(copy, *args)
+
+    monkeypatch.setattr(node, "make_thumbnail", failing)
+    result = _invoke(config, schema_dsn)
+    assert result.exit_code == 0, result.output
+    assert "sanitized: 1" in result.stdout
+    assert "sanitize errors: 1" in result.stdout
+    assert "sanitize error, sanitize_thumbnail_failed: 1" in result.stdout
+    assert result.stdout.count("sanitize error, ") == 1
+    _assert_clean(result)
