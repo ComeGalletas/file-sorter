@@ -9,6 +9,7 @@ the real strip.
 import importlib.util
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -98,6 +99,44 @@ def test_the_metadata_line(inputs: int, sanitized: int, clean: int, line: str, e
     ok, text = gate_2.judge_metadata("synthetic", inputs, sanitized, clean)
     assert text == f"metadata, synthetic: {line} (required 100.0% and 100.0%): {end}"
     assert ok is (end == "ok")
+
+
+@pytest.mark.parametrize(
+    ("inputs", "sanitized", "clean", "end"),
+    [(7, 7, 7, "ok"), (7, 6, 6, "FAIL"), (7, 7, 6, "FAIL"), (3, 0, 0, "FAIL")],
+)
+def test_the_real_fixtures_line_is_a_verdict_only(
+    inputs: int, sanitized: int, clean: int, end: str
+) -> None:
+    """PR #84's privacy audit: a share on a small real set would reveal its size."""
+    ok, text = gate_2.judge_metadata("real fixtures", inputs, sanitized, clean, shares=False)
+    assert text == f"metadata, real fixtures: every input sanitized and clean (required): {end}"
+    assert ok is (end == "ok")
+    assert "%" not in text and not any(d in text for d in "0123456789")
+
+
+def test_the_gate_judges_the_real_fixtures_without_shares(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`measure` asks for the verdict-only line on the real set, shares on the synthetic one."""
+    calls: list[tuple[str, bool]] = []
+
+    def fake(dsn, source, name, *args, shares=True, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append((name, shares))
+        return [(True, f"{name} line")]
+
+    names = gate_2.EntityNames(("A",), ("B",), ("C",), ("D",), ("",))
+    rules = SimpleNamespace(rules=(SimpleNamespace(type="literal", values=["x"]),))
+    monkeypatch.setattr(gate_2, "measure_metadata", fake)
+    monkeypatch.setattr(gate_2, "measure_names", lambda *a: (True, "names line"))
+    monkeypatch.setattr(gate_2, "load_entity_names", lambda path: names)
+    monkeypatch.setattr(gate_2, "load_config", lambda *a: SimpleNamespace())
+    monkeypatch.setattr(gate_2, "load_local_rules", lambda path: rules)
+    monkeypatch.setattr(gate_2, "make_seeded_images", lambda folder: ("m",))
+    monkeypatch.setattr(gate_2, "gate_nodes", lambda registry: ())
+    result = gate_2.measure(
+        "dsn", Path("in"), Path("e"), Path("r"), lambda text, labels: [], lambda tag: True
+    )
+    assert result.passed
+    assert calls == [("synthetic", True), ("real fixtures", False)]
 
 
 def test_an_empty_set_fails() -> None:

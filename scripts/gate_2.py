@@ -362,12 +362,23 @@ def carries_marker(data: bytes, markers: Iterable[str]) -> bool:
     )
 
 
-def judge_metadata(name: str, inputs: int, sanitized: int, clean: int) -> tuple[bool, str]:
+def judge_metadata(
+    name: str, inputs: int, sanitized: int, clean: int, shares: bool = True
+) -> tuple[bool, str]:
     """One line per set: the share of inputs the node sanitized (TST-005.D7) and the share
-    of outputs that are clean, both 100.0% required. Never a count."""
+    of outputs that are clean, both 100.0% required. Never a count.
+
+    `shares=False` prints the verdict only: on a small real set, a share below 100% would
+    reveal the set's size (85.7% is 6 of 7; PR #84's privacy audit).
+    """
     if inputs == 0:
         return False, f"metadata, {name}: nothing reached the sanitize node: FAIL"
     ok = sanitized == inputs and clean == sanitized
+    if not shares:
+        return ok, (
+            f"metadata, {name}: every input sanitized and clean (required): "
+            f"{'ok' if ok else 'FAIL'}"
+        )
     clean_share = _pct_down(clean, sanitized) if sanitized else "0.0%"
     return ok, (
         f"metadata, {name}: {_pct_down(sanitized, inputs)} sanitized, {clean_share} of outputs "
@@ -662,10 +673,11 @@ def measure_metadata(
     is_structure: Callable[[Any], bool],
     nodes: Sequence[Any],
     markers: Sequence[str] = (),
+    shares: bool = True,
 ) -> list[tuple[bool, str]]:
     """Ingest and sanitize `source` into a fresh schema and a removed temp results tree
     (TST-005.D6), then judge every input the ingest queued (TST-005.D7). The node reads
-    `rules_path`, the file `rules` was loaded from."""
+    `rules_path`, the file `rules` was loaded from. `shares=False` for the real fixtures."""
     import tempfile
 
     import psycopg
@@ -683,7 +695,7 @@ def measure_metadata(
         work = Path(results) / ".work"  # SAN-001.D7, FOP-001
         sanitized = [digest for digest, status in rows if status == "sanitized"]
         clean = sum(_clean_output(work, d, rules, is_structure, markers) for d in sanitized)
-        judged = [judge_metadata(name, len(rows), len(sanitized), clean)]
+        judged = [judge_metadata(name, len(rows), len(sanitized), clean, shares)]
         if markers:
             leaked = any(
                 carries_marker(path.read_bytes(), markers)
@@ -746,7 +758,9 @@ def measure(
         judged += measure_metadata(
             dsn, Path(folder), "synthetic", rules, rules_path, is_structure, nodes, markers
         )
-    judged += measure_metadata(dsn, images, "real fixtures", rules, rules_path, is_structure, nodes)
+    judged += measure_metadata(
+        dsn, images, "real fixtures", rules, rules_path, is_structure, nodes, shares=False
+    )
     return verdict(*judged)
 
 

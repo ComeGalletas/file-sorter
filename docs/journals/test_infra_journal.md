@@ -242,7 +242,7 @@ references or host paths here. Use hashes.
 - **TST-005.D6** — **Where gate 2's two halves run** (lead, 2026-10-07, on #58). The names half calls `sanitize_name` on string paths, so no file is ever named with the human's values. The metadata half runs ingest and the sanitize node end to end, in a temporary results tree that is removed afterwards.
 - **TST-005.D7** — **A node `error` fails gate 2** (lead, 2026-10-07, on #58). Any gate input, synthetic or real, that the node sets to `error` fails the gate. Otherwise "only the allow-list" would pass by dropping files, and a real file that trips SAN-001.2's structure allow-list would stay hidden.
 - **TST-005.D8** — **Shares and the per-word check** (lead, 2026-10-07, on #58). 20 literal, 10 email/phone and 20 fictional entity seeds, fixed in code. For **person** seeds only, each first or last name word of 3+ letters is also searched. Orgs and places are checked as the full value, so common words a template may contain (`Bay`, `Club`) cause no false failures. The structure-tag check imports a public predicate from `classifier/sanitize/exif.py`, which #56 exposes, never a private one.
-- **TST-005.D9** — **One review push with the integration acceptance** (lead, 2026-10-07, on #58). The first real `make gate-2` failed only on the names half, because the local entity rule doesn't ask for `LOCATION` (configuration, not code). So review isn't blocked on the human's local file: TST-005.2 is pushed once with `acceptance=tests/integration/test_gate_2_script.py`, and `scripts/gate_2.py` goes back right after. The gate is neither changed nor skipped, and it must PASS at G1 after the human adds `LOCATION`. `sanitize.example.yaml` gets it in #82 (SAN-002.1). D2, D4 and D8 are unchanged.
+- **TST-005.D9** — **One review push with the integration acceptance** (lead, 2026-10-07, on #58). The first real `make gate-2` failed only on the names half. That is configuration, not code: the human's local rule set is incomplete; the committed example is fixed in #82 (SAN-002.1). So review isn't blocked on the human's local file: TST-005.2 is pushed once with `acceptance=tests/integration/test_gate_2_script.py`, and `scripts/gate_2.py` goes back right after. The gate is neither changed nor skipped, and it must PASS at G1, after the human's local change. D2, D4 and D8 are unchanged.
 
 ## TST-005 — Tasks
 
@@ -260,7 +260,8 @@ references or host paths here. Use hashes.
   - [x] TST-005.2.2 — The synthetic seeded images (7 formats, ICC, Adobe APP14) and the metadata judge, plus the marker-bytes check; `tests/unit/gate/test_gate_2_metadata.py`. The judge takes the structure predicate as an argument. The test against #56's public `is_structure_tag` comes with TST-005.2.5. · `bdcc1ef`
   - [x] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub. The ingest and sanitize nodes are picked by name, as TST-007.1 pins gate 1. · `1632b49`
   - [ ] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results. First run (2026-10-08, main `b020c31`): FAIL on the names half only. The reason class is reported on #58; the lead decides.
-  - [x] TST-005.2.5 — After #56: the node reads the gate's own rules file (`sanitizer.rules_file`); tests against the public `is_structure_tag`/`is_allowed`, and a metadata PASS through the real sanitize node; the repo goes on `sys.path` at import (the first `make gate-2` died with `ModuleNotFoundError`), with a regression test
+  - [x] TST-005.2.5 — After #56: the node reads the gate's own rules file (`sanitizer.rules_file`); tests against the public `is_structure_tag`/`is_allowed`, and a metadata PASS through the real sanitize node; the repo goes on `sys.path` at import (the first `make gate-2` died with `ModuleNotFoundError`), with a regression test · `12b2038`
+  - [x] TST-005.2.6 — PR #84 privacy audit, round 1: the real-fixtures metadata line prints a verdict only (a share would reveal a small set's size), with tests. The journal and the PR body drop the per-source split and the description of the human's local rules.
 
 ## TST-005 — Results
 
@@ -320,9 +321,9 @@ references or host paths here. Use hashes.
 ### TST-005.2 (worker: qa)
 
 - **Status:** DONE_WITH_CONCERNS.
-  - **Concern (medium; config, not code):** the real gate fails on the names half until the human adds `LOCATION` to the local entity rule (TST-005.D9). Follow-ups: the human's local `sanitize.yaml`, #82 (SAN-002.1) for the example file, and the lead's G1 re-run of `make gate-2` on `main`.
+  - **Concern (medium; config, not code):** the real gate fails on the names half. That is configuration, not code: the human's local rule set is incomplete; the committed example is fixed in #82 (TST-005.D9). Follow-ups: the human's local `sanitize.yaml`, #82 (SAN-002.1) for the example file, and the lead's G1 re-run of `make gate-2` on `main`.
 - **Tests:**
-  - `tests/unit/gate/test_gate_2_names.py`: 32 tests; `tests/unit/gate/test_gate_2_metadata.py`: 23; `tests/integration/test_gate_2_script.py`: 20. Synthetic data only: a planted-secret rules file, a fake detector over `entity_synthetic.yaml`, and seeded images.
+  - `tests/unit/gate/test_gate_2_names.py`: 32 tests; `tests/unit/gate/test_gate_2_metadata.py`: 28 (23 before TST-005.2.6); `tests/integration/test_gate_2_script.py`: 20. Synthetic data only: a planted-secret rules file, a fake detector over `entity_synthetic.yaml`, and seeded images.
   - The names half runs through the real `load_rules` and `sanitize_name`. The metadata half runs through SAN-001.2's real strip and through ingest plus #56's node, which gives 100.0% sanitized and clean. The judge agrees with `exif.is_allowed` on every tag of the seeded set.
   - Privacy: every prerequisite fails through `main`, naming it, and the planted secret appears in no output, error or traceback. An unexpected error prints its type only.
   - Regression: `python scripts/gate_2.py` died with `ModuleNotFoundError`. The test loads the script in `python -I` from outside the repo, and it fails without the fix.
@@ -337,7 +338,7 @@ references or host paths here. Use hashes.
   gate 2 FAIL: 50 seeded names come out with 0 residual sensitive values; EXIF on outputs contains only the allow-list.
   ```
 
-  The residue is only in the fictional place seeds, because the local entity rule has no `LOCATION`. Literal, contact, person and org seeds are fully redacted. A local yes/no check, nothing printed or recorded.
+  These are the lines as that run printed them. Since TST-005.2.6, the real-fixtures line prints a verdict only, without a percentage.
 - **Self-rating:** 8/10, proud: yes. Gaps:
   1. The acceptance gate hasn't passed for real yet: it waits on the human's config (above).
   2. No single integration test runs `main` to PASS. The names half needs the entity rule, and the node would then call live Ollama, which the integration tier forbids. So the two halves are tested separately, and `main`'s composition with a stubbed `measure`.
