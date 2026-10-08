@@ -109,7 +109,7 @@ def test_lead_edits(sandbox: dict[str, Path], target: str, expected: int) -> Non
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        ("gh pr merge 5 --merge --delete-branch", 0),
+        ("gh pr merge 5 --merge --delete-branch --match-head-commit 0531338abcdef", 0),
         ("gh pr merge 5 --squash", 2),
         ("gh pr merge 5", 2),
         ("git tag -a m1-approved -m ok", 2),
@@ -433,3 +433,23 @@ def test_lead_rules_see_past_a_double_quote(sandbox: dict[str, Path], command: s
 @pytest.mark.parametrize("where", ["repo", "wt"])
 def test_unreadable_shell_command_is_refused(sandbox: dict[str, Path], where: str) -> None:
     assert guard(sandbox, where, {"tool_name": "Bash", "tool_input": {}}) == 2
+
+
+# ---- RUN-013.D1: the lead's merge names the reviewed head ----
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("gh pr merge 5 --merge --delete-branch", 2),
+        ("gh pr merge 5 --merge --delete-branch --match-head-commit", 2),
+        ("gh pr merge 5 --merge --delete-branch --match-head-commit HEAD", 2),
+        ("gh pr merge 5 --merge --delete-branch --match-head-commit 0531338", 0),
+        ("gh pr merge 5 --merge --match-head-commit=0531338abcdef0123 --delete-branch", 0),
+        ("gh pr merge 5 --squash --match-head-commit 0531338", 2),
+    ],
+)
+def test_lead_merge_names_the_reviewed_head(
+    sandbox: dict[str, Path], command: str, expected: int
+) -> None:
+    assert guard(sandbox, "repo", bash(command)) == expected
