@@ -285,11 +285,28 @@ def _is_structure(tag: Tag) -> bool:
     return tag.name in _STRUCTURE_TAGS.get(tag.group1, frozenset())
 
 
+def is_structure_tag(tag: Tag) -> bool:
+    """True for a file-structure tag the strip always keeps (R-SAN-2, SAN-001.D4, D13, D15).
+
+    The ICC profile, Adobe APP14, and the dimension and encoding tags of each format. It is
+    the strip's own allow-list, public so gate 2 (#58) can judge outputs with it.
+    """
+    return _is_structure(tag)
+
+
 def _drop_rule(tag: Tag, rules: Rules) -> str | None:
     for rule in rules.of_type(ExifFieldRule):
         if any(tag.matches(entry) for entry in rule.fields):
             return rule.id
     return None
+
+
+def is_allowed(tag: Tag, rules: Rules) -> bool:
+    """True if `tag` may stay after the strip: structure, or kept and not dropped (D3, D15).
+
+    The read-back check's own judgement, public for gate 2 (#58).
+    """
+    return _allowed(tag, rules)
 
 
 def _allowed(tag: Tag, rules: Rules) -> bool:

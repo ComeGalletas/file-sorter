@@ -349,7 +349,73 @@ def test_exif_field_never_removes_a_structure_or_icc_tag(tmp_path: Path) -> None
     assert {"ImageWidth", "StripOffsets", "ProfileDescription"} <= names(read_tags(path))
 
 
-# --- fail closed (SAN-001.D2) ----------------------------------------------------------------
+# --- the public allow-list for gate 2 (SAN-001.4.1) ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("group0", "group1", "tag"),
+    [
+        ("ICC_Profile", "ICC-header", "ProfileDescription"),  # D4: any tag of the ICC group
+        ("ICC_Profile", "ICC_Profile", "MadeUpTag"),
+        ("APP14", "Adobe", "ColorTransform"),  # D13: any tag of the APP14 group
+        ("APP14", "Adobe", "DCTEncodeVersion"),
+        ("File", "File", "ImageWidth"),
+        ("EXIF", "IFD0", "StripOffsets"),  # D15: a TIFF structure tag
+        ("PNG", "PNG", "BitDepth"),
+        ("RIFF", "RIFF", "VP8Version"),
+        ("QuickTime", "QuickTime", "ImageSpatialExtent"),
+    ],
+)
+def test_is_structure_tag_keeps_icc_app14_and_structure(group0: str, group1: str, tag: str) -> None:
+    assert exif.is_structure_tag(Tag(group0, group1, tag, "1"))
+
+
+@pytest.mark.parametrize(
+    ("group0", "group1", "tag"),
+    [
+        ("EXIF", "IFD0", "Artist"),
+        ("EXIF", "GPS", "GPSLatitude"),
+        ("EXIF", "IFD0", "Orientation"),  # kept by the keep list, not by structure
+        ("EXIF", "ExifIFD", "DateTimeOriginal"),
+        ("XMP", "XMP-dc", "Creator"),
+        ("IPTC", "IPTC", "By-line"),
+        ("JFIF", "JFIF", "JFIFVersion"),  # D13: JFIF is removed
+        ("EXIF", "GPS", "ImageWidth"),  # a structure name under the wrong group
+        ("PNG", "PNG", "StripOffsets"),
+    ],
+)
+def test_is_structure_tag_refuses_metadata_and_wrong_groups(
+    group0: str, group1: str, tag: str
+) -> None:
+    assert not exif.is_structure_tag(Tag(group0, group1, tag, "1"))
+
+
+@pytest.mark.parametrize("ext", sorted(FORMATS))
+def test_is_structure_tag_agrees_with_the_strip(tmp_path: Path, ext: str) -> None:
+    path = seeded(tmp_path, ext)
+    before = read_tags(path)
+    strip_metadata(path, rules(keep=[]))
+    after = read_tags(path)
+    # With an empty keep list, everything that survives is a structure tag, and none of
+    # the seeded metadata counts as one.
+    assert after.entries
+    assert all(exif.is_structure_tag(t) for t in after.entries)
+    assert all(exif.is_allowed(t, rules(keep=[])) for t in after.entries)
+    assert not any(exif.is_structure_tag(t) for t in before.entries if t.name in NEVER_SURVIVES)
+
+
+def test_is_allowed_follows_the_keep_list_and_exif_field_rules() -> None:
+    orientation = Tag("EXIF", "IFD0", "Orientation", "6")
+    artist = Tag("EXIF", "IFD0", "Artist", SECRETS["Artist"])
+    width = Tag("EXIF", "IFD0", "ImageWidth", "24")
+    drop = ExifFieldRule(id="drops", type="exif_field", fields=["Orientation", "ImageWidth"])
+    assert exif.is_allowed(orientation, rules())
+    assert not exif.is_allowed(artist, rules())
+    assert not exif.is_allowed(orientation, rules(drops=(drop,)))  # D15: beats the keep list
+    assert exif.is_allowed(width, rules(drops=(drop,)))  # D15: never a structure tag
+
+
+# --- fail closed (SAN-001.D2)----------------------------------------------------------------
 
 
 def test_a_residual_tag_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
