@@ -90,6 +90,8 @@ Decisions:
   - [x] SAN-001.2.4 — Read DB-002.D1's field check from `SanitizeLog` instead of a copy (DB-002 landed during the task) · `51e1b95`
   - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only · `fbb228d`
 - [ ] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
+  - [x] SAN-001.3.1 — `classifier/sanitize/entity.py`: `EntityDetector`, `EntityUnavailableError` (D2), `check_backend` (D6), and the acceptance tests
+  - [ ] SAN-001.3.2 — Results
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py`
 
 ## SAN-001 — Results
