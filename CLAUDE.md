@@ -240,7 +240,7 @@ make up            # docker compose up -d db ollama searxng app
 make down          # stop everything; volumes are kept
 make models        # pull Ollama tags + HF weights (SigLIP, NSFW) into the shared volumes
 make test          # unit + db + integration in the test profile
-make test-gpu      # gpu tier (real models) in the test profile
+make test-gpu      # gpu tier (real models) in the test profile; starts ollama (RUN-011)
 make lint          # ruff check + ruff format --check inside the app image
 make gate-N        # docker compose --profile test run --rm test python scripts/gate_N.py
 docker compose run --rm app classifier <command>   # e.g. dry-run, categories list
@@ -248,7 +248,7 @@ docker compose run --rm app classifier <command>   # e.g. dry-run, categories li
 
 The UI will be at `http://127.0.0.1:8000` from M4. `app` sits on an internal-only network, so the port is published through a localhost-only proxy that M4 adds (RUN-001.D5). Never add `app` to the `egress` network to expose it.
 
-In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2). The git-ignored `fixtures/images/` exists only in the main checkout: every `test` container mounts it read-only at `/app/fixtures/images`, from the main checkout in a worktree, so the `gate` and `gpu` tiers work on any desk. Never copy or link the images into a worktree (RUN-009.D1).
+In a linked worktree, `make test` and the hooks use their own compose project (`file-sorter-<worktree>`), so parallel runs never share the test database. The model volumes are shared by name (RUN-002.D2). The git-ignored `fixtures/images/` exists only in the main checkout: every `test` container mounts it read-only at `/app/fixtures/images`, from the main checkout in a worktree, so the `gate` and `gpu` tiers work on any desk. Never copy or link the images into a worktree (RUN-009.D1). `ollama` starts only for the `gpu` tier and the gates, in the same project (`make test-gpu`, `make gate-N`, and the pre-push gate's `gpu` and gate runs), so a desk holds GPU memory only while those run; never start it by hand (RUN-011.D1). When a session ends, its test stack goes down: a desk's whole project (`db-test`, `ollama`, the network), and on the main checkout only an idle `db-test`, never the app stack. `SessionStart` and `make init` prune the projects of desks closed without that hook (RUN-012.D1, D2).
 
 ## Roles and file ownership
 
