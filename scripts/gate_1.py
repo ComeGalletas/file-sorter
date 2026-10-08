@@ -105,8 +105,15 @@ def measure(db_dsn: str, images: Path) -> Verdict:
     import yaml
 
     from classifier.config import Config, check_roots
+    from classifier.graph import nodes as graph_nodes
     from classifier.graph.run import run
     from tests.integration.schema_support import migrated_schema
+
+    # TST-007.1: gate 1 measures ingest only, so the later nodes (sanitize and on) never run
+    # here: no local rules, no entity calls from the integration tier (CLAUDE.md §3).
+    ingest_only = tuple(n for n in graph_nodes.REGISTRY if n.name == "ingest")
+    if len(ingest_only) != 1:
+        raise GateSetupError("the node registry must hold exactly one `ingest` node")
 
     with migrated_schema(db_dsn) as dsn, tempfile.TemporaryDirectory() as results:
         data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
@@ -115,10 +122,10 @@ def measure(db_dsn: str, images: Path) -> Verdict:
         config = Config.model_validate(data)
         check_roots(config)  # R-FOP-9
 
-        first = run(config, dry_run=True).ingest
+        first = run(config, dry_run=True, nodes=ingest_only).ingest
         with psycopg.connect(dsn) as conn:
             before = conn.execute("select count(*) from files").fetchone()[0]
-        second = run(config, dry_run=True).ingest
+        second = run(config, dry_run=True, nodes=ingest_only).ingest
         with psycopg.connect(dsn) as conn:
             after = conn.execute("select count(*) from files").fetchone()[0]
 

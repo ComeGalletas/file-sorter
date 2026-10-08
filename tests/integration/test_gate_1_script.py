@@ -56,6 +56,34 @@ def test_tree_of_non_images_fails(
     assert "PASS" not in out.out + out.err
 
 
+def test_gate_runs_only_the_ingest_node(
+    images: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TST-007.1: a later node registered after ingest (as SAN-001.4 will) never runs in gate 1.
+
+    `run` binds its `nodes` default at definition time, so the extra node goes into both the
+    registry and that default: a gate that dropped `nodes=` would run it and fail.
+    """
+    from classifier.graph import nodes as graph_nodes
+    from classifier.graph import run as graph_run
+
+    called: list[str] = []
+
+    def must_not_run(conn: object, ctx: object) -> object:
+        called.append("sanitize")
+        raise AssertionError("gate 1 ran the sanitize node")
+
+    extended = (*graph_nodes.REGISTRY, graph_nodes.Node("sanitize", must_not_run))
+    monkeypatch.setattr(graph_nodes, "REGISTRY", extended)
+    monkeypatch.setitem(graph_run.run.__kwdefaults__, "nodes", extended)
+    monkeypatch.setenv("DB_DSN", require_db_dsn())
+
+    assert gate_1.main(images) == 0
+    assert called == []
+    out = capsys.readouterr()
+    assert "PASS" in out.out + out.err
+
+
 def test_an_error_prints_only_its_type(
     images: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
