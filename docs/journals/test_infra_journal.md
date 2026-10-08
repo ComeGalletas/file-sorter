@@ -1,7 +1,7 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003, TST-004 and TST-006 done; TST-005 in progress (.1 done) · **Milestone:** m1 (TST-003 to TST-006: m2) ·
-**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1) · **Milestone:** m1 (TST-003 to TST-007: m2) ·
+**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1), #78 (TST-007.1) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -345,6 +345,12 @@ references or host paths here. Use hashes.
   2. No single integration test runs `main` to PASS. The names half needs the entity rule, and the node would then call live Ollama, which the integration tier forbids. So the two halves are tested separately, and `main`'s composition with a stubbed `measure`.
   3. A literal value holding `/` would become a path separator and show as a false residue. A file name can't hold `/`, so a real rule can't need it. Left as is.
 - **Push (TST-005.D9):** pushed once with `acceptance=tests/integration/test_gate_2_script.py`; `.task` restored to `scripts/gate_2.py` right after.
+- **Review (lead):** PR #84, merged as `361ac3f`, closing #58.
+  - Round 1 at `28f075e`: Reviewer APPROVE, Privacy auditor FAIL: a per-source split and a description of the local rules in the write-ups. Fixed in TST-005.2.6, which also made the real-fixtures line verdict-only.
+  - Round 2 at `2bcf6bd`: Reviewer APPROVE, Privacy auditor FAIL (text only: the recorded run block). Fixed in TST-005.2.7.
+  - Round 3 at `e04c356`: Reviewer APPROVE and Privacy auditor PASS.
+
+  The lead edited two #58 comments (its own and the desk's) to the same standard. The verdict comments are on the PR.
 - **Deferred:** the PASS run of `make gate-2` goes to G1 (the lead, after the human's config change).
 
 ---
@@ -372,3 +378,23 @@ references or host paths here. Use hashes.
 - **Status:** DONE. One commit, `1a28598` (TST-006.1.1). The worker's results are in PR #69's body.
 - **Tests:** the new test fails against the old fixture (`FeatureNotSupported`) and passes with the cascade. `make test` 678 passed, per the PR.
 - **Review:** PR #69, merged as `2716ea5`, closing #68. Reviewer APPROVE (full, informational only) and Privacy auditor PASS, at `1a28598`. The verdict comment is on the PR.
+
+---
+
+## TST-007 — Requirement (lead, from SAN-001.4's blocker on #56, 2026-10-08)
+
+- **Objective:** Keep gate 1 an ingest-only measure once the sanitize node registers.
+- **Details:** `scripts/gate_1.py` ran `run(config, dry_run=True)` with the default `REGISTRY`. With `sanitize` registered, gate 1 and its integration test would sanitize with the local rules: a `SanitizeConfigError` before the entity wiring, and live entity calls from the integration tier after it, which CLAUDE.md §3 forbids. Pin it to `nodes=(ingest,)`.
+- **Constraint:** Gate 1's criterion and output stay unchanged. It must pass on `main` before and after SAN-001.4.
+- **Implements:** DESIGN.md §11 M1 gate, CLAUDE.md §3.
+
+## TST-007 — Tasks
+
+- [x] TST-007.1 — Gate 1 runs only the ingest node, with a test that fails on the old gate · #78 · acceptance: `tests/integration/test_gate_1_script.py` · `2e4a6f3`, PR #80 → `fb07cc0`
+
+## TST-007 — Results
+
+### TST-007.1 (worker: qa)
+
+- **Status:** DONE. The worker's results are in PR #80's body. The new test fails on the old gate (1 failed) and passes now.
+- **Review:** PR #80, merged as `fb07cc0`, closing #78. Reviewer APPROVE (2 informational minors). The Privacy auditor's first pass flagged the gate wording "100.0% skipped on re-run, 0 new ledger rows". On the lead's request it re-judged that against DOC-005.D1's established reading (gate results as percentages and a zero delta) and revised to PASS.

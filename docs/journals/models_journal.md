@@ -1,6 +1,6 @@
 # Models — journal
 
-**ID:** MOD-001 · **Systems:** MOD (+ SAN, TST) · **Type:** feature · **Status:** in progress (MOD-001.1 done: PR #64, merged as `3d48f7e`; MOD-001.2 in PR #72) · **Milestone:** m2 ·
+**ID:** MOD-001 · **Systems:** MOD (+ SAN, TST) · **Type:** feature · **Status:** done, with concerns (MOD-001.1: PR #64, `3d48f7e`; MOD-001.2: PR #72, `2852dd3`; held-out recall 99.1%) · **Milestone:** m2 ·
 **Issues:** MOD-001.1 #50 (PR #64), MOD-001.2 #51 (PR #72) · **Branch:** per task (`office/*`)
 
 <!--
@@ -55,7 +55,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 - [x] MOD-001.1 — The Ollama text client with a transport seam · #50 · acceptance: `tests/unit/models/test_ollama_client.py`
   - [x] MOD-001.1.1 — `classifier/models/ollama.py` and its unit tests · 6852fac
-  - [x] MOD-001.1.2 — A `gpu` round trip against the real `ollama` service (discovered: the `gpu` tier was empty, so pre-push failed with "no tests collected") (hash in Results)
+  - [x] MOD-001.1.2 — A `gpu` round trip against the real `ollama` service (discovered: the `gpu` tier was empty, so pre-push failed with "no tests collected") · aef0516
 - [x] MOD-001.2 — The entity-detection prompt and `detect_entities`, with its eval and recordings · #51 · acceptance: `tests/gpu/models/test_entity_detection.py`
   - [x] MOD-001.2.1 — `prompts/sanitize_entity_v1.md` and the prompt loader `classifier/models/prompts.py`, with unit tests · 192f9a5
   - [x] MOD-001.2.2 — `detect_entities` and `Entity` in `classifier/models/text_llm.py`, with the D2 filters and unit tests · b6d0620
@@ -80,6 +80,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Status:** DONE_WITH_CONCERNS.
   - Concern (medium): the `test` service doesn't start `ollama` (no `depends_on`), so in a worktree's compose project the `gpu` tier reaches Ollama only after `docker compose -p file-sorter-<worktree> up -d ollama` by hand. Before this task the `gpu` tier was empty and pre-push failed on pytest's "no tests collected" exit code. Follow-up: an issue for the RUN owner.
 - **Self-rating:** 9/10, proud: yes. Gap: whether the pinned Ollama accepts `think: false` for the tag is still unchecked; MOD-001.2 records it (D2).
+- **Review (lead):** PR #64, merged as `3d48f7e`, closing #50. Reviewer APPROVE (full, 2 minor: this hash, and the worktree `gpu` tier needing `ollama` by hand) and Privacy auditor PASS, at `aef0516`. The verdict comment is on the PR. The `ollama` concern became RUN-011, done in the human's PR #76.
 
 ### MOD-001.2 (worker: ml)
 
@@ -138,3 +139,8 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
     - replaced two organisation names the auditor couldn't confirm as fictional;
     - also replaced, under the stricter rule now in the file's header: a real racetrack name, common real surnames, real given names, and two names I couldn't confirm.
     - The eval was re-run; the v2 rows are in the table above.
+- **Rounds 2 to 4 (lead):**
+  - Round 2 at `9d0b208`: Reviewer APPROVE (the injection fix is sound), Privacy auditor FAIL (low: two real given names in test strings). Fixed in MOD-001.2.11.
+  - Round 3 at `5b10aa0`: Reviewer APPROVE, Privacy auditor FAIL (low: obscure real-word coincidences in the eval list). Fixed in MOD-001.2.12, with unmistakably artificial coinages. From then on, the audit flagged only names it was confident are a real person, a notable organisation or a notable place.
+  - Round 4 at `0531338`: Reviewer APPROVE (all 21 recording keys recomputed by script and matching D5) and Privacy auditor PASS.
+  - **Merged as `2852dd3` (PR #72), closing #51, at head `9526673`.** That is one commit past the reviewed `0531338`: the worker's `Merge origin/main` (#76), merged by the lead's retry without the head check. The lead verified it after the merge: its tree is identical to the automatic merge of `0531338` and `4ebfe5d`, and it adds only #76's reviewed files. This is disclosed on the PR. RUN-013 (#79) then made the guard require `--match-head-commit` on every merge.
