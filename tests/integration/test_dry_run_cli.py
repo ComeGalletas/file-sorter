@@ -102,6 +102,10 @@ def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> N
     assert skipped["reason"]
     assert all(row["proposed_output"] == "" for row in body)
     assert all(row["short_hash"] == row["source_hash"][:8] for row in body)
+    # CLI-003.1: the sanitized stem beside the path; empty where the node hasn't run.
+    for row in body:
+        expected = Path(row["source_path"]).stem if row["status"] == "sanitized" else ""
+        assert row["sanitized_name"] == expected
 
 
 def test_writes_only_work_and_reports_under_results_and_nothing_under_source(
@@ -196,9 +200,18 @@ def test_database_error_exits_non_zero_without_echoing_the_dsn(tmp_path: Path) -
 
 # --- CLI-003.1: the sanitize node in the report ------------------------------------------
 
-# Made-up. EXC_SECRET rides in an exception that names a made-up SECRET path.
+# Made-up. SECRET is planted in a folder and a file name and matched by the literal rule:
+# it may appear only in the CSV's source_path column. EXC_SECRET rides in an exception.
 SECRET = "Zorvane"
 EXC_SECRET = "Vexmarrow-exception-secret"
+NAMED = Path(f"{SECRET} trip") / f"{SECRET}_beach.png"
+
+
+def _plant(source: Path) -> Path:
+    named = source / NAMED
+    named.parent.mkdir()
+    Image.new("RGB", (8, 6), (90, 20, 200)).save(named)
+    return named
 
 
 def _assert_clean(result: Result) -> None:
@@ -228,3 +241,22 @@ def test_a_failed_file_prints_only_its_fixed_reason(
     assert "sanitize error, sanitize_thumbnail_failed: 1" in result.stdout
     assert result.stdout.count("sanitize error, ") == 1
     _assert_clean(result)
+
+
+def test_planted_names_reach_only_the_csv_source_path(tmp_path: Path, schema_dsn: str) -> None:
+    source, results, config = _setup(tmp_path)
+    named = _plant(source)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    assert "sanitized: 3" in result.stdout
+    _assert_clean(result)
+    (report,) = (results / "reports").glob("dry-run-*.csv")
+    assert report.resolve().parent == (results / "reports").resolve()
+    with report.open(encoding="utf-8", newline="") as handle:
+        body = list(csv.DictReader(handle))
+    planted = next(row for row in body if row["source_path"] == str(named))
+    assert planted["sanitized_name"] == "[P]_beach"  # the literal rule ran on the stem
+    for row in body:
+        for column, value in row.items():
+            if column != "source_path":
+                assert SECRET not in value, column
