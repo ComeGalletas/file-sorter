@@ -12,7 +12,7 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
-from typing import NamedTuple
+from typing import BinaryIO, NamedTuple
 
 _CHUNK = 1024 * 1024
 _SOURCE_HASH = re.compile(r"[0-9a-f]{64}")
@@ -30,6 +30,18 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _new_temp(tmp: Path) -> BinaryIO:
+    """Open `tmp` as a fresh file of our own, never through a link (SAN-001.D16).
+
+    A leftover at that name (a crashed run's temp, or a planted symlink) is unlinked
+    first, which removes the link itself and never its target. `O_EXCL | O_NOFOLLOW` then
+    refuses anything that appears there meanwhile, so no write is ever redirected.
+    """
+    tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    return os.fdopen(os.open(tmp, flags, 0o644), "wb")
 
 
 def make_working_copy(
@@ -55,7 +67,7 @@ def make_working_copy(
     final = work_dir / f"{source_hash}.{ext}"
     tmp = work_dir / f".{source_hash}.{ext}.tmp"  # FOP-001.D1; a crashed run's leftover is ours
     try:
-        with source.open("rb") as src, tmp.open("wb") as dst:
+        with source.open("rb") as src, _new_temp(tmp) as dst:
             while chunk := src.read(_CHUNK):
                 dst.write(chunk)
             dst.flush()
@@ -87,7 +99,7 @@ def write_new(dest: Path, data: bytes) -> bool:
     dest.parent.mkdir(exist_ok=True)
     tmp = dest.with_name(f".{dest.name}.tmp")
     try:
-        with tmp.open("wb") as handle:
+        with _new_temp(tmp) as handle:
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
