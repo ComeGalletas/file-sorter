@@ -139,6 +139,9 @@ def test_the_example_file_loads() -> None:
     example = Path(__file__).resolve().parents[3] / "sanitize.example.yaml"
     rules = load_rules(example, env=ENV)
     assert rules.exif.mode == "strip_all"
+    # SAN-002.1: the example's entity rule asks for every R-SAN-3 label.
+    entities = [rule for rule in rules.rules if isinstance(rule, EntityRule)]
+    assert [rule.labels for rule in entities] == [["PERSON", "ORG", "LOCATION"]]
 
 
 def test_missing_file(tmp_path: Path) -> None:

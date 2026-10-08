@@ -19,5 +19,5 @@ rules:
     replace: "[PHONE]"
   - id: entities
     type: entity
-    labels: [PERSON, ORG]
+    labels: [PERSON, ORG, LOCATION]
     replace: "[{label}]"
