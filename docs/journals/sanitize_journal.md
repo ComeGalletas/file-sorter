@@ -1,6 +1,6 @@
 # Sanitize — journal
 
-**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** in progress (SAN-001.1, .2 and FOP-001 done) · **Milestone:** m2 ·
+**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** done (SAN-001, FOP-001, SAN-002); SAN-003 proposed · **Milestone:** m2 ·
 **Issues:** SAN-001.1 #47, SAN-001.2 #48, SAN-001.3 #52, SAN-001.4 #56, FOP-001.1 #46 · **Branch:** per task (`office/*`)
 
 <!--
@@ -103,14 +103,14 @@ Decisions:
   - [x] SAN-001.2.5 — PR #73 round 1: fail closed on an OSError or symlink at the working copy, on a key of another shape, and on unexpected JSON; known tags from the name lines only · `fbb228d`
 - [x] SAN-001.3 — The entity rule on top of MOD-001's detector · #52 · acceptance: `tests/unit/sanitize/test_entity.py`
   - [x] SAN-001.3.1 — `classifier/sanitize/entity.py`: `EntityDetector`, `EntityUnavailableError` (D2), `check_backend` (D6), and the acceptance tests · `7534f9a`
-  - [x] SAN-001.3.2 — Results
-- [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py` · branch `office/nibble-e4d1`
-  - [x] SAN-001.4.1 — Public `is_structure_tag(tag)` and `is_allowed(tag, rules)` in `exif.py` for gate 2 (#58), one allow-list; unit tests
-  - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests
-  - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`)
-  - [x] SAN-001.4.4 — Entity wiring through SAN-001.3's `entity_detector(config, client)` (never `EntityDetector` directly), with the replayed (MOD-001.2's recordings) and fail-closed entity tests; a replay miss propagates (after #52 merged)
-  - [x] SAN-001.4.5 — Results
-  - [x] SAN-001.4.6 — (found while rating) the batch acts on a failure after its handler, not inside it (D16); a source replaced by a symlink after ingest is never followed (`sanitize_working_copy_failed`, ING-001.D6); regression test
+  - [x] SAN-001.3.2 — Results · `10be141`
+- [x] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py` · branch `office/nibble-e4d1` · PR #81 → `b020c31`
+  - [x] SAN-001.4.1 — Public `is_structure_tag(tag)` and `is_allowed(tag, rules)` in `exif.py` for gate 2 (#58), one allow-list; unit tests · `e14fae5`
+  - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests · `90d76de`
+  - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`) · `74dbbd7`
+  - [x] SAN-001.4.4 — Entity wiring through SAN-001.3's `entity_detector(config, client)` (never `EntityDetector` directly), with the replayed (MOD-001.2's recordings) and fail-closed entity tests; a replay miss propagates (after #52 merged) · `16ec936`
+  - [x] SAN-001.4.5 — Results · `ea65330`
+  - [x] SAN-001.4.6 — (found while rating) the batch acts on a failure after its handler, not inside it (D16); a source replaced by a symlink after ingest is never followed (`sanitize_working_copy_failed`, ING-001.D6); regression test · `bee1ae0`
 
 ## SAN-001 — Results
 
@@ -182,7 +182,7 @@ Decisions:
   - **Mutation checks, each reverted:** raising inside `except`: 16 failed. Catching `BaseException`: 1 failed. Dropping the span filter: 4 failed. Dropping the shape check: 9 failed. Skipping `check_backend`: 1 failed.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. Gap: the backend check runs only through `entity_detector`, so a caller that builds `EntityDetector` directly skips it. It is noted above for SAN-001.4. Live Ollama isn't exercised here; MOD-001.2's `gpu` test covers that.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** round 1 at `10be141`: Reviewer APPROVE (3 minor: this hash, a surrogate test through the real detector being optional, and `entity_detector` being required in SAN-001.4, which was passed on) and Privacy auditor PASS (exhaustive). Merged as `3bfaba0` (PR #77), closing #52. The verdict comment is on the PR.
 
 ### SAN-001.4 (worker: pipeline)
 
@@ -227,7 +227,7 @@ Decisions:
     - the `os.link` path of `write_new` on the real Windows bind mount is first exercised by a real dry run, not here (FOP-001's open item);
     - the node test covers JPEG, PNG and TIFF, and the other formats only through `test_exif.py`.
 - **Status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** round 1 at `ea65330`: Reviewer APPROVE (2 minor; it ran the integration tier plus `tests/unit/fileops`, `tests/unit/graph` and `test_exif.py` in the container, 179 passed) and Privacy auditor PASS (exhaustive). Merged as `b020c31` (PR #81), closing #56. The verdict comment is on the PR. The auditor's residual notes are collected in SAN-003.
 
 ---
 
@@ -272,3 +272,40 @@ Decisions:
   - the R-FOP-6 grep test for unlink/remove calls outside `delete.py`/`copy_move.py` (not in this issue);
   - R-FOP-3 clean-on-start (not in M2, see above);
   - **from PR #62's review (lead):** a leftover `.<hash>.<ext>.tmp` that is a symlink would be followed by `open("wb")`. The risk is low, because `.work/` is the app's own. Fix by unlinking a stale temp before opening it, or opening with `O_NOFOLLOW`. It is a FOP follow-up, to be allocated when the M2 run allows.
+
+---
+
+## SAN-002 — Requirement (lead, from gate 2's first real run on #58, 2026-10-08)
+
+- **Objective:** Make the committed `sanitize.example.yaml` ask its entity rule for every R-SAN-3 label.
+- **Details:** The example's entity rule asked for `[PERSON, ORG]` only, while R-SAN-3 names `PERSON`, `ORG` and `LOCATION`. Gate 2 seeds fictional place names for the entity rule (TST-005.D2), so a setup copied from the example can't pass. Add `LOCATION`, with placeholders only.
+- **Constraint:** The human's local, git-ignored `sanitize.yaml` is theirs to change: the lead asked them, and no desk touches it.
+- **Implements:** R-SAN-3, R-CFG-1.
+
+## SAN-002 — Tasks
+
+- [x] SAN-002.1 — The example's entity rule asks for `LOCATION` too, with a unit test · #82 · acceptance: `tests/unit/sanitize/test_rules.py` · `77b60d7`, PR #85 → `a42f502`
+
+## SAN-002 — Results
+
+### SAN-002.1 (worker: pipeline)
+
+- **Status:** DONE. The worker's results are in PR #85's body (186/186 unit tests passed, lint clean).
+- **Review:** PR #85, merged as `a42f502`, closing #82. Reviewer APPROVE (no findings) and Privacy auditor PASS, at `77b60d7`. The verdict comment is on the PR.
+
+---
+
+## SAN-003 — Requirement (lead, from the PR #81 and #83 privacy audits, 2026-10-08)
+
+- **Objective:** Close the residual hardening notes the M2 audits left, none of which leaks data today.
+- **Details:**
+  1. `NodeContext.source_root` and `results_root` keep the default `repr`. Make them `repr=False`, like the class's other fields.
+  2. Originals are opened without `O_NOFOLLOW` (`graph/sanitize.py`, `fileops/copy_move.py`), so the `is_symlink` check leaves a small read-only TOCTOU window. Open them `O_NOFOLLOW`.
+  3. The log cap covers the `PIL` logger only. Cap `pillow_heif`'s logger and route Pillow's `warnings.warn` too, and prove it with the planted-secret test on HEIC under DEBUG.
+  4. `exif.py`: a missing file or a missing exiftool maps to `sanitize_metadata_residual`. Give it its own fixed reason (a label fix).
+  5. `copy_move._new_temp`: guard `os.fdopen`, so the fd can't leak on failure.
+  6. D18's `sanitize_log` clear runs only on the sanitize path. Make a `sanitized` row that goes back to `error` clear its rows too, before M3 adds that path.
+  7. CLI (from PR #83): the `.work/thumbs` `mkdir`, `load_rules`'s `read_text` `OSError` and the CSV open in `write_csv` still end in a Typer traceback. Their messages carry only results or rules paths. Map them to fixed text and exit 2.
+- **Constraint:** No behaviour change beyond the items. Privacy checklist up front (`repr=False`, unchained fixed-text errors, planted-secret tests).
+- **Implements:** SAN-001.D16, D18; FOP-001.D1; CLI-003.
+- **Status:** proposed, not scheduled. The human picks M3 or a quiet moment.

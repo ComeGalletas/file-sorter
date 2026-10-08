@@ -1,7 +1,7 @@
 # Pipeline and dry run — journal
 
-**ID:** PIPE-001 (+ CLI-002, CLI-003) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002); CLI-003 proposed · **Milestone:** m1 (CLI-003: m2) ·
-**Issues:** #17 (PR #35), #18 (PR #38), #57 (CLI-003.1) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
+**ID:** PIPE-001 (+ CLI-002, CLI-003) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002, CLI-003) · **Milestone:** m1 (CLI-003: m2) ·
+**Issues:** #17 (PR #35), #18 (PR #38), #57 (CLI-003.1, PR #83) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -150,7 +150,7 @@ references or host paths here. Use hashes.
   - [x] CLI-003.1.1 — the console prints `sanitized`, `sanitize errors` and one line per SAN-001.D17 reason, from `RunResult.sanitize` · `tests/integration/test_dry_run_cli.py` · commit: 723da8f
   - [x] CLI-003.1.2 — `sanitized_name` (`files.original_sanitized`) beside `source_path` in the CSV (ING-001.D2 option A, DOC-007.D1); the planted-name test · `tests/integration/test_dry_run_cli.py`, `tests/unit/cli/test_dry_run_report.py` · commit: 04d51c8
   - [x] CLI-003.1.3 — `SanitizeConfigError`, `WorkDirError` and the client's `OllamaError` exit 2 with fixed text, unchained (deferred from #56) · `tests/integration/test_dry_run_cli.py` (5 pre-flight cases and the linked `.work/`) · commit: adbfcea
-  - [x] CLI-003.1.4 — Results · commit: (this commit)
+  - [x] CLI-003.1.4 — Results · commit: 82de25a
 
 ## CLI-003 — Results
 
@@ -168,4 +168,5 @@ references or host paths here. Use hashes.
   - `make test` (unit + db + integration): 1037 passed, 24 deselected. `make lint`: clean. No gpu tier or eval: no model, prompt or threshold is touched.
   - The commit bodies overstate the per-file counts by one or two (they read 13/12, 14/13 and 20). The counts measured per stage are 11 integration and 14 unit (CLI-003.1.1), 12 and 15 (CLI-003.1.2), and 18 integration (CLI-003.1.3). The commits weren't reworded, because the task lines above cite their hashes.
 - **Self-rating:** 9/10, proud: yes. Gap: the tests check that a failure exits 2 through `SystemExit` with no traceback in the output, but not the exception's suppressed context itself; the code raises `from None` like CFG-002. Any `OllamaError` that reached the CLI would get the pre-flight message, but per-file Ollama failures become `sanitize_entity_unavailable` inside the node (SAN-001.D17), so only `from_env` can reach the CLI.
+- **Review (lead):** PR #83, merged as `b7a7d37`, closing #57. Reviewer APPROVE (3 minor: commit-body counts, this hash, one fixed `OllamaError` message) and Privacy auditor PASS (exhaustive), at `82de25a`. The verdict comment is on the PR. The auditor's leftover `OSError` tracebacks (paths of results or rules only) are item 7 of SAN-003.
 - **Deferred:** none.
