@@ -21,13 +21,16 @@ from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
+import httpx
 import psycopg
 
 from classifier.config import Config
 from classifier.fileops.copy_move import make_working_copy
 from classifier.fileops.thumbs import make_thumbnail
+from classifier.models.ollama import OllamaClient
+from classifier.sanitize.entity import EntityUnavailableError, check_backend, entity_detector
 from classifier.sanitize.exif import MetadataStripError, strip_metadata
 from classifier.sanitize.rules import (
     EntityFn,
@@ -48,7 +51,7 @@ WORK_DIR = ".work"  # R-FOP-1: under results_root
 THUMBS_DIR = "thumbs"  # ING-002.D1: .work/thumbs/<source_hash>.webp
 
 # SAN-001.D17: the fixed reasons a file's `files.error` can hold after this node.
-ENTITY_UNAVAILABLE = "sanitize_entity_unavailable"  # D2
+ENTITY_UNAVAILABLE = EntityUnavailableError.reason  # D2: "sanitize_entity_unavailable"
 METADATA_RESIDUAL = MetadataStripError.reason  # D2: "sanitize_metadata_residual"
 NAME_FAILED = "sanitize_name_failed"
 WORKING_COPY_FAILED = "sanitize_working_copy_failed"
@@ -141,23 +144,14 @@ def check_settings(config: Config) -> None:
     """Fail fast on settings M2 doesn't support, naming the key only (SAN-001.D6)."""
     if config.sanitizer.ocr:
         raise SanitizeConfigError("sanitizer.ocr: true is not supported in M2; set it to false")
-    if config.sanitizer.backend != "local":
-        raise SanitizeConfigError(
-            "sanitizer.backend: only `local` is supported in M2; set sanitizer.backend: local"
-        )
+    check_backend(config)  # SAN-001.3's rule, checked even when no entity rule is configured
 
 
-def entity_for(rules: Rules, config: Config, transport: Any = None) -> EntityFn | None:
-    """The entity callable for `sanitize_name`, or None when no rule needs one.
-
-    SAN-001.4.4 wires SAN-001.3's detector here. Until then an `entity` rule fails fast,
-    so no name skips a rule the human configured (P-2).
-    """
+def entity_client(rules: Rules, transport: httpx.BaseTransport | None) -> OllamaClient | None:
+    """An Ollama client when an `entity` rule needs one, else None: no rule, no call."""
     if not rules.of_type(EntityRule):
         return None
-    raise SanitizeConfigError(
-        "an entity rule in the rules file needs the entity detector (SAN-001.3), not wired yet"
-    )
+    return OllamaClient.from_env(transport=transport)  # OLLAMA_HOST, the compose service only
 
 
 def _under(path: Path, root: Path) -> bool:
@@ -233,6 +227,7 @@ def _sanitize_one(
     name = _attempt(
         NAME_FAILED,
         lambda: sanitize_name(path, rules, entity),
+        {EntityUnavailableError: ENTITY_UNAVAILABLE},
     )
 
     stripped: list[Redaction] = []
@@ -278,27 +273,44 @@ def _sanitize_one(
 def sanitize(conn: psycopg.Connection, ctx: "NodeContext") -> SanitizeResult:
     """Sanitize every `queued` row (R-SAN-1 to R-SAN-4, R-SAN-6, R-ING-5, P-4).
 
-    Settings, the rules file, the log key and the work
-    folders are checked before any file is touched; a failure there raises, and `run`
-    rolls the node back. After that, a failing file never stops the batch.
+    Settings, the rules file, the log key, the entity client and the work folders are
+    checked before any file is touched; a failure there raises, and `run` rolls the node
+    back. After that, a failing file never stops the batch.
     """
     if conn.autocommit:
         raise ValueError("the sanitize node needs run's transaction (PIPE-001.D3)")
     config = ctx.config
     check_settings(config)
     rules = load_rules(config.sanitizer.rules_file)
-    entity = entity_for(rules, config, ctx.ollama_transport)
     rows = [_Row(*map(str, found)) for found in conn.execute(_QUEUED).fetchall()]
     if not rows:  # a re-run: nothing queued, nothing touched (P-4)
         log.info("sanitize: 0 sanitized, 0 error")
         return SanitizeResult()
-    folders = prepare_folders(ctx.source_root, ctx.results_root)
+    client = entity_client(rules, ctx.ollama_transport)
+    try:
+        # Built only through SAN-001.3's factory, which runs check_backend (SAN-001.D6).
+        entity = None if client is None else entity_detector(config, client)
+        folders = prepare_folders(ctx.source_root, ctx.results_root)
+        return _batch(conn, rows, ctx.source_root, folders, rules, entity, config.thumbs.size)
+    finally:
+        if client is not None:
+            client.close()
 
+
+def _batch(
+    conn: psycopg.Connection,
+    rows: list[_Row],
+    source_root: Path,
+    folders: _Folders,
+    rules: Rules,
+    entity: EntityFn | None,
+    thumb_size: int,
+) -> SanitizeResult:
     sanitized = 0
     reasons: Counter[str] = Counter()
     for row in rows:
         try:
-            _sanitize_one(conn, row, ctx.source_root, folders, rules, entity, config.thumbs.size)
+            _sanitize_one(conn, row, source_root, folders, rules, entity, thumb_size)
         except _FileFailed as failed:
             conn.execute(_ERROR, (failed.reason, row.source_hash))
             reasons[failed.reason] += 1

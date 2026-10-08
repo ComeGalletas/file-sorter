@@ -108,7 +108,7 @@ Decisions:
   - [x] SAN-001.4.1 — Public `is_structure_tag(tag)` and `is_allowed(tag, rules)` in `exif.py` for gate 2 (#58), one allow-list; unit tests
   - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests
   - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`)
-  - [ ] SAN-001.4.4 — Entity wiring through SAN-001.3's `EntityDetector`, with the replayed and fail-closed entity tests (after #52 merges)
+  - [x] SAN-001.4.4 — Entity wiring through SAN-001.3's `entity_detector(config, client)` (never `EntityDetector` directly), with the replayed (MOD-001.2's recordings) and fail-closed entity tests; a replay miss propagates (after #52 merged)
   - [ ] SAN-001.4.5 — Results
 
 ## SAN-001 — Results

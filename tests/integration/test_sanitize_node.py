@@ -7,12 +7,14 @@ The rules file is synthetic too, never the local sanitize.yaml. `run` commits
 """
 
 import hmac
+import json
 import logging
 import os
 import subprocess
 from hashlib import sha256
 from pathlib import Path
 
+import httpx
 import psycopg
 import pytest
 import yaml
@@ -24,6 +26,7 @@ from classifier.graph import sanitize as node
 from classifier.graph.nodes import REGISTRY, NodeContext
 from classifier.graph.run import run
 from classifier.graph.sanitize import REASONS, SanitizeResult, WorkDirError
+from classifier.models.ollama import OllamaError
 from classifier.sanitize.exif import MetadataStripError, is_allowed, read_tags
 from classifier.sanitize.rules import (
     LOG_KEY_ENV,
@@ -31,6 +34,7 @@ from classifier.sanitize.rules import (
     SanitizeConfigError,
     load_rules,
 )
+from tests.recordings.replay import RecordingError, ReplayTransport
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 INGEST_ONLY = tuple(n for n in REGISTRY if n.name == "ingest")
@@ -478,19 +482,155 @@ class TestPreFlight:
             run(config, dry_run=True)
         assert not results.exists()
 
-    def test_an_entity_rule_fails_fast_until_the_detector_is_wired(
-        self, tmp_path: Path, source: Path, results: Path, schema_dsn: str
+    def test_an_entity_rule_without_ollama_host_fails_fast(
+        self,
+        source: Path,
+        results: Path,
+        entity_config: Config,
+        schema_dsn: str,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # SAN-001.4.3 only: SAN-001.4.4 replaces this with the replayed entity tests.
         _populate(source)
-        rules = tmp_path / "rules.yaml"
-        entity = {"id": "test-entity", "type": "entity", "labels": ["PERSON"], "replace": "[P]"}
-        with_entity = {**RULES, "rules": [*RULES["rules"], entity]}
-        rules.write_text(yaml.safe_dump(with_entity), encoding="utf-8")
-        config = _config(tmp_path, source, results, schema_dsn)
-        with pytest.raises(SanitizeConfigError, match="entity"):
-            run(config, dry_run=True)
+        monkeypatch.delenv("OLLAMA_HOST")
+        with pytest.raises(OllamaError, match="OLLAMA_HOST"):
+            run(entity_config, dry_run=True)
+        assert not results.exists()
         assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
+
+
+# --- the entity rule (R-SAN-3, R-SAN-4, SAN-001.D2, DOC-007.D1) -----------------------------
+
+# Texts MOD-001.2 recorded under tests/recordings/models/ (prompt sanitize_entity_v1, all
+# three labels): the node's requests must match them exactly, so these are copied as is.
+# A re-recorded or new prompt changes the keys and the replay then fails loudly (lead, #56).
+RECORDED_PERSON = "Velric_Haldric_2031-04-05_0007"  # -> Velric_Haldric PERSON
+RECORDED_ORG_PLACE = "Quillfen_Robotics_offsite_Velkarra"  # -> 2 ORG spans, 1 LOCATION
+RECORDED_NONE = "holiday_beach_final_v2"  # -> no entity
+RECORDED_FOLDER = "Vrollmark_Bay_sunset_0012"  # -> Vrollmark_Bay LOCATION
+RECORDED_NONE_IN_FOLDER = "IMG_20310405_0001"  # -> no entity
+ENTITY_RULE = {
+    "id": "test-entity",
+    "type": "entity",
+    "labels": ["PERSON", "ORG", "LOCATION"],
+    "replace": "[{label}]",
+}
+
+
+@pytest.fixture
+def entity_config(tmp_path: Path, source: Path, results: Path, schema_dsn: str) -> Config:
+    rules = tmp_path / "rules.yaml"
+    rules.write_text(
+        yaml.safe_dump({**RULES, "rules": [*RULES["rules"], ENTITY_RULE]}), encoding="utf-8"
+    )
+    return _config(tmp_path, source, results, schema_dsn)
+
+
+def _populate_recorded(source: Path) -> dict[str, Path]:
+    return {
+        "person": _image(source / f"{RECORDED_PERSON}.jpg", "JPEG", 15),
+        "org_place": _image(source / f"{RECORDED_ORG_PLACE}.png", "PNG", 45),
+        "none": _image(source / f"{RECORDED_NONE}.png", "PNG", 75),
+        "folder": _image(source / RECORDED_FOLDER / f"{RECORDED_NONE_IN_FOLDER}.jpg", "JPEG", 105),
+    }
+
+
+class Spy(httpx.BaseTransport):
+    """Keeps every prompt the node sends, then hands the request on."""
+
+    def __init__(self, inner: httpx.BaseTransport) -> None:
+        self.inner = inner
+        self.prompts: list[str] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        self.prompts.append(json.loads(request.content)["prompt"])
+        return self.inner.handle_request(request)
+
+
+def _refused(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError(f"refused {EXC_SECRET}", request=request)
+
+
+def _not_json(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, json={"response": f"not json {EXC_SECRET}"})
+
+
+class TestEntity:
+    def test_replayed_entities_are_redacted_and_logged(
+        self,
+        source: Path,
+        entity_config: Config,
+        schema_dsn: str,
+        ollama_transport,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        images = _populate_recorded(source)
+        hashes = {key: _hash(path) for key, path in images.items()}
+        spy = Spy(ollama_transport("models"))
+        caplog.set_level(logging.DEBUG)
+
+        result = run(entity_config, dry_run=True, ollama_transport=spy)
+
+        assert (result.sanitize.sanitized, result.sanitize.errored) == (4, 0)
+        files = _files(schema_dsn)
+        assert files[hashes["person"]][2] == "[PERSON]_2031-04-05_0007"
+        assert files[hashes["org_place"]][2] == "[ORG]_[ORG]_offsite_[LOCATION]"
+        assert files[hashes["none"]][2] == RECORDED_NONE
+        assert files[hashes["folder"]][2] == RECORDED_NONE_IN_FOLDER
+        person = [r[2:] for r in _log(schema_dsn, hashes["person"]) if r[3] == "filename"]
+        assert person == [("test-entity", "filename", _hmac("Velric_Haldric"), "[PERSON]")]
+        segment = [r[2:] for r in _log(schema_dsn, hashes["folder"]) if r[3] == "path_segment"]
+        assert segment == [("test-entity", "path_segment", _hmac("Vrollmark_Bay"), "[LOCATION]")]
+        # DOC-007.D1: a model gets one segment or stem at a time, never a path or extension.
+        sent = sorted(p.split("<<<TEXT\n", 1)[1].split("\nTEXT>>>", 1)[0] for p in spy.prompts)
+        assert sent == sorted(
+            [RECORDED_PERSON, RECORDED_ORG_PLACE, RECORDED_NONE, RECORDED_FOLDER,
+             RECORDED_NONE_IN_FOLDER]
+        )  # fmt: skip
+        assert not any(str(source) in prompt or ".jpg" in prompt for prompt in spy.prompts)
+        for value in ("Velric", "Haldric", "Quillfen", "Velkarra", "Vrollmark"):
+            assert value not in caplog.text
+
+    @pytest.mark.parametrize("answer", [_refused, _not_json], ids=["refused", "not-json"])
+    def test_an_unavailable_backend_fails_every_file_closed(
+        self,
+        answer,
+        source: Path,
+        results: Path,
+        entity_config: Config,
+        schema_dsn: str,
+        ollama_transport,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        images = _populate_recorded(source)
+        caplog.set_level(logging.DEBUG)
+
+        result = run(entity_config, dry_run=True, ollama_transport=httpx.MockTransport(answer))
+
+        assert (result.sanitize.sanitized, result.sanitize.errored) == (0, 4)
+        assert dict(result.sanitize.by_reason) == {"sanitize_entity_unavailable": 4}
+        files = _files(schema_dsn)
+        assert set(files.values()) == {("error", "sanitize_entity_unavailable", None)}  # D2
+        assert _log(schema_dsn) == []
+        assert not list((results / ".work").glob("*.*"))  # nothing copied for an unsafe name
+        _assert_clean(caplog.text, result, files)
+
+        # R-ING-2: once the backend answers, the next run retries and sanitizes them.
+        retried = run(entity_config, dry_run=True, ollama_transport=ollama_transport("models"))
+        assert retried.ingest.new == 4
+        assert retried.sanitize.sanitized == 4
+        assert {_files(schema_dsn)[_hash(p)][0] for p in images.values()} == {"sanitized"}
+
+    def test_a_missing_recording_propagates_and_rolls_the_node_back(
+        self, request: pytest.FixtureRequest, source: Path, entity_config: Config, schema_dsn: str
+    ) -> None:
+        # TST-005.1: a replay miss is a RecordingError (BaseException); it must fail the run,
+        # never become an `error` row.
+        _image(source / "Unrecorded_Name_0001.jpg", "JPEG", 33)
+        replay = ReplayTransport("models", request.node.nodeid)
+        with pytest.raises(RecordingError):
+            run(entity_config, dry_run=True, ollama_transport=replay)
+        assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
+        assert _log(schema_dsn) == []
 
 
 def test_every_reason_is_a_fixed_label() -> None:
