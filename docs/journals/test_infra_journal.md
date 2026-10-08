@@ -255,11 +255,11 @@ references or host paths here. Use hashes.
   - [x] TST-005.1.6 — PR #71 privacy audit, round 2: `lint_recordings` reports a non-regular file by its `describe()` label, and `load_recording` turns an `OSError` into a labelled, unchained `RecordingError` · `3442ea8`
   - [x] TST-005.1.7 — PR #71 privacy audit, round 3: every filesystem call in `replay.py` (the lint's walk and stat, replay's stat and load, record mode's stat, `mkdir` and write) turns an `OSError` into an unchained `RecordingError` with a label or a fixed message · `693f18a`
   - [x] TST-005.1.8 — PR #71 privacy audit, round 4: record mode encodes the recording to UTF-8 bytes before opening the file; a lone surrogate in Ollama's reply gives a fixed, unchained `RecordingError` and writes nothing · `456c5b7`
-- [ ] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py`
+- [x] TST-005.2 — Gate 2 · #58 · acceptance: `scripts/gate_2.py` · PR #84 → `361ac3f`; G1 PASS on `main`, 2026-10-08
   - [x] TST-005.2.1 — The seed draw (fixed shares, one random stream per purpose, literals with replacement), the gate's own residual matcher and the names judge; `tests/unit/gate/test_gate_2_names.py` · `507212a`
   - [x] TST-005.2.2 — The synthetic seeded images (7 formats, ICC, Adobe APP14) and the metadata judge, plus the marker-bytes check; `tests/unit/gate/test_gate_2_metadata.py`. The judge takes the structure predicate as an argument. The test against #56's public `is_structure_tag` comes with TST-005.2.5. · `bdcc1ef`
   - [x] TST-005.2.3 — `measure()`/`main()` and the prerequisite checks; `tests/integration/test_gate_2_script.py`; replaces the RUN-002.4 stub. The ingest and sanitize nodes are picked by name, as TST-007.1 pins gate 1. · `1632b49`
-  - [ ] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results. First run (2026-10-08, main `b020c31`): FAIL on the names half only. The reason class is reported on #58; the lead decides.
+  - [x] TST-005.2.4 — `make gate-2` on the box once #56 lands; Results. First run (2026-10-08, main `b020c31`): FAIL on the names half only. The reason class is reported on #58; the lead decides. G1 run (the lead, `main` `361ac3f`, after the human's config change): **PASS** (names 0.0% residual; metadata ok on the synthetic set and the real fixtures).
   - [x] TST-005.2.5 — After #56: the node reads the gate's own rules file (`sanitizer.rules_file`); tests against the public `is_structure_tag`/`is_allowed`, and a metadata PASS through the real sanitize node; the repo goes on `sys.path` at import (the first `make gate-2` died with `ModuleNotFoundError`), with a regression test · `12b2038`
   - [x] TST-005.2.6 — PR #84 privacy audit, round 1: the real-fixtures metadata line prints a verdict only (a share would reveal a small set's size), with tests. The journal and the PR body drop the per-source split and the description of the human's local rules. · `2bcf6bd`
   - [x] TST-005.2.7 — PR #84 privacy audit, round 2 (text only): the recorded run block shows the real-fixtures line in its verdict-only form, the synthetic set is named where 100.0% is quoted, and the worked numbers leave `judge_metadata`'s docstring.
@@ -351,7 +351,8 @@ references or host paths here. Use hashes.
   - Round 3 at `e04c356`: Reviewer APPROVE and Privacy auditor PASS.
 
   The lead edited two #58 comments (its own and the desk's) to the same standard. The verdict comments are on the PR.
-- **Deferred:** the PASS run of `make gate-2` goes to G1 (the lead, after the human's config change).
+- **G1 (the lead, 2026-10-08, `main` `361ac3f`, after the human's config change):** `make gate-2` **PASS**, exit 0. Names: 0.0% residual. Metadata: 100.0% sanitized and clean on the synthetic set, ok on the real fixtures. The full output is in `docs/plans/m2.md` Results.
+- **Deferred:** none.
 
 ---
 
