@@ -122,6 +122,42 @@ class TestMakeWorkingCopy:
         assert result.path.read_bytes() == SOURCE_BYTES
         assert sorted(p.name for p in work_dir.iterdir()) == [f"{HASH}.jpg"]
 
+    @pytest.mark.parametrize("dangling", [False, True])
+    def test_a_symlink_at_the_temp_name_is_never_written_through(
+        self, source: Path, work_dir: Path, tmp_path: Path, dangling: bool
+    ) -> None:
+        # SAN-001.D16 / SAN-001.4.2: a planted link can't redirect the copy.
+        victim = tmp_path / "victim.bin"
+        if not dangling:
+            victim.write_bytes(b"victim")
+        work_dir.mkdir()
+        (work_dir / f".{HASH}.jpg.tmp").symlink_to(victim)
+        result = make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert result.path.read_bytes() == SOURCE_BYTES
+        assert not result.path.is_symlink()
+        assert _names(work_dir) == [f"{HASH}.jpg"]
+        if dangling:
+            assert not victim.exists()
+        else:
+            assert victim.read_bytes() == b"victim"
+
+    def test_a_link_planted_after_the_cleanup_is_refused(
+        self, source: Path, work_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        victim = tmp_path / "victim.bin"
+        victim.write_bytes(b"victim")
+        real_open = os.open
+
+        def racing_open(path: object, flags: int, mode: int = 0o777) -> int:
+            Path(str(path)).symlink_to(victim)
+            return real_open(path, flags, mode)
+
+        monkeypatch.setattr(os, "open", racing_open)
+        with pytest.raises(FileExistsError):
+            make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert victim.read_bytes() == b"victim"
+        assert _names(work_dir) == []
+
     def test_stale_working_copy_of_a_queued_row_is_replaced(
         self, source: Path, work_dir: Path
     ) -> None:
@@ -221,6 +257,25 @@ class TestWriteNew:
         assert write_new(dest, b"thumb-bytes") is True
         assert dest.read_bytes() == b"thumb-bytes"
         assert _names(dest.parent) == [dest.name]
+
+    @pytest.mark.parametrize("dangling", [False, True])
+    def test_a_symlink_at_the_temp_name_is_never_written_through(
+        self, dest: Path, tmp_path: Path, dangling: bool
+    ) -> None:
+        # SAN-001.D16 / SAN-001.4.2: a planted link can't redirect the thumbnail.
+        victim = tmp_path / "victim.bin"
+        if not dangling:
+            victim.write_bytes(b"victim")
+        dest.parent.mkdir()
+        (dest.parent / f".{dest.name}.tmp").symlink_to(victim)
+        assert write_new(dest, b"thumb-bytes") is True
+        assert dest.read_bytes() == b"thumb-bytes"
+        assert not dest.is_symlink()
+        assert _names(dest.parent) == [dest.name]
+        if dangling:
+            assert not victim.exists()
+        else:
+            assert victim.read_bytes() == b"victim"
 
     @pytest.mark.parametrize("code", [errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV])
     def test_fallback_writes_when_hard_links_are_unsupported(

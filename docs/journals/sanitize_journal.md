@@ -94,7 +94,7 @@ Decisions:
   - [x] SAN-001.3.2 — Results
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py` · branch `office/nibble-e4d1`
   - [x] SAN-001.4.1 — Public `is_structure_tag(tag)` and `is_allowed(tag, rules)` in `exif.py` for gate 2 (#58), one allow-list; unit tests
-  - [ ] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py` (closes FOP-001's stale-temp symlink item); regression tests
+  - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests
   - [ ] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`
   - [ ] SAN-001.4.4 — Entity wiring through SAN-001.3's `EntityDetector`, with the replayed and fail-closed entity tests (after #52 merges)
   - [ ] SAN-001.4.5 — Results
