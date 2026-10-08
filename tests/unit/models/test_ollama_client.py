@@ -86,6 +86,19 @@ def test_think_is_sent_only_when_set(think: bool) -> None:
     assert json.loads(seen[0].content)["think"] is think
 
 
+def test_raw_is_absent_by_default() -> None:
+    seen, handler = capture()
+    generate(client(handler))
+    generate(client(handler), raw=False)
+    assert all("raw" not in json.loads(r.content) for r in seen)
+
+
+def test_raw_is_sent_when_set() -> None:
+    seen, handler = capture()
+    generate(client(handler), raw=True)
+    assert json.loads(seen[0].content)["raw"] is True
+
+
 def test_options_and_keep_alive_pass_through_unchanged() -> None:
     seen, handler = capture()
     options = {"temperature": 0.2, "seed": 42, "num_ctx": 4096, "top_p": 0.9}
@@ -132,6 +145,16 @@ def raising(exc_type: type[httpx.TransportError]) -> Handler:
         (lambda r: httpx.Response(200, json=["list"]), "no text `response`"),
         (lambda r: httpx.Response(200, json={"response": "{broken"}), "not valid JSON"),
         (lambda r: httpx.Response(200, json={"response": "[1, 2]"}), "not a JSON object"),
+        # MOD-001.D5: a runaway answer cut at num_predict fails closed, empty or not.
+        (
+            lambda r: httpx.Response(200, json={"response": "", "done_reason": "length"}),
+            "cut off at the token limit",
+        ),
+        (
+            lambda r: httpx.Response(200, json={"response": "{}", "done_reason": "length"}),
+            "cut off at the token limit",
+        ),
+        (lambda r: httpx.Response(200, json={"response": ""}), "not valid JSON"),
     ],
 )
 def test_each_failure_is_one_ollama_error(handler: Handler, message: str) -> None:
