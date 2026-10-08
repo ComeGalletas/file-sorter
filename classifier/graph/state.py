@@ -5,6 +5,7 @@ from types import MappingProxyType
 from typing import TypedDict
 
 from classifier.graph.ingest import IngestResult
+from classifier.graph.sanitize import SanitizeResult
 
 
 class GraphState(TypedDict):
@@ -29,4 +30,12 @@ class RunResult:
         found = self.counts["ingest"]
         if not isinstance(found, IngestResult):
             raise TypeError(f"counts['ingest'] is {type(found).__name__}, not an IngestResult")
+        return found
+
+    @property
+    def sanitize(self) -> SanitizeResult:
+        """The sanitize node's counts (CLI-003 and gate 2 read these)."""
+        found = self.counts["sanitize"]
+        if not isinstance(found, SanitizeResult):
+            raise TypeError(f"counts['sanitize'] is {type(found).__name__}, not a SanitizeResult")
         return found

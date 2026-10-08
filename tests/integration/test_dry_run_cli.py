@@ -18,6 +18,10 @@ from classifier.cli.dry_run_report import COLUMNS
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
+RULES = {
+    "exif": {"mode": "strip_all", "keep": ["Orientation", "DateTimeOriginal"]},
+    "rules": [{"id": "test-name", "type": "literal", "values": ["Zorvane"], "replace": "[P]"}],
+}
 
 pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
 
@@ -34,6 +38,9 @@ def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Pat
     results_root = tmp_path / results
     data["paths"] = {"source_root": str(source), "results_root": str(results_root)}
     data["db"] = {"dsn": None}  # CFG-001.D2: the DSN comes from DB_DSN only
+    rules = tmp_path / "rules.yaml"  # synthetic: never the local sanitize.yaml (SAN-001.4)
+    rules.write_text(yaml.safe_dump(RULES), encoding="utf-8")
+    data["sanitizer"]["rules_file"] = str(rules)
     config = tmp_path / "config.yaml"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     return source, results_root, config
@@ -84,27 +91,28 @@ def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> N
     paths = [row["source_path"] for row in body]
     assert paths == sorted(paths)
     assert all(Path(p).parent == source for p in paths)
-    assert sorted(row["status"] for row in body) == ["queued", "queued", "skipped"]
+    assert sorted(row["status"] for row in body) == ["sanitized", "sanitized", "skipped"]
     skipped = next(row for row in body if row["status"] == "skipped")
     assert skipped["reason"]
     assert all(row["proposed_output"] == "" for row in body)
     assert all(row["short_hash"] == row["source_hash"][:8] for row in body)
 
 
-def test_writes_only_reports_under_results_and_nothing_under_source(
+def test_writes_only_work_and_reports_under_results_and_nothing_under_source(
     tmp_path: Path, schema_dsn: str
 ) -> None:
     source, results, config = _setup(tmp_path)
     before = _tree(source)
     assert _invoke(config, schema_dsn, "--csv").exit_code == 0
     assert _tree(source) == before
-    assert [p.name for p in results.iterdir()] == ["reports"]
+    # DESIGN §3: before M7 only .work/ (SAN-001.4) and reports/ exist under results_root.
+    assert sorted(p.name for p in results.iterdir()) == [".work", "reports"]
 
 
-def test_without_csv_nothing_is_written_to_results(tmp_path: Path, schema_dsn: str) -> None:
+def test_without_csv_only_work_is_written_to_results(tmp_path: Path, schema_dsn: str) -> None:
     _, results, config = _setup(tmp_path)
     assert _invoke(config, schema_dsn).exit_code == 0
-    assert not results.exists()
+    assert [p.name for p in results.iterdir()] == [".work"]
 
 
 def test_second_run_reports_everything_known_and_adds_no_rows(

@@ -9,8 +9,8 @@ def _stub(name: str) -> Node:
     return Node(name, lambda conn, ctx: None)
 
 
-def test_m1_registers_only_ingest() -> None:
-    assert [n.name for n in REGISTRY] == ["ingest"]
+def test_m2_registers_ingest_then_sanitize() -> None:
+    assert [n.name for n in REGISTRY] == ["ingest", "sanitize"]  # SAN-001.4
 
 
 def test_pipeline_order_is_the_design_order() -> None:

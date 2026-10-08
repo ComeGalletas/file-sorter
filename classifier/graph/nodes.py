@@ -6,24 +6,34 @@ commits once per node (PIPE-001.D3).
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import httpx
 import psycopg
 
+from classifier.config import Config
 from classifier.graph.ingest import ingest
+from classifier.graph.sanitize import sanitize
 
-# DESIGN.md §3 / C-7: the order later milestones fill in. Only `ingest` exists in M1.
+# DESIGN.md §3 / C-7: the order later milestones fill in.
 PIPELINE_ORDER = ("ingest", "sanitize", "classify", "caption", "retrieve", "name", "fileops")
 FILEOPS = "fileops"  # the one node a dry run skips (R-PIPE-2)
 
 
 @dataclass(frozen=True)
 class NodeContext:
-    """What a node gets besides the connection: the folder to ingest and the run's mode."""
+    """What a node gets besides the connection: the roots, the config and the run's mode.
+
+    `ollama_transport` is for tests only: the recorded-response replay (TST-005.1) or a
+    failing fake. The app leaves it None and talks to the compose `ollama` service.
+    """
 
     source_root: Path
     dry_run: bool
+    results_root: Path
+    config: Config = field(repr=False)
+    ollama_transport: httpx.BaseTransport | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -36,7 +46,7 @@ def _ingest(conn: psycopg.Connection, ctx: NodeContext) -> object:
     return ingest(conn, ctx.source_root)
 
 
-REGISTRY: tuple[Node, ...] = (Node("ingest", _ingest),)
+REGISTRY: tuple[Node, ...] = (Node("ingest", _ingest), Node("sanitize", sanitize))
 
 
 def plan(nodes: tuple[Node, ...], dry_run: bool) -> tuple[Node, ...]:

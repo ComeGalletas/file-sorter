@@ -72,6 +72,18 @@ Decisions:
   - treat **any** exception from `make_working_copy`, `strip_metadata`, `read_tags`, `make_thumbnail` or the entity rule as a failed file. That includes a bare `RecursionError` and a decode error from Pillow. The file then goes to `error` with a fixed reason (D2), recorded as text or `type(exc).__name__`, never `str(exc)`;
   - check that the working copy's resolved path lies under the results `.work/` and never under `source_root`, because a symlinked parent folder could redirect a write;
   - log only hashes, counts and fixed reasons, checked with a planted-secret test over the captured logs.
+- **SAN-001.D17** — **The node's fixed reasons** (lead, 2026-10-07, on #56). `files.error` after the `sanitize` node holds exactly one of these, and `SanitizeResult.by_reason` counts them (CLI-003.1 prints it). The log line adds the exception's type name, never its message.
+
+  | Reason | When |
+  | --- | --- |
+  | `sanitize_entity_unavailable` | the entity rule's backend failed (D2) |
+  | `sanitize_metadata_residual` | `MetadataStripError` from the strip or its read-back (D2) |
+  | `sanitize_name_failed` | any other exception from the name step, or a `source_path` outside `source_root` |
+  | `sanitize_working_copy_failed` | any other exception from `make_working_copy` (source vanished, I/O) |
+  | `sanitize_path_escape` | a published copy or thumbnail doesn't resolve to its place in `.work/`, or resolves into `source_root` (D16) |
+  | `sanitize_thumbnail_failed` | any exception from `make_thumbnail` |
+  | `sanitize_ledger_rejected` | a database error inside the file's savepoint |
+- **SAN-001.D18** — **A re-sanitized file's `sanitize_log` rows are replaced** (lead, 2026-10-07, on #56). The file's savepoint deletes its existing rows before inserting the new ones, so the log describes the current working copy (PIPE-001.D2: a node overwrites its own outputs). A row re-queued after a later error therefore never carries two sets.
 
 ## SAN-001 — Plan
 
@@ -95,7 +107,7 @@ Decisions:
 - [ ] SAN-001.4 — The `sanitize` graph node · #56 · acceptance: `tests/integration/test_sanitize_node.py` · branch `office/nibble-e4d1`
   - [x] SAN-001.4.1 — Public `is_structure_tag(tag)` and `is_allowed(tag, rules)` in `exif.py` for gate 2 (#58), one allow-list; unit tests
   - [x] SAN-001.4.2 — `O_NOFOLLOW` temp files in `copy_move.py`: a stale temp is unlinked (the link, never its target), then opened `O_EXCL | O_NOFOLLOW`. This closes FOP-001's stale-temp symlink item; regression tests
-  - [ ] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`
+  - [x] SAN-001.4.3 — `NodeContext`/`run`/`RunResult.sanitize`/`SanitizeResult`, the node with the D16 checks and D17 reasons, `REGISTRY`; the acceptance test; the dry-run tests updated for the new node and `.work/`. Found by the planted-secret test: Pillow's DEBUG records quote raw tag values while ingest decodes an original, so the `PIL` logger is capped at INFO where images are opened (`ingest_files.py`, `thumbs.py`)
   - [ ] SAN-001.4.4 — Entity wiring through SAN-001.3's `EntityDetector`, with the replayed and fail-closed entity tests (after #52 merges)
   - [ ] SAN-001.4.5 — Results
 

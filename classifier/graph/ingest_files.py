@@ -5,6 +5,7 @@ prints or logs a path or a file name (CLAUDE.md "Hard rules").
 """
 
 import hashlib
+import logging
 import os
 import struct
 from collections.abc import Iterator
@@ -16,6 +17,9 @@ from PIL import Image
 from pillow_heif import register_heif_opener
 
 register_heif_opener()  # R-ING-6: HEIC decodes through Pillow
+# SAN-001.D16: Pillow's DEBUG records quote raw tag values (a TIFF's Artist, say) as it
+# decodes an original, so its loggers never go below INFO, whatever the root level.
+logging.getLogger("PIL").setLevel(logging.INFO)
 
 _CHUNK = 1024 * 1024
 SHORT_HASH_LEN = 8  # R-ING-1

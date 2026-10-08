@@ -6,6 +6,7 @@ here logs or prints a path or a file name (CLAUDE.md "Hard rules").
 """
 
 import io
+import logging
 from pathlib import Path
 
 from PIL import Image
@@ -14,6 +15,8 @@ from pillow_heif import register_heif_opener
 from classifier.fileops.copy_move import _SOURCE_HASH, write_new
 
 register_heif_opener()  # R-ING-6: HEIC decodes through Pillow
+# SAN-001.D16: Pillow's DEBUG records quote raw tag values, so never below INFO.
+logging.getLogger("PIL").setLevel(logging.INFO)
 
 _ALPHA_MODES = frozenset({"RGBA", "LA", "PA", "RGBa", "La"})
 
