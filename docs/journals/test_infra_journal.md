@@ -421,11 +421,18 @@ references or host paths here. Use hashes.
 - `tests/recordings/replay.py` holds TST-005's Ollama replay (TST-005.D5 key, `RecordingError(BaseException)`). The tier audit (TST-004) already keeps `fixtures/labels.csv` out of the `unit`, `db` and `integration` tiers.
 - `fixtures/labels.example.csv` shows the columns, and its `tags` hold `suggestive-negative`.
 - `make gate-3` starts `ollama` (RUN-011), which the sanitize node's entity rule needs.
-- **TST-008.D1** — **What gate 3 and the calibration publish** (**the human's call**). Recommended:
-  - **On the box:** each CLS-001.D5 criterion prints its verdict and a percentage to one decimal.
-  - **In public** (the plan's Results, journals, PRs, issues): each criterion's verdict, plus the percentage rounded down to a whole percent. A precise percentage can reveal the size of the set it was measured on (the lesson from PR #84).
-  - Never a per-category, per-label or per-tag breakdown, a confusion matrix or a count, anywhere public. Per-category detail prints only on the console, behind `--detail`, and is never pasted.
-- **TST-008.D2** — **How calibration-only rows are marked** (**the human's call**). DESIGN §11 permits rows that are used for calibration and don't count toward the gate. Recommended: a `calibration-only` tag in `tags`. The gate skips rows with that tag, and CLS-003.1 uses them for the NSFW sweep only.
+- **TST-008.D1** — **What gate 3 and the calibration publish** (confirmed by the human, 2026-10-12, with one change from the recommendation; rule change DOC-008.D3, PR #105, DESIGN §11 M3 row).
+  - **In public** (the plan's Results, journals, PRs, issues):
+    - format, topic and unrecognized: the verdict, plus the percentage rounded down to a whole percent;
+    - **the adult and `suggestive-negative` criteria: the verdict only, with no percentage** (the human's change).
+  - **Never anywhere public:** a per-category, per-label or per-tag breakdown, a confusion matrix, or a count.
+  - **On the box:** one-decimal percentages and per-category detail print only on the console, behind `--detail`, and are never pasted.
+- **TST-008.D2** — **Calibration-only rows carry the `calibration-only` tag** (confirmed by the human, 2026-10-12, as recommended). DESIGN §11 permits rows that are used for calibration and don't count toward the gate. The gate skips rows with that tag, and CLS-003.1 uses them for the NSFW sweep only.
+- **TST-008.D6** — **The default output is the public form** (lead, 2026-10-12, applying D1). Without `--detail`, `scripts/gate_3.py` and `eval/classify_eval.py` print exactly what D1 allows in public:
+  - format, topic and unrecognized: the verdict and a whole percent, rounded down;
+  - adult and `suggestive-negative`: `ok` or `FAIL` only.
+
+  So the G1 output can be pasted into the plan as is. `--detail` adds the one-decimal figures and the per-category detail, for the box console only.
 - **TST-008.D3** — **The vision recording key** (lead, 2026-10-12; extends TST-005.D5).
   - **The key:** the SHA-256, in UTF-8, of `json.dumps({model, kind, input}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
     - `kind` is `image`, `text` or `nsfw`.
@@ -447,6 +454,6 @@ references or host paths here. Use hashes.
 
 - [ ] TST-008.1 — Vision replay: the TST-008.D3 recording format, a replay `VisionBackend`, a `gpu` recorder, the lint extended · #96 · acceptance: `tests/devtools/test_vision_recordings.py`
 - [ ] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
-- [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4); the G1 run · #103 · acceptance: `scripts/gate_3.py`
+- [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
 
 ## TST-008 — Results
