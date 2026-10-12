@@ -283,6 +283,6 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLS-003 — Tasks
 
 - [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
-- [ ] CLS-003.2 — Commit the calibrated values the human approved (`config.yaml`; migration `0004`) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
+- [ ] CLS-003.2 — Commit the calibrated values the human approved, where CLS-003.D2 decides (recommended: `config.yaml` and migration `0004`) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
 
 ## CLS-003 — Results
