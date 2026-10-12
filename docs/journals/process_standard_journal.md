@@ -145,3 +145,36 @@
   - The miscount in Details is fixed.
 - **Tests:** the default tiers, 442 passed. `docker compose config` shows the key on `app` and `test` and not on `fetch`.
 - **Self-rating:** 9/10, proud: yes. Gap: no unit test covers `init`'s key generation, as for the existing secrets; it was checked by hand.
+
+---
+
+## DOC-008 — Requirement (human, 2026-10-12)
+
+**Objective:** carry the M3 G0 answers that change the spec, the rules or the desk briefs, in their own PR (RUN-007.D2).
+
+**Details:** the human accepted all six decisions in `docs/plans/m3.md` (PR #104) as recommended, with one tweak to TST-008.D1. The lead records the rest in its journals: CLS-003.D1 (calibration scope B), CLS-003.D2 (values in `config.yaml` and migration `0004`) and TST-008.D2 (a `calibration-only` tag).
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-008 — Confirmed reading
+
+- **DOC-008.D1 (= CLS-002.D10, option A):** **classify stores the SigLIP image vector** as `files.image_vec vector(1152)`, for `reclassify` and M6 to reuse (DESIGN.md §5). It stays in the local ledger. (human, 2026-10-12)
+- **DOC-008.D2 (decision 6):** **the privacy checklist is in every worker's brief**: `.claude/roles/README.md`, as the plan front-loads it into every issue. `ml.md` names ML's ownership of `classifier/models/classify_rules.py`, and says calibrated values stay proposals until the human approves them (CLS-002.D1, CLS-003). CLAUDE.md's "Current phase" says M3. (human, 2026-10-12)
+- **DOC-008.D3 (= TST-008.D1, with the human's tweak):** **what gate 3 and the calibration publish.** In public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only** (DOC-005.D1). There is no breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. (DESIGN.md §11, M3 row.) (human, 2026-10-12)
+
+and then (the plan's merged version, PR #104 rounds 2 and 3, added three items and two spec edits; the human accepted all, 2026-10-12):
+
+- **DOC-008.D4 (= CLS-002.D12, D2, D9):** recorded in DESIGN.md §13 as C-22 to C-24. **C-22:** an M3 dry run stops at `classified` (option A). **C-23:** R-CLS-6's fall-through never picks the runner-up. **C-24:** `nsfw.mode: separate` fails fast until specified. (human, 2026-10-12)
+- **DOC-008.D5 (= CLS-003.D2's spec change):** R-CLS-8 now names where calibrated values land: `config.yaml` for per-axis defaults, and a seed-data migration after `0003` for overrides and prompt edits, committed only after the human approves the values. (human, 2026-10-12)
+- **DOC-008.D6:** the M3 gate row's extra-samples clause is neutral: "rows tagged `calibration-only`", not a description of what the fixtures hold. The privacy auditor flagged the old wording while reviewing PR #104. (human, 2026-10-12)
+
+## DOC-008 — Tasks
+
+- [x] DOC-008.1 — DESIGN.md §5 (`image_vec`) and §11 (published results); CLAUDE.md "Current phase"; `ml.md`; the privacy checklist in `.claude/roles/README.md`
+- [x] DOC-008.2 — DESIGN.md §13 C-22 to C-24 (D4), R-CLS-8 (D5) and the M3 gate row's clause (D6)
+- [x] DOC-008.3 — Review round 1 (PR #105): CLAUDE.md's no-aggregates rule and README checklist items 1 and 10 carry D3's carve-out, so the three texts agree; the reason clauses after "verdict only" are removed (privacy)
+
+## DOC-008 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Spec, rule and brief text; no code.
