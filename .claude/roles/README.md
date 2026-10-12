@@ -45,7 +45,7 @@ First message to the desk: `You are the <role>. Read .claude/roles/<file>.md, th
 
 The Privacy auditor checks every item on round 1. Front-loading it is the M2 lesson: PRs that followed it passed on the first round.
 
-1. **Public repo.** Never put image file names, captions, references, subjects, host paths, or any value from `fixtures/labels.csv` or `sanitize.yaml` in code, tests, recordings, commits, PRs, issues or journals. **No aggregates** about the human's folder or fixtures either: counts, sizes, the type mix, label or category distributions, per-category accuracy (DOC-005.D1).
+1. **Public repo.** Never put image file names, captions, references, subjects, host paths, or any value from `fixtures/labels.csv` or `sanitize.yaml` in code, tests, recordings, commits, PRs, issues or journals. **No aggregates** about the human's folder or fixtures either: counts, sizes, the type mix, label or category distributions, per-category accuracy (DOC-005.D1). Real-fixture metrics are published only in the form DESIGN.md §11 allows: a verdict per criterion, plus a whole-percent figure where §11 names one (TST-008.D1).
 2. **Logs, console, test output and errors** carry `short_hash` or `source_hash`, never `source_path`, a raw or sanitized file name, a label value or a rule value.
 3. **Models get pixels of the sanitized working copy only**, through `classifier/models/` (P-2). The source path and the raw name never reach a model.
 4. **`repr=False`** on every field that holds a path, a name, a label row's values or a rule value, result types included. Each such type gets one repr/str test with planted synthetic secrets.
@@ -54,7 +54,7 @@ The Privacy auditor checks every item on round 1. Front-loading it is the M2 les
 7. **Encodes use `surrogatepass`** (or reject cleanly), so a `UnicodeError` never quotes a character.
 8. **Tests:** synthetic images generated in code; never read `fixtures/` outside the `gpu` and `gate` tiers. Synthetic names, places and categories are unmistakably artificial coinages, never plausible real ones. **Never synthesise or describe adult content**: NSFW tests use benign synthetic images and replayed scores.
 9. **Recordings** are keyed by hashes and made from synthetic inputs only.
-10. **Write-ups** (PR bodies, commit messages, issue comments, job logs) carry hashes, test counts and pass/fail. Never a per-source or per-category split of a real-fixture result, and never anything about what the human's local files contain or lack.
+10. **Write-ups** (PR bodies, commit messages, issue comments, job logs) carry hashes, test counts and pass/fail. A real-fixture result appears only in the form DESIGN.md §11 allows, never as a per-source or per-category split. Never anything about what the human's local files contain or lack.
 
 Never edit outside your role's paths; open an issue for the owner instead. Your own task's tests are yours: write them in the same commit as the code, under `tests/<tier>/<package>/`. The shared test infrastructure is QA's (DOC-004.D1). If your task records model responses, commit them too, under `tests/recordings/<package>/`, from synthetic strings only (TST-005.D1).
 

@@ -160,7 +160,7 @@
 
 - **DOC-008.D1 (= CLS-002.D10, option A):** **classify stores the SigLIP image vector** as `files.image_vec vector(1152)`, for `reclassify` and M6 to reuse (DESIGN.md §5). It stays in the local ledger. (human, 2026-10-12)
 - **DOC-008.D2 (decision 6):** **the privacy checklist is in every worker's brief**: `.claude/roles/README.md`, as the plan front-loads it into every issue. `ml.md` names ML's ownership of `classifier/models/classify_rules.py`, and says calibrated values stay proposals until the human approves them (CLS-002.D1, CLS-003). CLAUDE.md's "Current phase" says M3. (human, 2026-10-12)
-- **DOC-008.D3 (= TST-008.D1, with the human's tweak):** **what gate 3 and the calibration publish.** In public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**, because so few images fall under them that a percentage would reveal their count (DOC-005.D1). There is no breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. (DESIGN.md §11, M3 row.) (human, 2026-10-12)
+- **DOC-008.D3 (= TST-008.D1, with the human's tweak):** **what gate 3 and the calibration publish.** In public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only** (DOC-005.D1). There is no breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. (DESIGN.md §11, M3 row.) (human, 2026-10-12)
 
 and then (the plan's merged version, PR #104 rounds 2 and 3, added three items and two spec edits; the human accepted all, 2026-10-12):
 
@@ -172,6 +172,7 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 - [x] DOC-008.1 — DESIGN.md §5 (`image_vec`) and §11 (published results); CLAUDE.md "Current phase"; `ml.md`; the privacy checklist in `.claude/roles/README.md`
 - [x] DOC-008.2 — DESIGN.md §13 C-22 to C-24 (D4), R-CLS-8 (D5) and the M3 gate row's clause (D6)
+- [x] DOC-008.3 — Review round 1 (PR #105): CLAUDE.md's no-aggregates rule and README checklist items 1 and 10 carry D3's carve-out, so the three texts agree; the reason clauses after "verdict only" are removed (privacy)
 
 ## DOC-008 — Results
 
