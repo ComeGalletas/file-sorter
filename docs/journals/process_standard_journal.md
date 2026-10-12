@@ -162,9 +162,16 @@
 - **DOC-008.D2 (decision 6):** **the privacy checklist is in every worker's brief**: `.claude/roles/README.md`, as the plan front-loads it into every issue. `ml.md` names ML's ownership of `classifier/models/classify_rules.py`, and says calibrated values stay proposals until the human approves them (CLS-002.D1, CLS-003). CLAUDE.md's "Current phase" says M3. (human, 2026-10-12)
 - **DOC-008.D3 (= TST-008.D1, with the human's tweak):** **what gate 3 and the calibration publish.** In public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**, because so few images fall under them that a percentage would reveal their count (DOC-005.D1). There is no breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. (DESIGN.md §11, M3 row.) (human, 2026-10-12)
 
+and then (the plan's merged version, PR #104 rounds 2 and 3, added three items and two spec edits; the human accepted all, 2026-10-12):
+
+- **DOC-008.D4 (= CLS-002.D12, D2, D9):** recorded in DESIGN.md §13 as C-22 to C-24. **C-22:** an M3 dry run stops at `classified` (option A). **C-23:** R-CLS-6's fall-through never picks the runner-up. **C-24:** `nsfw.mode: separate` fails fast until specified. (human, 2026-10-12)
+- **DOC-008.D5 (= CLS-003.D2's spec change):** R-CLS-8 now names where calibrated values land: `config.yaml` for per-axis defaults, and a seed-data migration after `0003` for overrides and prompt edits, committed only after the human approves the values. (human, 2026-10-12)
+- **DOC-008.D6:** the M3 gate row's extra-samples clause is neutral: "rows tagged `calibration-only`", not a description of what the fixtures hold. The privacy auditor flagged the old wording while reviewing PR #104. (human, 2026-10-12)
+
 ## DOC-008 — Tasks
 
 - [x] DOC-008.1 — DESIGN.md §5 (`image_vec`) and §11 (published results); CLAUDE.md "Current phase"; `ml.md`; the privacy checklist in `.claude/roles/README.md`
+- [x] DOC-008.2 — DESIGN.md §13 C-22 to C-24 (D4), R-CLS-8 (D5) and the M3 gate row's clause (D6)
 
 ## DOC-008 — Results
 
