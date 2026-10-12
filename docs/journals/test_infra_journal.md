@@ -423,9 +423,9 @@ references or host paths here. Use hashes.
 - `make gate-3` starts `ollama` (RUN-011), which the sanitize node's entity rule needs.
 - **TST-008.D1** — **What gate 3 and the calibration publish** (**the human's call**). Recommended:
   - **On the box:** each CLS-001.D5 criterion prints its verdict and a percentage to one decimal.
-  - **In public** (the plan's Results, journals, PRs, issues): each criterion's verdict, plus the percentage rounded down to a whole percent. A precise percentage over a small labelled set reveals its size (the lesson from PR #84).
+  - **In public** (the plan's Results, journals, PRs, issues): each criterion's verdict, plus the percentage rounded down to a whole percent. A precise percentage can reveal the size of the set it was measured on (the lesson from PR #84).
   - Never a per-category, per-label or per-tag breakdown, a confusion matrix or a count, anywhere public. Per-category detail prints only on the console, behind `--detail`, and is never pasted.
-- **TST-008.D2** — **Calibration-only samples** (**the human's call**). DESIGN §11 allows extra box-only adult samples for calibration that don't count toward the gate. Recommended: mark them with the tag `calibration-only` in `tags`. The gate skips those rows, and CLS-003.1 uses them for the NSFW sweep only. The human adds them locally if there are any.
+- **TST-008.D2** — **How calibration-only rows are marked** (**the human's call**). DESIGN §11 permits rows that are used for calibration and don't count toward the gate. Recommended: a `calibration-only` tag in `tags`. The gate skips rows with that tag, and CLS-003.1 uses them for the NSFW sweep only.
 - **TST-008.D3** — **The vision recording key** (lead, 2026-10-12; extends TST-005.D5).
   - **The key:** the SHA-256, in UTF-8, of `json.dumps({model, kind, input}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
     - `kind` is `image`, `text` or `nsfw`.
