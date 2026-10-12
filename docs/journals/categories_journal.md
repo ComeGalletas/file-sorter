@@ -1,7 +1,7 @@
 # Categories — journal
 
-**ID:** CLS-001 · **Systems:** CLS (+ NAME, FOP, DB, API, TST) · **Type:** feature · **Status:** proposed ·
-**Milestone:** m3 (design now; built in M3) · **Issues:** — (pre-repo) · **Branch:** pre-repo, committed at bootstrap
+**ID:** CLS-001 (+ CLS-002, CLS-003, FOP-002, CLI-004) · **Systems:** CLS (+ NAME, FOP, DB, API, TST, MOD, CLI) · **Type:** feature · **Status:** CLS-001 design done; its build (CLS-002, CLS-003, FOP-002, CLI-004) proposed for M3 ·
+**Milestone:** m3 (CLS-001 designed pre-repo) · **Issues:** CLS-001: — (pre-repo); M3: see each Tasks section · **Branch:** CLS-001 pre-repo, committed at bootstrap; M3 per task (`office/*`)
 
 ---
 
@@ -75,8 +75,8 @@ and then (human review of the noted rows, 2026-10-05):
 - [x] CLS-001.3 — Convert the xlsx into `fixtures/labels.csv` (the unsettled rows get notes) → `pre-repo`
 - [x] CLS-001.4 — Human: review the noted rows → decisions D9–D13 (2026-10-05)
 - [x] CLS-001.7 — Re-convert `labels.csv` with D9–D14 (`game-screenshots`, topics `memes`/`documents`, undecided blanks, `tags`); update DESIGN.md (R-CLS-1, R-CLS-3b, formats and topics tables, M3 gate, C-21) → `pre-repo`
-- [ ] CLS-001.5 — M3: seed migration with both axes and their prompts; per-axis scoring and folder layout (issue at M3 G0)
-- [ ] CLS-001.6 — M3: `scripts/gate_3.py` measures format, topic and NSFW per D5 (issue at M3 G0)
+- ~~CLS-001.5~~ superseded at M3 G0 (lead, 2026-10-12): too big for one day, so it was split into tasks under new IDs: DB-003.1 (seed migration), MOD-002.1 and MOD-002.2 (scoring), CLS-002.1 and CLS-002.2 (rules and node), FOP-002.1 (folder layout).
+- ~~CLS-001.6~~ superseded at M3 G0 (lead, 2026-10-12): TST-008.2 (label loader) and TST-008.3 (`scripts/gate_3.py`).
 
 ## CLS-001 — Results
 
@@ -87,4 +87,200 @@ and then (human review of the noted rows, 2026-10-05):
 - **Triage:** large (contract change: data model, config schema, folder layout, gate) · no tests (pre-code). Both conversion scripts verified their own output: the row count, header, no duplicates, vocabulary membership, topic ≠ format, and exactly the two expected overrides.
 - **v1 conversion (CLS-001.3):** superseded by .7.
 - **Self-rating:** 9/10, proud: yes. Every label rule is a confirmed decision, and the conversion is deterministic and re-runnable. Remaining gap: some topics have very few examples, so their individual accuracy can't be measured; they count only toward the overall ≥ 85% topic figure.
-- **Deferred:** the conversion script lives in the session scratchpad. M3's QA task re-implements the label loader in `tests/` against the new columns.
+- **Deferred:** the conversion script lives in the session scratchpad. M3's QA task re-implements the label loader in `tests/` against the new columns. (At M3 G0 this became TST-008.2, in `scripts/`, so both the gate and the calibration harness can use it.)
+
+---
+
+## CLS-002 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Give every sanitized file exactly one format (or the fallback `unsorted`) and at most one topic, scored independently from one SigLIP embedding, with the NSFW branch on top.
+- **Details:**
+  - **Rules (CLS-002.1):** from each axis's per-category scores, choose:
+    - the format by R-CLS-3: `min_score` and `classify.format.margin`, else `unsorted` with `needs_review = true, review_reason = unsorted`. The best topic is still recorded;
+    - the topic by R-CLS-3a: `min_score` and `classify.topic.margin`, else no topic (`topic = null`), which is not a review case (CLS-001.D7);
+    - with R-CLS-3b (a topic never repeats its format), R-CLS-4 (nesting within one axis) and R-CLS-6 (per-category `branch`).
+  - **Node (CLS-002.2):** a `classify` graph node takes `sanitized` rows to `classified`.
+    - It reads the first frame (R-ING-6) of each row's sanitized working copy, never the source (P-2).
+    - It embeds and gates the whole batch (R-PIPE-1), and scores both axes against the prompts in `category_prompts` (DB-003).
+    - It writes `branch`, `nsfw_score`, `format`, `topic`, `format_scores`, `topic_scores`, `needs_review` and `review_reason` (plus the image vector if CLS-002.D10 is A).
+- **Constraint:**
+  - P-1 and P-2: originals are never opened. Pixels go only to local models, through `classifier/models/`.
+  - Thresholds, margins and prompts come from `config.yaml` and Postgres, never from code (P-5). They are hand-tuned values (CLAUDE.md §1.7).
+  - Privacy checklist up front (`docs/plans/m3.md`).
+- **Implements:** R-CLS-0, R-CLS-1, R-CLS-3, R-CLS-3a, R-CLS-3b, R-CLS-4, R-CLS-6, R-PIPE-1, P-2, P-4, P-6, P-7; CLS-001.D1, D7, D8, D10, D12. With MOD-002: R-CLS-2.
+
+## CLS-002 — Confirmed reading
+
+What the code and DESIGN.md already say:
+
+- `files` already has `branch`, `nsfw_score`, `animated`, `format`, `topic`, `format_scores`, `topic_scores`, `needs_review` and `review_reason` (DB-001). Ingest already sets `animated` (ING-001.D3). There is no vector column. `files.status` already has `classified`.
+- `PIPELINE_ORDER` lists `classify` third, and `REGISTRY` has `ingest` and `sanitize` (`classifier/graph/nodes.py`). `NodeContext` carries the config and a test seam (`ollama_transport`). Classify needs a second seam, for the vision models.
+- `config.yaml` already has:
+  - `classify.score: sigmoid`;
+  - each axis's `default_min_score: null` ("calibrated in M3", R-CLS-8) and `margin: 0.05`;
+  - `nsfw.threshold: 0.70`, `nsfw.mode: mirror` and `nsfw.root: Adult`.
+
+  Only CLS-003.2 changes these, after the human approves the values (CLAUDE.md §1.7).
+- There is no `categories` table yet; DB-003 adds it.
+- The image already has `transformers`, `sentencepiece`, `protobuf` and a CUDA torch build. `make models` has fetched the SigLIP and NSFW weights into the `hf` volume. `app` runs with `HF_HUB_OFFLINE=1`, and `test` mounts `hf` too.
+- `.claude/roles/ml.md` gives ML "both category axes (R-CLS-0 to R-CLS-3b)".
+- With no `name` node yet, a dry run ends at `classified` in M3. `proposed` arrives with naming (M5).
+
+Decisions:
+
+- **CLS-002.D1** — **Where the rules live** (lead, 2026-10-12). They go in one pure module, `classifier/models/classify_rules.py`, owned by ML. Both the node (Pipeline) and the calibration harness (ML, CLS-003.1) import it, so the eval and the gate measure the same rules. It takes scores and category records only: no db, no files, no models.
+- **CLS-002.D2** — **An ineligible winner falls back, not through** (lead, 2026-10-12; R-CLS-6 read literally).
+  - Each axis is ranked over all its categories, and the threshold, margin and nesting rules pick its winner.
+  - Then the branch check runs. A winner whose `branch` excludes the image's branch is not used: a `safe` category for an adult image, or an `nsfw` category for a safe image.
+  - In that case the format becomes `unsorted` (adult: `Adult/Unsorted/`), and the topic becomes none. The runner-up is not tried.
+- **CLS-002.D3** — **R-CLS-3b mechanics** (lead, 2026-10-12). The topic twin of the chosen format (same name) is removed from the topic candidates. R-CLS-3a then runs on the rest, with R-CLS-4, and the margin is taken against the next remaining topic. When the format is `unsorted`, nothing is removed.
+- **CLS-002.D4** — **Thresholds and ties** (lead, 2026-10-12).
+  - A category's `min_score` of null means its axis's `classify.<axis>.default_min_score`.
+  - If that default is null too, the node refuses to run before any row changes. The message names the key and no value.
+  - Ties sort by score descending, then by name, so the choice is deterministic.
+- **CLS-002.D5** — **Stored scores** (lead, 2026-10-12). `format_scores` and `topic_scores` each hold that axis's top 5 as `[{"category": <name>, "score": <float, 4 decimals>}]`, in descending order. The UI's top 3 (R-API-5) reads the first three.
+- **CLS-002.D6** — **R-CLS-4 nesting** (lead, 2026-10-12). Ancestry is the `parent_id` chain within one axis.
+  - If the top two are ancestor and descendant, the margin check is skipped, and the deeper one wins if it clears its own `min_score`.
+  - If it doesn't, the ancestor is judged by the normal rule, against the next category that is not its descendant.
+- **CLS-002.D7** — **Failures** (lead, 2026-10-12; like SAN-001.D2).
+  - **One file:** a missing or unreadable working copy sends the file to `error` with the fixed reason `classify_working_copy_unreadable`. The next run retries it from ingest (R-ING-2). The `error` transition clears the row's `sanitize_log` rows, through SAN-003.1's helper.
+  - **The whole run:** if a model can't load (missing weights, no GPU for SigLIP), the run stops before any row changes, with a fixed message naming `make models`.
+  - All errors are fixed text, unchained.
+- **CLS-002.D8** — **Only the working copy** (lead, 2026-10-12; P-2, ING-001.D2). The node opens `<results_root>/.work/<source_hash>.<ext>`, a path built from the hash and the extension, never from `source_path`. It refuses a working copy that is a symlink or not a regular file.
+- **CLS-002.D9** — **`nsfw.mode: separate` fails fast in M3** (lead, 2026-10-12). DESIGN.md names the mode but never specifies it, so only `mirror` is built. `separate` stops the run with a message naming the key, like SAN-001.D6.
+- **CLS-002.D10** — **Store the SigLIP image vector?** (**the human's call**). DESIGN §3 lists "SigLIP vector" among classify's writes, but §5 has no column for it.
+  - **A (recommended):** DB-003.1 adds `files.image_vec vector(1152)` (the pgvector extension already exists) and the node writes it. M6's retrieval and a later `reclassify` reuse it without re-embedding. It needs a one-line §5 change in a human-side PR.
+  - **B:** don't store it. M6 re-embeds at retrieval, which SigLIP's throughput makes cheap.
+- **CLS-002.D11** — **Prompt encoding and batch size** (lead, 2026-10-12). Prompts are encoded once per node call, from `category_prompts`. The batch size is a constant in `classifier/models/`, not a config key: it isn't a threshold, and DESIGN §6 has no key for it.
+
+## CLS-002 — Plan
+
+The contracts between the parallel tasks. Names are the worker's to propose in its plan comment; the shapes are fixed here.
+
+- **MOD-002.1 (ML):** `classifier/models/siglip.py`.
+  - `embed_images(images) -> float32 (n, 1152)` and `embed_texts(texts) -> (m, 1152)`, both L2-normalised.
+  - A pure scoring function: per image, `{category: score}`, either `sigmoid(logit_scale·cos + logit_bias)` or the raw cosine when `classify.score: cosine`, taking the max over the category's prompts (R-CLS-2, C-5).
+- **MOD-002.2 (ML):** `classifier/models/nsfw.py`: `nsfw_scores(images) -> float (n,)`.
+- **Seam:** both sit behind one `VisionBackend` protocol (MOD-002.D1). The node gets it from `NodeContext`: the real one by default, and TST-008.1's replay in tests.
+- **CLS-002.1 (ML):** `classifier/models/classify_rules.py`.
+  - `CategoryRule(id, axis, name, folder, min_score, branch, parent_id)`.
+  - `choose(format_scores, topic_scores, rules, branch, classify_config) -> Choice(format, topic, needs_review, review_reason, format_top, topic_top)`.
+- **CLS-002.2 (Pipeline):** `classifier/graph/classify.py`, registered after `sanitize`. It adds the vision seam to `NodeContext`, and returns a `ClassifyResult` (counts: classified, unsorted, no topic, adult, errors) for CLI-005 and gate 3. `RunResult` gets a `classify` accessor like `sanitize`.
+- **Tests:**
+  - `unit`: every R-CLS rule in CLS-002.1, including ties, nesting, branch fallback, twin removal and null thresholds.
+  - `integration`: the node on synthetic images, with vision outputs replayed in TST-008.1's format. The worker records them with the `gpu` recorder and commits them (TST-005.D1).
+
+## CLS-002 — Tasks
+
+- [ ] CLS-002.1 — Pure decision rules for both axes (R-CLS-3, 3a, 3b, 4, 6) in `classifier/models/classify_rules.py` · #90 · acceptance: `tests/unit/models/test_classify_rules.py`
+- [ ] CLS-002.2 — The `classify` node: working copy → vision backend → rules → ledger, with the `NodeContext` vision seam · #99 · acceptance: `tests/integration/test_classify_node.py`
+
+## CLS-002 — Results
+
+---
+
+## FOP-002 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Compute each file's result folder from its branch, topic, format and `animated` flag, and create the empty category folders.
+- **Details:**
+  - **FOP-002.1:** `classifier/fileops/layout.py` returns `[Adult/]<Topic|General>/<Format>[/Animated]` or `[Adult/]Unsorted` (R-CLS-5). It reads `folders.layout`, `folders.no_topic`, `folders.animated_subfolder` and `nsfw.root`, plus the categories' `folder` values. It is pure: no file system.
+  - **FOP-002.2:** `sync_folders` in `classifier/fileops/folders.py`, plus the `classifier categories sync-folders` command (R-CLS-7). Folder names are checked for case-insensitive collisions (R-FOP-9).
+- **Constraint:**
+  - Directories are only created, never removed or renamed (R-FOP-6; R-CLS-7: removing a category never deletes folders).
+  - Before M7, `results_root` holds only empty category folders, `.work/` and `reports/` (DESIGN §3).
+  - Errors are fixed text, with no path.
+- **Implements:** R-CLS-5, R-CLS-7 (`sync-folders`), R-FOP-9, R-ING-9; CLS-001.D2, D3.
+
+## FOP-002 — Confirmed reading
+
+- `config.yaml` already has `folders.auto_create`, `folders.layout: "{topic}/{format}"`, `folders.no_topic: General`, `folders.animated_subfolder: false` and `nsfw.root: Adult`.
+- `classifier/fileops/` has `copy_move.py` and `thumbs.py`.
+- **FOP-002.D1** — **One layout** (lead, 2026-10-12; CLS-001.D2). M3 supports only `folders.layout: "{topic}/{format}"`. Any other value fails fast, naming the key.
+- **FOP-002.D2** — **Nested topics** (lead, 2026-10-12; R-CLS-4). A nested category's folder is its parent's folder path plus its own (`Videogames/Racing`), and that whole path takes the topic's place in the layout.
+- **FOP-002.D3** — **`sync-folders` before M7** (lead, 2026-10-12; R-CLS-7 read literally). It creates:
+  - `General/<Format>/` for every format except `unsorted`, plus `Unsorted/`;
+  - the same under `nsfw.root` (mirror mode, R-CLS-5);
+  - `<Topic>/<Format>/` pairs, but only for rows with status `filed`, so none before M7;
+  - `.work/` and `reports/`.
+
+  `Animated/` subfolders are never made ahead of time. M7 creates them when it files. In M3 `dry-run` never calls `sync-folders`; M7 runs it before `sort` (`folders.auto_create`).
+- **FOP-002.D4** — **Case-insensitive collisions** (lead, 2026-10-12; R-FOP-9). The plan is checked before anything is made. It is refused if two folders at the same level differ only in case, or if a folder on disk differs only in case from a planned one. The error names the category names (configuration, not personal data) and never a path. Nothing is created on refusal.
+
+## FOP-002 — Tasks
+
+- [ ] FOP-002.1 — `classifier/fileops/layout.py`: the result folder for a branch, topic, format and `animated` flag · #91 · acceptance: `tests/unit/fileops/test_layout.py`
+- [ ] FOP-002.2 — `sync_folders` and `classifier categories sync-folders`, with case-insensitive collision checks · #98 · acceptance: `tests/db/fileops/test_sync_folders.py`
+
+## FOP-002 — Results
+
+---
+
+## CLI-004 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Manage both axes' categories from the CLI.
+- **Details:** `classifier categories`:
+  - `list`: axis, name, folder, `min_score` (or "axis default"), branch, parent and prompt count;
+  - `add --axis format|topic <name> --folder … --prompt … [--prompt …] [--min-score] [--branch any|safe|nsfw] [--parent]`;
+  - `edit` (folder, prompts, `min_score`, branch);
+  - `remove` (R-CLS-7).
+
+  FOP-002.2 adds `sync-folders` to the same group.
+- **Constraint:**
+  - Postgres only, no file system writes (P-5).
+  - `unsorted` can't be removed or given prompts.
+  - Names are unique per axis, and folders are unique case-insensitively among siblings.
+  - A parent must be on the same axis, with no cycles.
+  - Errors are fixed text and exit 2.
+- **Implements:** R-CLS-7, R-CLS-4, R-CLS-6, P-5.
+
+## CLI-004 — Confirmed reading
+
+- `classifier/cli/__init__.py` is a Typer app with `version` and `dry-run`.
+- **CLI-004.D1** — **`remove` deletes the category and its prompts** (lead, 2026-10-12). Files keep their text value (DB-003.D1), and folders and files are never touched (R-CLS-7). A category with children can't be removed.
+- **CLI-004.D2** — **Edits apply to the next classify** (lead, 2026-10-12). Rows already classified aren't changed: `reclassify` is M7's (R-FOP-7).
+
+## CLI-004 — Tasks
+
+- [ ] CLI-004.1 — `classifier categories list|add|edit|remove` · #97 · acceptance: `tests/db/cli/test_categories_cli.py`
+
+## CLI-004 — Results
+
+---
+
+## CLS-003 — Requirement (DESIGN.md M3, R-CLS-8, 2026-10-12)
+
+- **Objective:** Calibrate the classify thresholds per axis against `fixtures/labels.csv` so gate 3 can pass, and commit the values the human approves.
+- **Details:**
+  - **CLS-003.1 (ML):** `eval/classify_eval.py`.
+    - It runs ingest and sanitize on the labelled fixtures in a throwaway db and a temporary results tree, so the models see only sanitized copies (P-2).
+    - It scores every working copy once through the `VisionBackend`, and caches the scores, so a sweep doesn't re-run the models.
+    - It sweeps each axis's `default_min_score` and `margin`, and `nsfw.threshold`. It adds per-category `min_score` overrides only where they raise agreement.
+    - It applies CLS-002.1's rules exactly, and reports each CLS-001.D5 criterion with a 5-fold held-out estimate (pinned seed).
+  - **CLS-003.2 (Pipeline):** commits the values the human approved, as type `balance`:
+    - `config.yaml`: the per-axis defaults, plus `margin` and `nsfw.threshold` if they changed;
+    - migration `0004`: per-category overrides, and prompt changes if CLS-003.D1 allows them.
+- **Constraint:**
+  - These are hand-tuned values (CLAUDE.md §1.7). The human approves every value before CLS-003.2 commits it.
+  - Public output follows TST-008.D1. No per-category breakdown and no file names are published. Per-category detail goes to the console only, behind `--detail`, and is never pasted into GitHub or the repo.
+- **Implements:** R-CLS-8, R-CLS-1, C-5; CLS-001.D5, D11, D12.
+
+## CLS-003 — Confirmed reading
+
+- `eval/entity_eval.py` (MOD-001) is the existing pattern: run in the container, report numbers.
+- `classify.*.default_min_score` is null in `config.yaml`, so without CLS-003.2 the node refuses to run (CLS-002.D4).
+- **CLS-003.D1** — **Calibration scope** (**the human's call**).
+  - **A:** thresholds, margins and `nsfw.threshold` only.
+  - **B (recommended):** A, plus prompt edits beyond DESIGN §4.3's tables if A can't reach the gate. Each edit is its own `balance` task with eval numbers. The human approves it, and §4.3 is updated in a human-side PR.
+- **CLS-003.D2** — **Where the values land** (**the human's call**). Recommended:
+  - per-axis defaults in `config.yaml`;
+  - per-category overrides and any prompt edits in a new migration `0004`.
+
+  `0003` stays the DESIGN.md seed, so databases that already ran it stay consistent. R-CLS-8's "committed to the seed migration" is read as "a seed-data migration".
+- **CLS-003.D3** — **Fit on every labelled row** (lead, 2026-10-12; DESIGN §11 and R-CLS-8 calibrate and gate on the same rows). The 5-fold held-out estimate is the generalisation check. A gap of more than 5 points between fitted and held-out agreement on either axis is reported as DONE_WITH_CONCERNS.
+
+## CLS-003 — Tasks
+
+- [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
+- [ ] CLS-003.2 — Commit the calibrated values the human approved (`config.yaml`; migration `0004`) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
+
+## CLS-003 — Results

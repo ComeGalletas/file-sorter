@@ -1,7 +1,7 @@
 # Pipeline and dry run — journal
 
-**ID:** PIPE-001 (+ CLI-002, CLI-003) · **Systems:** PIPE, CLI (+ FOP) · **Type:** feature · **Status:** done (PIPE-001, CLI-002, CLI-003) · **Milestone:** m1 (CLI-003: m2) ·
-**Issues:** #17 (PR #35), #18 (PR #38), #57 (CLI-003.1, PR #83) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
+**ID:** PIPE-001 (+ CLI-002, CLI-003, CLI-005) · **Systems:** PIPE, CLI (+ FOP, CLS) · **Type:** feature · **Status:** done (PIPE-001, CLI-002, CLI-003); CLI-005 proposed · **Milestone:** m1 (CLI-003: m2; CLI-005: m3) ·
+**Issues:** #17 (PR #35), #18 (PR #38), #57 (CLI-003.1, PR #83), #100 (CLI-005.1) · **Branch:** `office/pixel-3a83` (PIPE-001.1), `office/pixel-9618` (CLI-002.1)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -170,3 +170,28 @@ references or host paths here. Use hashes.
 - **Self-rating:** 9/10, proud: yes. Gap: the tests check that a failure exits 2 through `SystemExit` with no traceback in the output, but not the exception's suppressed context itself; the code raises `from None` like CFG-002. Any `OllamaError` that reached the CLI would get the pre-flight message, but per-file Ollama failures become `sanitize_entity_unavailable` inside the node (SAN-001.D17), so only `from_env` can reach the CLI.
 - **Review (lead):** PR #83, merged as `b7a7d37`, closing #57. Reviewer APPROVE (3 minor: commit-body counts, this hash, one fixed `OllamaError` message) and Privacy auditor PASS (exhaustive), at `82de25a`. The verdict comment is on the PR. The auditor's leftover `OSError` tracebacks (paths of results or rules only) are item 7 of SAN-003.
 - **Deferred:** none.
+
+---
+
+## CLI-005 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Make `classifier dry-run` report the classify node.
+- **Details:**
+  - **Console:** the classify counts (classified, unsorted, no topic, adult, errors), after ingest's and sanitize's. These are local only.
+  - **CSV:** new columns `format`, `topic`, `branch`, `needs_review`, `review_reason` and `proposed_folder` (FOP-002.1's layout), beside the existing ones.
+- **Constraint:**
+  - The CSV stays under `results_root/reports/`, on the box (ING-001.D2).
+  - The console never prints `source_path` or a name; it keeps hashes and counts.
+  - Errors are fixed text and exit 2 (CLI-003).
+- **Implements:** R-PIPE-2, R-CLS-5, DESIGN §7.
+
+## CLI-005 — Confirmed reading
+
+- `classifier/cli/dry_run_report.py` writes the console summary and the CSV (CLI-002, CLI-003).
+- **CLI-005.D1** — **`proposed_folder` is computed, not stored** (lead, 2026-10-12). The CLI derives it from the row with FOP-002.1's function. `files.proposed_path` stays the `name` node's to write (M5), since it holds the full path including the name.
+
+## CLI-005 — Tasks
+
+- [ ] CLI-005.1 — `dry-run` reports classify: console counts and the CSV's classify columns · #100 · acceptance: `tests/integration/test_dry_run_cli.py`
+
+## CLI-005 — Results

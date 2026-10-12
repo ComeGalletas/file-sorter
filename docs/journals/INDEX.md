@@ -7,13 +7,21 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-003 · SAN-004 · CLS-002 · CAP-001 · RAG-001 · NAME-001 · FOP-002 · API-001 · MOD-002 · PIPE-002 · CFG-003 · RUN-014 · DB-003 · CLI-004 · TST-008 · DOC-008
+**Next free:** ING-003 · SAN-004 · CLS-004 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-001 · MOD-003 · PIPE-002 · CFG-003 · RUN-014 · DB-004 · CLI-006 · TST-009 · DOC-008
 
 ## Work items
 
 | ID | Title | Systems | Type | Status | Milestone | Issues | Journal | Branch | Date |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| CLS-001 | Two category axes: a required format and an optional topic, `<Topic>/<Format>/` folders, derived `animated` flag, labels converted from the human's sample | CLS, NAME, FOP, DB, API, TST | feature | in progress (design done; build in M3) | m3 | — | [categories_journal.md](categories_journal.md) | main | 2026-10-05 |
+| CLS-001 | Two category axes: a required format and an optional topic, `<Topic>/<Format>/` folders, derived `animated` flag, labels converted from the human's sample | CLS, NAME, FOP, DB, API, TST | feature | in progress (design done; its build is CLS-002, CLS-003, DB-003, MOD-002, FOP-002, CLI-004, TST-008 in M3; CLS-001.5 and .6 superseded by them) | m3 | — | [categories_journal.md](categories_journal.md) | main | 2026-10-05 |
+| CLS-002 | Classify: the two-axis decision rules (R-CLS-3 to R-CLS-6) and the `classify` node | CLS, PIPE, MOD | feature | proposed | m3 | #90, #99 | [categories_journal.md](categories_journal.md) | — | 2026-10-12 |
+| CLS-003 | Threshold calibration per axis against the labelled fixtures, and commit of the approved values (R-CLS-8) | CLS, MOD, DB, CFG | balance | proposed | m3 | #101, #102 | [categories_journal.md](categories_journal.md) | — | 2026-10-12 |
+| FOP-002 | Result folder layout `[Adult/]<Topic\|General>/<Format>[/Animated]` and `sync-folders` | FOP, CLI, CLS | feature | proposed | m3 | #91, #98 | [categories_journal.md](categories_journal.md) | — | 2026-10-12 |
+| CLI-004 | `classifier categories list\|add\|edit\|remove` (R-CLS-7) | CLI, DB, CLS | feature | proposed | m3 | #97 | [categories_journal.md](categories_journal.md) | — | 2026-10-12 |
+| MOD-002 | SigLIP and NSFW clients behind a `VisionBackend` seam (R-CLS-1, R-CLS-2) | MOD, CLS | feature | proposed | m3 | #88, #89 | [models_journal.md](models_journal.md) | — | 2026-10-12 |
+| DB-003 | Migration `0003`: `categories` and `category_prompts`, seeded from DESIGN §4.3 | DB, CLS | feature | proposed | m3 | #87 | [ledger_journal.md](ledger_journal.md) | — | 2026-10-12 |
+| CLI-005 | `classifier dry-run` reports the classify node: counts and the CSV's classify columns | CLI, CLS, FOP | feature | proposed | m3 | #100 | [pipeline_journal.md](pipeline_journal.md) | — | 2026-10-12 |
+| TST-008 | Vision replay for the default tiers, the labels loader, gate 3 | TST, MOD, CLS | feature | proposed | m3 | #96, #95, #103 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-12 |
 | RUN-001 | Repo bootstrap: Docker runtime (read-only source, internal network), CUDA image, Makefile, config, models pulled | RUN, CFG, TST | feature | done | — | — | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
 | RUN-002 | Agent configuration: settings layers, hooks, pre-push gate, subagents, desk briefs, templates, gate stubs | RUN, DOC, TST | feature | done, with concerns (the RUN-002.D14 verdict comment isn't enforced mechanically) | — | PRs #4, #6, #7, #12 (RUN-002.11: current phase and subagent lists) | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
 | RUN-003 | agent-office installed from the fork's source; floor for this repo | RUN | feature | done | — | — | [bootstrap_journal.md](bootstrap_journal.md) | main | 2026-10-05 |
@@ -48,7 +56,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | TST-006 | The integration fixture `empty_ledger` empties `files` and the tables that reference it (`truncate files cascade`), unblocking DB-002.1 | TST, DB | refactor | done | m2 | #68 (PR #69) | [test_infra_journal.md](test_infra_journal.md) | `office/gizmo-0712` | 2026-10-07 |
 | TST-007 | Gate 1 runs only the ingest node, so it stays an M1 measure once `sanitize` registers (unblocked SAN-001.4) | TST | refactor | done | m2 | #78 (PR #80) | [test_infra_journal.md](test_infra_journal.md) | `office/byte-afbe` | 2026-10-08 |
 | SAN-002 | The committed example's entity rule asks for `LOCATION` too (R-SAN-3), found by gate 2's first real run | SAN, CFG | bug | done | m2 | #82 (PR #85) | [sanitize_journal.md](sanitize_journal.md) | `office/nibble-e2bf` | 2026-10-08 |
-| SAN-003 | Hardening from the M2 audits: `NodeContext` root repr, `O_NOFOLLOW` on originals, `pillow_heif` log cap, the missing-exiftool reason, an fd leak, D18 on other paths, CLI `OSError` tracebacks | SAN, PIPE, FOP, CLI | refactor | proposed (not scheduled; the human picks M3 or later) | — | — | [sanitize_journal.md](sanitize_journal.md) | — | 2026-10-08 |
+| SAN-003 | Hardening from the M2 audits: `NodeContext` root repr, `O_NOFOLLOW` on originals, `pillow_heif` log cap, the missing-exiftool reason, an fd leak, D18 on other paths, CLI `OSError` tracebacks | SAN, PIPE, FOP, CLI | refactor | proposed (scheduled into M3 by the human, 2026-10-12) | m3 | #92, #93, #94 | [sanitize_journal.md](sanitize_journal.md) | — | 2026-10-08 |
 | DOC-001 | Process standard: work IDs, journals, index, commits, triage, completion status, self-rating, test tiers (adopted from the pygame project) | DOC, TST | process | done | — | — | [process_standard_journal.md](process_standard_journal.md) | main | 2026-10-05 |
 | DOC-002 | Design review: the plan reconciled into DESIGN.md (C-1 to C-20, open questions answered) | DOC, all | process | done | — | — | [design_review_journal.md](design_review_journal.md) | main | 2026-10-05 |
 | DOC-003 | Windows-native workspace: Docker Desktop host, `file-sorter-full` layout, agent-office from the fork | DOC, RUN | process | done | — | — | [workspace_journal.md](workspace_journal.md) | main | 2026-10-05 |
@@ -68,5 +76,6 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | [../plans/TEMPLATE.md](../plans/TEMPLATE.md) | DOC-001 |
 | [../plans/m1.md](../plans/m1.md) | M1: CFG-001, DB-001, ING-001 (incl. ING-001.3, #34), PIPE-001, CLI-002, TST-002 |
 | [../plans/m2.md](../plans/m2.md) | M2 (approved 2026-10-07): SAN-001, FOP-001, DB-002, ING-002, MOD-001, CLI-003, TST-005, and from the backlog CFG-002, TST-003, TST-004; added mid-run TST-006, TST-007, SAN-002; rule changes DOC-007; follow-up SAN-003 |
+| [../plans/m3.md](../plans/m3.md) | M3 (draft, 2026-10-12): CLS-002, CLS-003, DB-003, MOD-002, FOP-002, CLI-004, CLI-005, TST-008 (the build of CLS-001), and SAN-003 |
 | [../../.claude/roles/README.md](../../.claude/roles/README.md) | RUN-002 |
 | `../../fixtures/labels.csv` (git-ignored) | CLS-001, M3 gate |

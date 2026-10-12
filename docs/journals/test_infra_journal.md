@@ -1,7 +1,7 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1) · **Milestone:** m1 (TST-003 to TST-007: m2) ·
-**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1), #78 (TST-007.1) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1); TST-008 proposed · **Milestone:** m1 (TST-003 to TST-007: m2; TST-008: m3) ·
+**Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1), #78 (TST-007.1); M3: #96 (TST-008.1), #95 (TST-008.2), #103 (TST-008.3) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -399,3 +399,54 @@ references or host paths here. Use hashes.
 
 - **Status:** DONE. The worker's results are in PR #80's body. The new test fails on the old gate (1 failed) and passes now.
 - **Review:** PR #80, merged as `fb07cc0`, closing #78. Reviewer APPROVE (2 informational minors). The Privacy auditor's first pass flagged the gate wording "100.0% skipped on re-run, 0 new ledger rows". On the lead's request it re-judged that against DOC-005.D1's established reading (gate results as percentages and a zero delta) and revised to PASS.
+
+---
+
+## TST-008 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Let the default tiers replay the vision models, load the labelled fixtures, and measure gate 3.
+- **Details:**
+  - **TST-008.1:** the recording format and the replay backend for MOD-002's `VisionBackend` (image embeddings, text embeddings, NSFW scores), and a `gpu`-tier recorder, as TST-005.1 did for Ollama.
+  - **TST-008.2:** `scripts/fixture_labels.py`, which loads and validates `fixtures/labels.csv`: the columns `file, format, topic, adult, reference, subject, tags` (CLS-001.D14), blank = undecided (D11), the vocabulary passed in, and topic ≠ format (D10). This is CLS-001's deferred loader.
+  - **TST-008.3:** `scripts/gate_3.py` runs ingest → sanitize → classify as a dry run on the real fixtures, in a throwaway db and a temporary results tree, and measures CLS-001.D5.
+- **Constraint:**
+  - Only the `gpu` and `gate` tiers read the real fixtures (TST-004). QA never opens them.
+  - Output follows TST-008.D1. Every label value, file name, reference and subject is `repr=False` and never printed.
+  - Recordings come from synthetic images only (TST-005.D1).
+- **Implements:** DESIGN §11 (M3 gate); CLS-001.D5, D11, D12, D14; CLAUDE.md §3 (replay outside `gpu`).
+
+## TST-008 — Confirmed reading
+
+- `scripts/gate_3.py` is RUN-002.4's stub and exits 1.
+- `tests/recordings/replay.py` holds TST-005's Ollama replay (TST-005.D5 key, `RecordingError(BaseException)`). The tier audit (TST-004) already keeps `fixtures/labels.csv` out of the `unit`, `db` and `integration` tiers.
+- `fixtures/labels.example.csv` shows the columns, and its `tags` hold `suggestive-negative`.
+- `make gate-3` starts `ollama` (RUN-011), which the sanitize node's entity rule needs.
+- **TST-008.D1** — **What gate 3 and the calibration publish** (**the human's call**). Recommended:
+  - **On the box:** each CLS-001.D5 criterion prints its verdict and a percentage to one decimal.
+  - **In public** (the plan's Results, journals, PRs, issues): each criterion's verdict, plus the percentage rounded down to a whole percent. A precise percentage over a small labelled set reveals its size (the lesson from PR #84).
+  - Never a per-category, per-label or per-tag breakdown, a confusion matrix or a count, anywhere public. Per-category detail prints only on the console, behind `--detail`, and is never pasted.
+- **TST-008.D2** — **Calibration-only samples** (**the human's call**). DESIGN §11 allows extra box-only adult samples for calibration that don't count toward the gate. Recommended: mark them with the tag `calibration-only` in `tags`. The gate skips those rows, and CLS-003.1 uses them for the NSFW sweep only. The human adds them locally if there are any.
+- **TST-008.D3** — **The vision recording key** (lead, 2026-10-12; extends TST-005.D5).
+  - **The key:** the SHA-256, in UTF-8, of `json.dumps({model, kind, input}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`.
+    - `kind` is `image`, `text` or `nsfw`.
+    - `input` is a text's string, or, for an image, the SHA-256 of `mode`, `size` and `tobytes()` of the decoded first frame.
+  - **The file:** `tests/recordings/<package>/<key>.json` holds the request and `{"shape": [...], "dtype": "float32", "data": <base64 little-endian>}`, so the replay is exact.
+  - **A miss:** the replay raises `RecordingError`.
+  - **The lint:** TST-005.1's lint is extended to these files.
+- **TST-008.D4** — **Gate 3's measures** (lead, 2026-10-12; CLS-001.D5, D11, D12).
+  - **Format:** agreement on rows with a format. `unsorted` counts as a miss.
+  - **Topic:** agreement on rows with a topic. No topic counts as a miss.
+  - **NSFW:** every `adult = yes` row is `nsfw`, and every `adult = no` row is `safe`. The `suggestive-negative` rows are checked as their own line, all `safe`.
+  - **Unrecognized:** the share of rows whose format is `unsorted`, below 10%.
+  - Rows tagged `calibration-only` (D2) are left out of every measure.
+  - **Any node `error` fails the gate** (as TST-005.D7). So does labels-to-images coverage that isn't exact, reported as `ok` or `FAIL` with no count.
+  - Rows are matched to labels by file name **in memory only**.
+- **TST-008.D5** — **Loader errors** (lead, 2026-10-12). A bad header, an unknown format or topic, topic = format, an `adult` other than `yes`/`no`, or an unknown tag stops the load. The fixed text names the line number and the column, never a value.
+
+## TST-008 — Tasks
+
+- [ ] TST-008.1 — Vision replay: the TST-008.D3 recording format, a replay `VisionBackend`, a `gpu` recorder, the lint extended · #96 · acceptance: `tests/devtools/test_vision_recordings.py`
+- [ ] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
+- [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4); the G1 run · #103 · acceptance: `scripts/gate_3.py`
+
+## TST-008 — Results
