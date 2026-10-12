@@ -124,7 +124,9 @@ What the code and DESIGN.md already say:
 - There is no `categories` table yet; DB-003 adds it.
 - The image already has `transformers`, `sentencepiece`, `protobuf` and a CUDA torch build. `make models` has fetched the SigLIP and NSFW weights into the `hf` volume. `app` runs with `HF_HUB_OFFLINE=1`, and `test` mounts `hf` too.
 - `.claude/roles/ml.md` gives ML "both category axes (R-CLS-0 to R-CLS-3b)".
-- With no `name` node yet, a dry run ends at `classified` in M3. `proposed` arrives with naming (M5).
+- **CLS-002.D12** — **Where an M3 dry run stops** (**the human's call**, from PR #104's review). R-PIPE-2 says a dry run "ends at status `proposed`", but `proposed` is written by `name` (M5), which doesn't exist yet. M1's and M2's dry runs already stopped at their last node (`queued`, `sanitized`).
+  - **A (recommended):** read R-PIPE-2 as the full pipeline's end state. In M3, rows stop at `classified`, the last registered node's status, and reach `proposed` once `name` lands. If you agree, your PR adds a DESIGN §13 line saying so.
+  - **B:** stub a `name` node in M3 that sets `proposed` with no name. That adds a task, and M5 then replaces the stub.
 
 Decisions:
 
@@ -186,7 +188,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - **FOP-002.1:** `classifier/fileops/layout.py` returns `[Adult/]<Topic|General>/<Format>[/Animated]` or `[Adult/]Unsorted` (R-CLS-5). It reads `folders.layout`, `folders.no_topic`, `folders.animated_subfolder` and `nsfw.root`, plus the categories' `folder` values. It is pure: no file system.
   - **FOP-002.2:** `sync_folders` in `classifier/fileops/folders.py`, plus the `classifier categories sync-folders` command (R-CLS-7). Folder names are checked for case-insensitive collisions (R-FOP-9).
 - **Constraint:**
-  - Directories are only created, never removed or renamed (R-FOP-6; R-CLS-7: removing a category never deletes folders).
+  - Directories are only created, never removed or renamed (R-CLS-7: removing a category never deletes folders; no delete code outside `fileops/delete.py`, per CLAUDE.md's hard rules).
   - Before M7, `results_root` holds only empty category folders, `.work/` and `reports/` (DESIGN §3).
   - Errors are fixed text, with no path.
 - **Implements:** R-CLS-5, R-CLS-7 (`sync-folders`), R-FOP-9, R-ING-9; CLS-001.D2, D3.
@@ -256,7 +258,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - It scores every working copy once through the `VisionBackend`, and caches the scores, so a sweep doesn't re-run the models.
     - It sweeps each axis's `default_min_score` and `margin`, and `nsfw.threshold`. It adds per-category `min_score` overrides only where they raise agreement.
     - It applies CLS-002.1's rules exactly, and reports each CLS-001.D5 criterion with a 5-fold held-out estimate (pinned seed).
-  - **CLS-003.2 (Pipeline):** commits the values the human approved, as type `balance`:
+  - **CLS-003.2 (Pipeline):** commits the values the human approved, as type `balance`, wherever CLS-003.D2 decides. If D2 is answered as recommended, that is:
     - `config.yaml`: the per-axis defaults, plus `margin` and `nsfw.threshold` if they changed;
     - migration `0004`: per-category overrides, and prompt changes if CLS-003.D1 allows them.
 - **Constraint:**
@@ -275,7 +277,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - per-axis defaults in `config.yaml`;
   - per-category overrides and any prompt edits in a new migration `0004`.
 
-  `0003` stays the DESIGN.md seed, so databases that already ran it stay consistent. R-CLS-8's "committed to the seed migration" is read as "a seed-data migration".
+  `0003` stays the DESIGN.md seed, so databases that already ran it stay consistent. This departs from R-CLS-8's wording ("committed to the seed migration"), so if the human picks it, their PR changes R-CLS-8 or adds a DESIGN §13 line. **The alternative** is to edit `0003`'s seed values in place, with every value in the one migration; that works only while no shared database has run `0003`.
 - **CLS-003.D3** — **Fit on every labelled row** (lead, 2026-10-12; DESIGN §11 and R-CLS-8 calibrate and gate on the same rows). The 5-fold held-out estimate is the generalisation check. A gap of more than 5 points between fitted and held-out agreement on either axis is reported as DONE_WITH_CONCERNS.
 
 ## CLS-003 — Tasks
