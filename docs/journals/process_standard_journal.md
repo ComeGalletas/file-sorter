@@ -145,3 +145,28 @@
   - The miscount in Details is fixed.
 - **Tests:** the default tiers, 442 passed. `docker compose config` shows the key on `app` and `test` and not on `fetch`.
 - **Self-rating:** 9/10, proud: yes. Gap: no unit test covers `init`'s key generation, as for the existing secrets; it was checked by hand.
+
+---
+
+## DOC-008 — Requirement (human, 2026-10-12)
+
+**Objective:** carry the M3 G0 answers that change the spec, the rules or the desk briefs, in their own PR (RUN-007.D2).
+
+**Details:** the human accepted all six decisions in `docs/plans/m3.md` (PR #104) as recommended, with one tweak to TST-008.D1. The lead records the rest in its journals: CLS-003.D1 (calibration scope B), CLS-003.D2 (values in `config.yaml` and migration `0004`) and TST-008.D2 (a `calibration-only` tag).
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-008 — Confirmed reading
+
+- **DOC-008.D1 (= CLS-002.D10, option A):** **classify stores the SigLIP image vector** as `files.image_vec vector(1152)`, for `reclassify` and M6 to reuse (DESIGN.md §5). It stays in the local ledger. (human, 2026-10-12)
+- **DOC-008.D2 (decision 6):** **the privacy checklist is in every worker's brief**: `.claude/roles/README.md`, as the plan front-loads it into every issue. `ml.md` names ML's ownership of `classifier/models/classify_rules.py`, and says calibrated values stay proposals until the human approves them (CLS-002.D1, CLS-003). CLAUDE.md's "Current phase" says M3. (human, 2026-10-12)
+- **DOC-008.D3 (= TST-008.D1, with the human's tweak):** **what gate 3 and the calibration publish.** In public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**, because so few images fall under them that a percentage would reveal their count (DOC-005.D1). There is no breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. (DESIGN.md §11, M3 row.) (human, 2026-10-12)
+
+## DOC-008 — Tasks
+
+- [x] DOC-008.1 — DESIGN.md §5 (`image_vec`) and §11 (published results); CLAUDE.md "Current phase"; `ml.md`; the privacy checklist in `.claude/roles/README.md`
+
+## DOC-008 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Spec, rule and brief text; no code.
