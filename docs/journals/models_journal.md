@@ -1,7 +1,7 @@
 # Models — journal
 
-**ID:** MOD-001 · **Systems:** MOD (+ SAN, TST) · **Type:** feature · **Status:** done, with concerns (MOD-001.1: PR #64, `3d48f7e`; MOD-001.2: PR #72, `2852dd3`; held-out recall 99.1%) · **Milestone:** m2 ·
-**Issues:** MOD-001.1 #50 (PR #64), MOD-001.2 #51 (PR #72) · **Branch:** per task (`office/*`)
+**ID:** MOD-001 (+ MOD-002) · **Systems:** MOD (+ SAN, TST, CLS) · **Type:** feature · **Status:** MOD-001 done, with concerns (MOD-001.1: PR #64, `3d48f7e`; MOD-001.2: PR #72, `2852dd3`; held-out recall 99.1%); MOD-002 proposed · **Milestone:** m2 (MOD-002: m3) ·
+**Issues:** MOD-001.1 #50 (PR #64), MOD-001.2 #51 (PR #72); MOD-002.1 #88, MOD-002.2 #89 · **Branch:** per task (`office/*`)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions,
@@ -144,3 +144,36 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - Round 3 at `5b10aa0`: Reviewer APPROVE, Privacy auditor FAIL (low: obscure real-word coincidences in the eval list). Fixed in MOD-001.2.12, with unmistakably artificial coinages. From then on, the audit flagged only names it was confident are a real person, a notable organisation or a notable place.
   - Round 4 at `0531338`: Reviewer APPROVE (all 21 recording keys recomputed by script and matching D5) and Privacy auditor PASS.
   - **Merged as `2852dd3` (PR #72), closing #51, at head `9526673`.** That is one commit past the reviewed `0531338`: the worker's `Merge origin/main` (#76), merged by the lead's retry without the head check. The lead verified it after the merge: its tree is identical to the automatic merge of `0531338` and `4ebfe5d`, and it adds only #76's reviewed files. This is disclosed on the PR. RUN-013 (#79) then made the guard require `--match-head-commit` on every merge.
+
+---
+
+## MOD-002 — Requirement (DESIGN.md M3, 2026-10-12)
+
+- **Objective:** Give the app local SigLIP and NSFW clients that score images for both category axes and the adult gate.
+- **Details:**
+  - **MOD-002.1:** `classifier/models/siglip.py` loads `models.classifier` (`google/siglip-so400m-patch14-384`) from the `hf` volume, offline. It embeds images and texts (1152-d, L2-normalised). A pure scoring function gives `sigmoid(logit_scale·cos + logit_bias)` per prompt (`classify.score: sigmoid`, the default) or the raw cosine (`cosine`), and takes a category's max over its prompts (R-CLS-2, C-5).
+  - **MOD-002.2:** `classifier/models/nsfw.py` loads `models.nsfw` (`Falconsai/nsfw_image_detection`) and returns one score per image in `[0, 1]`. It runs on the GPU when there is one, with a CPU fallback (DESIGN §8).
+  - Both sit behind one `VisionBackend` protocol, the seam that TST-008.1's replay implements (contracts in `categories_journal.md`, CLS-002 Plan).
+- **Constraint:**
+  - Every model call goes through `classifier/models/`. Pixels go only to these local models, and only from sanitized working copies (P-2); the caller passes decoded images, never paths.
+  - No download at runtime (`HF_HUB_OFFLINE=1`, R-MOD-2). Model ids come from `models.*`.
+  - Tests use synthetic images generated in code. Never synthesise or describe adult content.
+- **Implements:** R-CLS-1, R-CLS-2, R-MOD-2, C-5, P-2, P-3.
+
+## MOD-002 — Confirmed reading
+
+- The image has `transformers>=4.50`, `sentencepiece`, `protobuf` and CUDA torch. `scripts/fetch_models.py` fetched both repos into `hf` (`/models/hf`), which the `test` service mounts too.
+- The `gpu` tier runs at pre-push when `classifier/models/` changes (CLAUDE.md §3), so this desk's pushes run it.
+- **MOD-002.D1** — **One `VisionBackend` seam** (lead, 2026-10-12; like MOD-001's transport seam). The protocol exposes image and text embeddings, `logit_scale` and `logit_bias`, NSFW scores, and the model ids. The real backend loads lazily, once per process and model id. The replay (TST-008.1) implements the same protocol.
+- **MOD-002.D2** — **Scoring is pure** (lead, 2026-10-12). The sigmoid or cosine step and the max over prompts take arrays only, so `unit` tests check the maths on fake vectors with no model.
+- **MOD-002.D3** — **The NSFW score** (lead, 2026-10-12) is the softmax probability of the label named `nsfw` in the model's `id2label`. The client refuses to load a model that has no such label, with fixed text.
+- **MOD-002.D4** — **Loading and precision** (lead, 2026-10-12). SigLIP runs in fp16 on CUDA. With no CUDA it refuses with fixed text naming the GPU, rather than silently crawling on CPU. Only the NSFW model falls back to CPU (DESIGN §8). `gpu` tests share one session-scoped load, in the desk's own `tests/gpu/models/conftest.py`.
+- **MOD-002.D5** — **What the `gpu` acceptance asserts** (lead, 2026-10-12). It uses synthetic images only: the shapes, the normalisation, determinism across two runs, the score range, sigmoid against cosine, and the max over prompts. Relative checks are allowed only where they are robust (a plain rendered-text image scores a text-like prompt above a landscape prompt). No threshold is tuned here: that is CLS-003.
+- **MOD-002.D6** — **The task records its own replay** (TST-005.D1). Once TST-008.1 lands, MOD-002 commits the replay recordings its own unit tests use, under `tests/recordings/models/`. CLS-002.2 records its own.
+
+## MOD-002 — Tasks
+
+- [ ] MOD-002.1 — `classifier/models/siglip.py`: offline SigLIP load, image and text embeddings, pure sigmoid/cosine scoring with max over prompts; the `VisionBackend` protocol · #88 · acceptance: `tests/gpu/models/test_siglip.py`
+- [ ] MOD-002.2 — `classifier/models/nsfw.py`: the NSFW gate score, GPU with CPU fallback, on the same protocol · #89 · acceptance: `tests/gpu/models/test_nsfw.py`
+
+## MOD-002 — Results

@@ -1,6 +1,6 @@
 # Sanitize — journal
 
-**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** done (SAN-001, FOP-001, SAN-002); SAN-003 proposed · **Milestone:** m2 ·
+**ID:** SAN-001 (+ FOP-001) · **Systems:** SAN (+ FOP, PIPE, DB, MOD) · **Type:** feature · **Status:** done (SAN-001, FOP-001, SAN-002); SAN-003 proposed (M3) · **Milestone:** m2 (SAN-003: m3) ·
 **Issues:** SAN-001.1 #47, SAN-001.2 #48, SAN-001.3 #52, SAN-001.4 #56, FOP-001.1 #46 · **Branch:** per task (`office/*`)
 
 <!--
@@ -308,4 +308,19 @@ Decisions:
   7. CLI (from PR #83): the `.work/thumbs` `mkdir`, `load_rules`'s `read_text` `OSError` and the CSV open in `write_csv` still end in a Typer traceback. Their messages carry only results or rules paths. Map them to fixed text and exit 2.
 - **Constraint:** No behaviour change beyond the items. Privacy checklist up front (`repr=False`, unchained fixed-text errors, planted-secret tests).
 - **Implements:** SAN-001.D16, D18; FOP-001.D1; CLI-003.
-- **Status:** proposed, not scheduled. The human picks M3 or a quiet moment.
+- **Status:** scheduled into M3 by the human (2026-10-12), at M3 G0. Proposed until `docs/plans/m3.md` is approved.
+
+## SAN-003 — Confirmed reading
+
+- Every item still stands on `main` at `4340780`. M3's `classify` node (CLS-002.2) adds the first path where a `sanitized` row goes to `error` (CLS-002.D7), so item 6 must merge before CLS-002.2.
+- **SAN-003.D1** — **Item 4's reason** (lead, 2026-10-12). It is `sanitize_metadata_unavailable`, used when exiftool or the working copy can't be read. `sanitize_metadata_residual` keeps its one meaning: the read-back found tags outside the allow-list (SAN-001.D3). Both are fixed strings (SAN-001.D17).
+- **SAN-003.D2** — **Item 6 is one helper** (lead, 2026-10-12; generalises SAN-001.D18). Every move of a row that is past `queued` into `error` goes through one function in `classifier/graph/`. It clears the row's `sanitize_log` rows in the same transaction, so a retry from ingest (R-ING-2) never doubles them. CLS-002.2 calls it for its `error` path (CLS-002.D7).
+- **SAN-003.D3** — **The split** (lead, 2026-10-12). There are three tasks, by package: `graph`/`fileops` (items 1, 2, 5, 6), `sanitize` (3, 4) and `cli` (7). Each is at most a day, and they have no dependencies on each other.
+
+## SAN-003 — Tasks
+
+- [ ] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
+- [ ] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
+- [ ] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
+
+## SAN-003 — Results
