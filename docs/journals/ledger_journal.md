@@ -106,14 +106,14 @@ references or host paths here. Use hashes.
   - Migration `0003`. `categories` holds `id`, `axis` (check `format|topic`), `name`, `folder`, `min_score` (real, nullable), `branch` (check `any|safe|nsfw`, default `any`), `parent_id` (FK to `categories`, nullable) and `created_at`. It is unique on (`axis`, `name`), and unique on (`axis`, parent, `lower(folder)`) among siblings.
   - `category_prompts` holds `id`, `category_id` (FK, `on delete cascade`), `position` and `prompt`, unique on (`category_id`, `position`).
   - The seed is DESIGN §4.3's six formats and twelve topics with their folders and prompts, plus the fallback format `unsorted`.
-  - If CLS-002.D10 is A: `files.image_vec vector(1152)`, nullable.
+  - `files.image_vec vector(1152)`, nullable (CLS-002.D10, confirmed by the human; DOC-008.D1 adds it to DESIGN §5).
   - SQLAlchemy models in `classifier/db/models.py`, matching the migration.
 - **Constraint:** One Alembic head: `0003` follows `0002`. `files` rows and `sanitize_log` are untouched. The downgrade drops only what `0003` adds.
 - **Implements:** DESIGN §5 (`categories`, `category_prompts`), R-CLS-0, R-CLS-4, R-CLS-6, R-CLS-8; CLS-001.D1, D6, D9, D10.
 
 ## DB-003 — Confirmed reading
 
-- `0002_sanitize_log.py` is the head. `0001` already created the `vector` extension, so no new extension is needed for D10 A.
+- `0002_sanitize_log.py` is the head. `0001` already created the `vector` extension, so no new extension is needed for `image_vec`.
 - `files.format` and `files.topic` are `Text`, nullable (DB-001).
 - **DB-003.D1** — **`files.format` and `files.topic` stay names, with no FK** (lead, 2026-10-12). Removing a category never touches a file (R-CLS-7, CLI-004.D1), and the ledger's history stays readable.
 - **DB-003.D2** — **`unsorted` is a seeded format row with no prompts** (lead, 2026-10-12; DESIGN §4.3). Its folder is `Unsorted`, and its `min_score` is null. The scorer skips any category without prompts, and CLI-004 protects `unsorted`.
@@ -122,6 +122,6 @@ references or host paths here. Use hashes.
 
 ## DB-003 — Tasks
 
-- [ ] DB-003.1 — Migration `0003`: `categories` and `category_prompts` seeded from DESIGN §4.3 (+ `files.image_vec` if CLS-002.D10 is A), with the models · #87 · acceptance: `tests/db/ledger/test_categories_migration.py`
+- [ ] DB-003.1 — Migration `0003`: `categories` and `category_prompts` seeded from DESIGN §4.3, and `files.image_vec`, with the models · #87 · acceptance: `tests/db/ledger/test_categories_migration.py`
 
 ## DB-003 — Results

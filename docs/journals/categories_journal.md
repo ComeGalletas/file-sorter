@@ -102,7 +102,7 @@ and then (human review of the noted rows, 2026-10-05):
   - **Node (CLS-002.2):** a `classify` graph node takes `sanitized` rows to `classified`.
     - It reads the first frame (R-ING-6) of each row's sanitized working copy, never the source (P-2).
     - It embeds and gates the whole batch (R-PIPE-1), and scores both axes against the prompts in `category_prompts` (DB-003).
-    - It writes `branch`, `nsfw_score`, `format`, `topic`, `format_scores`, `topic_scores`, `needs_review` and `review_reason` (plus the image vector if CLS-002.D10 is A).
+    - It writes `branch`, `nsfw_score`, `format`, `topic`, `format_scores`, `topic_scores`, `needs_review`, `review_reason` and `image_vec` (CLS-002.D10).
 - **Constraint:**
   - P-1 and P-2: originals are never opened. Pixels go only to local models, through `classifier/models/`.
   - Thresholds, margins and prompts come from `config.yaml` and Postgres, never from code (P-5). They are hand-tuned values (CLAUDE.md §1.7).
@@ -124,14 +124,12 @@ What the code and DESIGN.md already say:
 - There is no `categories` table yet; DB-003 adds it.
 - The image already has `transformers`, `sentencepiece`, `protobuf` and a CUDA torch build. `make models` has fetched the SigLIP and NSFW weights into the `hf` volume. `app` runs with `HF_HUB_OFFLINE=1`, and `test` mounts `hf` too.
 - `.claude/roles/ml.md` gives ML "both category axes (R-CLS-0 to R-CLS-3b)".
-- **CLS-002.D12** — **Where an M3 dry run stops** (**the human's call**, from PR #104's review). R-PIPE-2 says a dry run "ends at status `proposed`", but `proposed` is written by `name` (M5), which doesn't exist yet. M1's and M2's dry runs already stopped at their last node (`queued`, `sanitized`).
-  - **A (recommended):** read R-PIPE-2 as the full pipeline's end state. In M3, rows stop at `classified`, the last registered node's status, and reach `proposed` once `name` lands. If you agree, your PR adds a DESIGN §13 line saying so.
-  - **B:** stub a `name` node in M3 that sets `proposed` with no name. That adds a task, and M5 then replaces the stub.
+- **CLS-002.D12** — **An M3 dry run stops at `classified`** (confirmed by the human, 2026-10-12, option A, from PR #104's review). R-PIPE-2's "ends at status `proposed`" is the full pipeline's end state. `proposed` is written by `name` (M5), so in M3 rows stop at `classified`, the last registered node's status, as M1's and M2's dry runs stopped at `queued` and `sanitized`. No stub `name` node. DESIGN §13 records it, in DOC-008 (PR #105).
 
 Decisions:
 
 - **CLS-002.D1** — **Where the rules live** (lead, 2026-10-12). They go in one pure module, `classifier/models/classify_rules.py`, owned by ML. Both the node (Pipeline) and the calibration harness (ML, CLS-003.1) import it, so the eval and the gate measure the same rules. It takes scores and category records only: no db, no files, no models.
-- **CLS-002.D2** — **An ineligible winner falls back, not through** (lead, 2026-10-12; R-CLS-6 read literally).
+- **CLS-002.D2** — **An ineligible winner falls back, not through** (lead, 2026-10-12; R-CLS-6 read literally; confirmed by the human, 2026-10-12, and recorded in DESIGN §13 by DOC-008).
   - Each axis is ranked over all its categories, and the threshold, margin and nesting rules pick its winner.
   - Then the branch check runs. A winner whose `branch` excludes the image's branch is not used: a `safe` category for an adult image, or an `nsfw` category for a safe image.
   - In that case the format becomes `unsorted` (adult: `Adult/Unsorted/`), and the topic becomes none. The runner-up is not tried.
@@ -149,10 +147,8 @@ Decisions:
   - **The whole run:** if a model can't load (missing weights, no GPU for SigLIP), the run stops before any row changes, with a fixed message naming `make models`.
   - All errors are fixed text, unchained.
 - **CLS-002.D8** — **Only the working copy** (lead, 2026-10-12; P-2, ING-001.D2). The node opens `<results_root>/.work/<source_hash>.<ext>`, a path built from the hash and the extension, never from `source_path`. It refuses a working copy that is a symlink or not a regular file.
-- **CLS-002.D9** — **`nsfw.mode: separate` fails fast in M3** (lead, 2026-10-12). DESIGN.md names the mode but never specifies it, so only `mirror` is built. `separate` stops the run with a message naming the key, like SAN-001.D6.
-- **CLS-002.D10** — **Store the SigLIP image vector?** (**the human's call**). DESIGN §3 lists "SigLIP vector" among classify's writes, but §5 has no column for it.
-  - **A (recommended):** DB-003.1 adds `files.image_vec vector(1152)` (the pgvector extension already exists) and the node writes it. M6's retrieval and a later `reclassify` reuse it without re-embedding. It needs a one-line §5 change in a human-side PR.
-  - **B:** don't store it. M6 re-embeds at retrieval, which SigLIP's throughput makes cheap.
+- **CLS-002.D9** — **`nsfw.mode: separate` fails fast in M3** (lead, 2026-10-12; confirmed by the human, 2026-10-12, and recorded in DESIGN §13 by DOC-008). DESIGN.md names the mode but never specifies it, so only `mirror` is built. `separate` stops the run with a message naming the key, like SAN-001.D6.
+- **CLS-002.D10** — **Classify stores the SigLIP image vector** (confirmed by the human, 2026-10-12, option A; rule change DOC-008.D1, PR #105). DB-003.1 adds `files.image_vec vector(1152)` (the pgvector extension already exists), and the node writes the embedding of the sanitized copy. M6's retrieval and a later `reclassify` reuse it without re-embedding. DESIGN §3 already listed it among classify's writes; DOC-008 adds it to §5. It stays in the local ledger, like every other `files` column.
 - **CLS-002.D11** — **Prompt encoding and batch size** (lead, 2026-10-12). Prompts are encoded once per node call, from `category_prompts`. The batch size is a constant in `classifier/models/`, not a config key: it isn't a threshold, and DESIGN §6 has no key for it.
 
 ## CLS-002 — Plan
@@ -258,7 +254,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - It scores every working copy once through the `VisionBackend`, and caches the scores, so a sweep doesn't re-run the models.
     - It sweeps each axis's `default_min_score` and `margin`, and `nsfw.threshold`. It adds per-category `min_score` overrides only where they raise agreement.
     - It applies CLS-002.1's rules exactly, and reports each CLS-001.D5 criterion with a 5-fold held-out estimate (pinned seed).
-  - **CLS-003.2 (Pipeline):** commits the values the human approved, as type `balance`, wherever CLS-003.D2 decides. If D2 is answered as recommended, that is:
+  - **CLS-003.2 (Pipeline):** commits the values the human approved, as type `balance`, where CLS-003.D2 puts them:
     - `config.yaml`: the per-axis defaults, plus `margin` and `nsfw.threshold` if they changed;
     - migration `0004`: per-category overrides, and prompt changes if CLS-003.D1 allows them.
 - **Constraint:**
@@ -270,19 +266,17 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - `eval/entity_eval.py` (MOD-001) is the existing pattern: run in the container, report numbers.
 - `classify.*.default_min_score` is null in `config.yaml`, so without CLS-003.2 the node refuses to run (CLS-002.D4).
-- **CLS-003.D1** — **Calibration scope** (**the human's call**).
-  - **A:** thresholds, margins and `nsfw.threshold` only.
-  - **B (recommended):** A, plus prompt edits beyond DESIGN §4.3's tables if A can't reach the gate. Each edit is its own `balance` task with eval numbers. The human approves it, and §4.3 is updated in a human-side PR.
-- **CLS-003.D2** — **Where the values land** (**the human's call**). Recommended:
+- **CLS-003.D1** — **Calibration scope: thresholds, margins, `nsfw.threshold`, and prompts if needed** (confirmed by the human, 2026-10-12, option B). The sweep covers the per-axis `default_min_score` and `margin`, `nsfw.threshold`, and per-category `min_score` overrides. If those alone can't reach the gate, prompt edits beyond DESIGN §4.3's tables are allowed. Each edit is its own `balance` task with eval numbers and the human's approval, and §4.3 is updated in a human-side PR. Every value, including a move of `nsfw.threshold` from 0.70, needs the human's approval (CLAUDE.md §1.7).
+- **CLS-003.D2** — **Where the values land** (confirmed by the human, 2026-10-12, as recommended; R-CLS-8 is aligned in DOC-008, PR #105).
   - per-axis defaults in `config.yaml`;
   - per-category overrides and any prompt edits in a new migration `0004`.
 
-  `0003` stays the DESIGN.md seed, so databases that already ran it stay consistent. This departs from R-CLS-8's wording ("committed to the seed migration"), so if the human picks it, their PR changes R-CLS-8 or adds a DESIGN §13 line. **The alternative** is to edit `0003`'s seed values in place, with every value in the one migration; that works only while no shared database has run `0003`.
+  `0003` stays the DESIGN.md seed, so databases that already ran it stay consistent.
 - **CLS-003.D3** — **Fit on every labelled row** (lead, 2026-10-12; DESIGN §11 and R-CLS-8 calibrate and gate on the same rows). The 5-fold held-out estimate is the generalisation check. A gap of more than 5 points between fitted and held-out agreement on either axis is reported as DONE_WITH_CONCERNS.
 
 ## CLS-003 — Tasks
 
 - [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
-- [ ] CLS-003.2 — Commit the calibrated values the human approved, where CLS-003.D2 decides (recommended: `config.yaml` and migration `0004`) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
+- [ ] CLS-003.2 — Commit the calibrated values the human approved, in `config.yaml` and migration `0004` (CLS-003.D2) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
 
 ## CLS-003 — Results
