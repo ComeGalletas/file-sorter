@@ -806,3 +806,29 @@ and then (PR #43 review round 2):
 - **Regression check:** against `main`'s guard, exactly the 3 merges without a valid SHA pass, and they shouldn't.
 - **`gh` check:** the installed `gh` 2.101.0 has `--match-head-commit SHA` ("Commit SHA that the pull request head must match to allow merge").
 - **Self-rating:** 9/10, proud: yes. Gap: the guard checks that a SHA is there, not that it's the `Reviewed at` one; the lead's brief says which SHA to use, and GitHub enforces whichever is given.
+
+---
+
+## RUN-014 — Requirement (human, 2026-10-12)
+
+- **Objective:** the role guard judges any worker command in about a second.
+- **Details:** on 2026-10-12, M3's three new desks froze for over 20 minutes inside their `PreToolUse` hook ("running PreToolUse hooks 1/2"). Each was saving its plan in a long heredoc. The worker check ran several `grep` processes per normalized segment, and every line of a heredoc is a segment, read twice (RUN-008.D6). On Git Bash each process launch is slow, so a long command meant thousands of launches. A synthetic 14 KB plan took over 120 s; the desks' were longer. The hung hooks were stopped by hand to unblock the desks.
+- **Constraint:** human-side (RUN-002.D16). The rules must not change, only their cost.
+- **Implements:** RUN-008, RUN-010.
+
+## RUN-014 — Confirmed reading
+
+- **RUN-014.D1:** **every per-segment check runs in one `awk` process.** That covers the indirection scan, PR merges, aliases, tags, pushes to `main`, merges and pulls, with the same patterns and the same exact allowed forms; only the cost changes. The command-wide checks (ANSI-C, brace expansion, `$(`) were already single processes. An unknown verdict is refused. (human, 2026-10-12)
+
+## RUN-014 — Tasks
+
+- [x] RUN-014.1 — `worker_bash_ok` in one `awk` pass; two tests: a 2000-line heredoc judged within the time limit, and a refusal still found after it
+
+## RUN-014 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. A guard performance fix with no rule change.
+- **Measured on Git Bash:** the synthetic 14 KB plan went from more than 120 s (still running at the timeout) to 0.8 s.
+- **Tests:** the default tiers, 1119 passed; `make lint` clean. Every existing guard case passes unchanged, so the rules are intact.
+- **Regression check:** against `main`'s guard, the new speed test times out after 30 s even in the Linux test container. With this change it passes.
+- **Self-rating:** 9/10, proud: yes. Gap: a `PreToolUse` hook has no timeout, so a guard bug can freeze a desk instead of failing. A timeout would let the command through, the wrong way to fail for a guard, so it's left out on purpose.
