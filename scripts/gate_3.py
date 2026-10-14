@@ -326,8 +326,9 @@ def to_outcomes(rows: Sequence[Sequence[Any]], images: Path) -> list[Outcome]:
     return outcomes
 
 
-def load_config(source: Path, results: str, dsn: str) -> Any:
-    """config.yaml with the gate's roots and schema (as gate 2)."""
+def load_config(source: Path, results: str, dsn: str, rules_path: Path | None = None) -> Any:
+    """config.yaml with the gate's roots and schema (as gate 2). With `rules_path`, the
+    sanitize node reads that rules file instead of the local sanitize.yaml (a test seam)."""
     import yaml
 
     from classifier.config import Config, check_roots
@@ -335,6 +336,8 @@ def load_config(source: Path, results: str, dsn: str) -> Any:
     data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
     data["paths"] = {"source_root": str(source), "results_root": results}
     data["db"] = {"dsn": dsn}
+    if rules_path is not None:
+        data["sanitizer"] = {**data.get("sanitizer", {}), "rules_file": str(rules_path)}
     config = Config.model_validate(data)
     check_roots(config)  # R-FOP-9
     return config
@@ -351,7 +354,13 @@ def read_vocabularies(dsn: str) -> tuple[frozenset[str], frozenset[str]]:
     return formats, topics
 
 
-def run_pipeline(dsn: str, images: Path, labels_path: Path, nodes: Sequence[Any]) -> Measures:
+def run_pipeline(
+    dsn: str,
+    images: Path,
+    labels_path: Path,
+    nodes: Sequence[Any],
+    rules_path: Path | None = None,
+) -> Measures:
     """Ingest -> sanitize -> classify into a fresh schema and a removed temp results tree
     (TST-005.D6), then tally the labels against the ledger (TST-008.D4)."""
     import tempfile
@@ -364,7 +373,7 @@ def run_pipeline(dsn: str, images: Path, labels_path: Path, nodes: Sequence[Any]
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
         formats, topics = read_vocabularies(schema)
         labels = fixture_labels.load_labels(labels_path, formats=formats, topics=topics)
-        run(load_config(images, results, schema), dry_run=True, nodes=tuple(nodes))
+        run(load_config(images, results, schema, rules_path), dry_run=True, nodes=tuple(nodes))
         with psycopg.connect(schema) as conn:
             rows = conn.execute(
                 "select source_path, duplicate_paths, status::text, format, topic, branch "
@@ -378,8 +387,9 @@ def main(
     images: Path = IMAGES,
     labels_path: Path = LABELS,
     registry: Sequence[Any] | None = None,
+    rules_path: Path | None = None,
 ) -> int:
-    """`images`, `labels_path` and `registry` are test seams; `make gate-3` passes none."""
+    """`images`, `labels_path`, `registry` and `rules_path` are test seams."""
     import os
 
     detail = "--detail" in (sys.argv[1:] if argv is None else argv)
@@ -389,7 +399,7 @@ def main(
             from classifier.graph import nodes as graph_nodes
 
             registry = graph_nodes.REGISTRY
-        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry))
+        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry), rules_path)
     except (GateSetupError, GateRunError, fixture_labels.LabelsError) as exc:  # fixed text
         print(f"gate 3 FAIL: {exc}", file=sys.stderr)
         return 1
