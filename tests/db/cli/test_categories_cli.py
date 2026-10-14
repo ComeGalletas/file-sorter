@@ -12,13 +12,14 @@ from urllib.parse import quote
 
 import psycopg
 import pytest
+import typer
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine import make_url
 from typer.testing import CliRunner
 
 from classifier.cli import app
-from classifier.cli.categories import _check_folder
+from classifier.cli.categories import _check_folder, add_category
 from classifier.config import load_config
 from classifier.db.url import to_sqlalchemy_url
 from classifier.fileops.layout import LayoutError, result_folder
@@ -197,3 +198,132 @@ def test_a_folder_the_cli_accepts_is_one_result_folder_accepts(cli: None, name: 
     except LayoutError:
         accepted = False
     assert (_check_folder(name) is None) == accepted
+
+
+def _make(name: str, axis: str = "topic", folder: str | None = None, *extra: str) -> None:
+    result = add(name, "--axis", axis, "--folder", folder or name, "--prompt", f"p {name}", *extra)
+    assert result.exit_code == 0, result.output
+
+
+def edit(name: str, *args: str, axis: str = "topic"):
+    return run("edit", name, "--axis", axis, *args)
+
+
+def test_edit_changes_folder_prompts_score_and_branch(cli: None, schema_dsn: str) -> None:
+    _make("Qorvex")
+    result = edit(
+        "Qorvex", "--folder", "Qv2", "--prompt", "one", "--prompt", "two", "--prompt", "three",
+        "--min-score", "0.55", "--branch", "nsfw",
+    )  # fmt: skip
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "edited topic category Qorvex"
+    assert "topic\tQorvex\tQv2\t0.55\tnsfw\t-\t3" in run("list").output
+    assert _rows(
+        schema_dsn,
+        "select p.position, p.prompt from category_prompts p join categories c "
+        "on c.id = p.category_id where c.name = 'Qorvex' order by 1",
+    ) == [(0, "one"), (1, "two"), (2, "three")]
+
+
+def test_edit_can_reset_min_score_and_keeps_other_fields(cli: None) -> None:
+    _make("Qorvex", "topic", "Qv", "--min-score", "0.3")
+    assert edit("Qorvex", "--reset-min-score").exit_code == 0
+    assert "topic\tQorvex\tQv\taxis default\tany\t-\t1" in run("list").output
+
+
+@pytest.mark.parametrize(
+    ("args", "text"),
+    [
+        ([], "nothing to change: pass --folder, --prompt, --min-score or --branch"),
+        (["--min-score", "0.2", "--reset-min-score"],
+         "--min-score and --reset-min-score cannot be used together"),
+        (["--folder", "a/b"], "invalid folder name"),
+        (["--branch", "x"], "--branch must be any, safe or nsfw"),
+        (["--min-score", "2"], "--min-score must be a number from 0 to 1"),
+        (["--prompt", ""],
+         "a name or prompt is empty, has a control character or is not valid text"),
+    ],
+)  # fmt: skip
+def test_edit_refuses_bad_input_with_fixed_text(cli: None, args: list[str], text: str) -> None:
+    _make("Qorvex")
+    _fails(edit("Qorvex", *args), text)
+
+
+def test_edit_refuses_unknown_unsorted_and_sibling_folder_clash(cli: None) -> None:
+    _make("Qorvex", "topic", "Qv")
+    _make("Zhyndel", "topic", "Zh")
+    _fails(edit("Nopeq", "--folder", "X"), "no such category on this axis")
+    _fails(edit("unsorted", "--prompt", "p", axis="format"), "the unsorted category is protected")
+    _fails(
+        edit("Zhyndel", "--folder", "QV"),
+        "a sibling category already uses that folder (compared ignoring case)",
+    )
+    assert edit("Zhyndel", "--folder", "ZH").exit_code == 0  # its own folder, other case
+
+
+def test_remove_deletes_the_category_and_its_prompts_only(cli: None, schema_dsn: str) -> None:
+    _make("Qorvex")
+    before = _rows(schema_dsn, "select count(*) from category_prompts")[0][0]
+    result = run("remove", "Qorvex", "--axis", "topic")
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "removed topic category Qorvex"
+    assert "Qorvex" not in run("list").output
+    assert _rows(schema_dsn, "select count(*) from category_prompts")[0][0] == before - 1
+
+
+def test_remove_refuses_a_parent_unsorted_and_an_unknown_name(cli: None) -> None:
+    _make("Qorvex")
+    _make("Zhyndel", "topic", "Zh", "--parent", "Qorvex")
+    _fails(
+        run("remove", "Qorvex", "--axis", "topic"),
+        "the category has children; remove or move them first",
+    )
+    _fails(run("remove", "unsorted", "--axis", "format"), "the unsorted category is protected")
+    _fails(run("remove", "Nopeq", "--axis", "topic"), "no such category on this axis")
+    assert run("remove", "Zhyndel", "--axis", "topic").exit_code == 0
+    assert run("remove", "Qorvex", "--axis", "topic").exit_code == 0
+
+
+def test_remove_leaves_files_with_the_category_name(cli: None, schema_dsn: str) -> None:
+    """R-CLS-7 / DB-003.D1: `files.topic` is a name with no FK, so a removed one stays put."""
+    _make("Qorvex")
+    with psycopg.connect(schema_dsn) as conn:
+        conn.execute(
+            "insert into files (source_hash, short_hash, source_path, source_mtime, ext, topic) "
+            "values (%s, 'bbbbbbbb', '/source/x', now(), 'png', 'Qorvex')",
+            ("b" * 64,),
+        )
+    try:
+        assert run("remove", "Qorvex", "--axis", "topic").exit_code == 0
+        assert _rows(schema_dsn, "select topic from files where short_hash = 'bbbbbbbb'") == [
+            ("Qorvex",)
+        ]
+    finally:
+        with psycopg.connect(schema_dsn) as conn:
+            conn.execute("delete from files where short_hash = 'bbbbbbbb'")
+
+
+def test_errors_never_echo_typed_values_and_are_unchained(cli: None) -> None:
+    secret = "zzsecretzz"
+    result = add(secret, "--axis", "topic", "--folder", "a/" + secret, "--prompt", secret)
+    assert result.exit_code == 2
+    assert secret not in result.output
+    # Called directly, the Exit the command raises has no cause or context.
+    with pytest.raises(typer.Exit) as raised:
+        add_category(secret, "topic", "a/" + secret, [secret], None, "any", None, CONFIG)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+
+
+def test_a_database_failure_is_fixed_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DB_DSN", "postgresql://nobody:pw-qorvex@127.0.0.1:1/none")
+    result = run("list")
+    assert result.exit_code == 1
+    assert result.output.strip() == "error: database error, see the db service logs"
+    assert "qorvex" not in result.output
+
+
+def test_a_missing_config_is_fixed_text(cli: None) -> None:
+    result = runner.invoke(app, ["categories", "list", "--config", "/nope/qorvex.yaml"])
+    assert result.exit_code == 2
+    assert "qorvex" not in result.output

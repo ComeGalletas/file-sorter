@@ -41,6 +41,9 @@ _ERR_RESERVED = "the unsorted category is protected"
 _ERR_FOLDER = "invalid folder name"
 _ERR_SIBLING = "a sibling category already uses that folder (compared ignoring case)"
 _ERR_PARENT_MISSING = "the parent category does not exist on that axis"
+_ERR_SCORE_BOTH = "--min-score and --reset-min-score cannot be used together"
+_ERR_NOTHING = "nothing to change: pass --folder, --prompt, --min-score or --branch"
+_ERR_CHILDREN = "the category has children; remove or move them first"
 _ERR_EXISTS = "that category already exists on this axis"
 _ERR_MISSING = "no such category on this axis"
 
@@ -267,3 +270,118 @@ def add_category(
 
     _run(config_path, work)
     typer.echo(f"added {axis} category {clean_name}")
+
+
+@categories_app.command("edit")
+def edit_category(
+    name: Annotated[str, typer.Argument(help="The category to edit.")],
+    axis: Annotated[str, typer.Option("--axis", help="format or topic.")],
+    folder: Annotated[str | None, typer.Option("--folder", help="New result folder name.")] = None,
+    prompt: Annotated[
+        list[str] | None,
+        typer.Option("--prompt", help="Replaces all prompts; repeat for more."),
+    ] = None,
+    min_score: Annotated[float | None, typer.Option("--min-score", help="New min_score.")] = None,
+    reset_min_score: Annotated[
+        bool, typer.Option("--reset-min-score", help="Use the axis default again.")
+    ] = False,
+    branch: Annotated[str | None, typer.Option("--branch", help="any, safe or nsfw.")] = None,
+    config_path: ConfigOption = None,
+) -> None:
+    """Edit a category's folder, prompts, min_score or branch (CLI-004.D2: next classify)."""
+    problem, prompts = _check_common(axis, branch, min_score, prompt)
+    clean_name = _clean(name)
+    if problem is None and clean_name is None:
+        problem = _ERR_TEXT
+    if problem is None and clean_name is not None and clean_name.lower() == UNSORTED:
+        problem = _ERR_RESERVED
+    if problem is None and min_score is not None and reset_min_score:
+        problem = _ERR_SCORE_BOTH
+    nothing = (
+        folder is None
+        and prompts is None
+        and min_score is None
+        and not reset_min_score
+        and branch is None
+    )
+    if problem is None and nothing:
+        problem = _ERR_NOTHING
+    if problem is None and folder is not None:
+        problem = _check_folder(folder)
+    if problem is not None:
+        raise _fail(problem)
+    assert clean_name is not None
+
+    def work(config: Config, conn: psycopg.Connection) -> str | None:
+        rules = _rules(conn)
+        found = [r for r in rules if r.axis == axis and r.name == clean_name]
+        if not found:
+            return _ERR_MISSING
+        current = found[0]
+        new_folder = current.folder if folder is None else folder
+        new_branch = current.branch if branch is None else branch
+        new_score = min_score if min_score is not None else current.min_score
+        if reset_min_score:
+            new_score = None
+        if _sibling_clash(rules, axis, current.parent_id, new_folder, own_id=current.id):
+            return _ERR_SIBLING
+        changed = CategoryRule(
+            current.id, axis, current.name, new_folder, new_score, new_branch, current.parent_id
+        )
+        others = [r for r in rules if r.id != current.id]
+        rules_problem = None
+        try:
+            validate_rules([*others, changed], _structural(config))
+        except ClassifyRulesError as error:  # fixed text, no value in it
+            rules_problem = str(error)
+        if rules_problem is not None:
+            return rules_problem
+        conn.execute(
+            "update categories set folder = %s, min_score = %s, branch = %s where id = %s",
+            (new_folder, new_score, new_branch, current.id),
+        )
+        if prompts is not None:
+            conn.execute("delete from category_prompts where category_id = %s", (current.id,))
+            for position, text in enumerate(prompts):
+                conn.execute(
+                    "insert into category_prompts (category_id, position, prompt) "
+                    "values (%s, %s, %s)",
+                    (current.id, position, text),
+                )
+        return None
+
+    _run(config_path, work)
+    typer.echo(f"edited {axis} category {clean_name}")
+
+
+@categories_app.command("remove")
+def remove_category(
+    name: Annotated[str, typer.Argument(help="The category to remove.")],
+    axis: Annotated[str, typer.Option("--axis", help="format or topic.")],
+    config_path: ConfigOption = None,
+) -> None:
+    """Remove a category and its prompts. Files and folders are never touched (R-CLS-7)."""
+    problem, _ = _check_common(axis, None, None, None)
+    clean_name = _clean(name)
+    if problem is None and clean_name is None:
+        problem = _ERR_TEXT
+    if problem is None and clean_name is not None and clean_name.lower() == UNSORTED:
+        problem = _ERR_RESERVED
+    if problem is not None:
+        raise _fail(problem)
+    assert clean_name is not None
+
+    def work(config: Config, conn: psycopg.Connection) -> str | None:
+        rules = _rules(conn)
+        found = [r for r in rules if r.axis == axis and r.name == clean_name]
+        if not found:
+            return _ERR_MISSING
+        if any(r.parent_id == found[0].id for r in rules):  # CLI-004.D1
+            return _ERR_CHILDREN
+        # The files table keeps its text value (DB-003.D1); only configuration rows go.
+        conn.execute("delete from category_prompts where category_id = %s", (found[0].id,))
+        conn.execute("delete from categories where id = %s", (found[0].id,))
+        return None
+
+    _run(config_path, work)
+    typer.echo(f"removed {axis} category {clean_name}")
