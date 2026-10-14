@@ -469,9 +469,21 @@ references or host paths here. Use hashes.
   - [x] TST-008.3.3 — runner: vocabularies from the throwaway schema, ingest → sanitize → classify through the graph registry (real `classify`, CLS-002.2), outcomes, `main`/`--detail` (32bcebe, then wired to the real node in the commit that ticks .3.6)
   - [x] TST-008.3.4 — `tests/integration/test_gate_3_script.py` on synthetic images and labels, real ingest and sanitize nodes, a classify stand-in until #99 (swap in the real node over replayed vision then; follow-up .3.6)
   - [x] TST-008.3.6 — the integration test runs the real classify node over replayed vision (the classify scenario's four synthetic pictures, an NSFW-score double), the stand-in is gone
-  - [ ] TST-008.3.5 — Results; the G1 run after #102 and the lead's go
+  - [x] TST-008.3.5 — Results written; the real G1 run (`make gate-3`) is a separate step after #102 and the lead's go
 
 ## TST-008 — Results
+
+### TST-008.3 — Results (#103)
+
+- **Built:** `scripts/gate_3.py`: pure measures (`Outcome`, `Tally`, `evaluate`), `judge` (the TST-008.D6 public form, `--detail` text kept apart), and the runner (ingest → sanitize → classify through the graph registry in a fresh migrated schema and a removed temp results tree).
+- **Vocabularies:** the `categories` table of the gate's own migrated schema, so the gate measures the committed configuration, not categories added locally through the category CLI.
+- **Verdicts from exact values:** integer ratios decide; only the printed figure is rounded down. Tested at 89.99% (prints `89%`, FAIL) and 90.0% (prints `90%`, PASS); unrecognized is strictly below 10%.
+- **Choice beyond TST-008.D4:** a criterion with no rows to measure (no adult row, no `suggestive-negative` row, no format or topic label) fails rather than passing vacuously.
+- **Tests (acceptance for this branch: `tests/integration/test_gate_3_script.py`, as TST-005.D9 in M2):** 42 passed in the three gate 3 modules: `unit` (measures, public form, repr hygiene, runner pieces with fakes) and `integration` (real ingest, sanitize and classify nodes over replayed vision on the classify scenario's synthetic pictures, an NSFW-score double with no content). A wider run over `tests/unit/gate`, `tests/devtools` and the integration module: 506 passed. `make lint` clean. No `gpu` or `gate` tier run.
+- **Privacy:** default output is the public form only (no counts, denominators, splits, names or values; no digit on the adult and `suggestive-negative` lines); `--detail` is console-only and marked; every field holding label or ledger values is `repr=False` with a planted-secret test; errors are fixed text and an unexpected error prints its type only.
+- **Not yet run:** the real `make gate-3` on the real fixtures is the G1 step, after CLS-003.2 (#102) merges and the lead's go. Its default output goes into the plan's Results as printed.
+- **Status:** DONE_WITH_CONCERNS. Concern (low): the gate has not run on the real fixtures or real models yet, by design; follow-up is the G1 run. **Self-rating:** 8/10, proud: yes. Gaps against the acceptance test: the integration labels are derived from the node's first pass, so the wiring is proved but not the agreement itself (the unit tests prove that on plain numbers); the real-model run is G1.
+- **Reviewer / Privacy auditor:** pending.
 
 ### TST-008.2 — Results (#95)
 
