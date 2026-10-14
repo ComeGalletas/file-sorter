@@ -211,6 +211,8 @@ def load_rules(path: str | Path, env: Mapping[str, str] | None = None) -> Rules:
         text = file.read_text(encoding="utf-8")
     except UnicodeDecodeError:  # it holds the raw bytes
         problem = f"rules file is not UTF-8 text: {file}"
+    except OSError:  # SAN-003.3: its message carries the path; fixed text, no path
+        problem = "rules file can't be read (sanitizer.rules_file)"
     if problem is not None:
         raise SanitizeConfigError(f"{problem}; compare it with sanitize.example.yaml (make init)")
     try:

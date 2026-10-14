@@ -170,10 +170,24 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-002 — Tasks
 
-- [ ] CLS-002.1 — Pure decision rules for both axes (R-CLS-3, 3a, 3b, 4, 6) in `classifier/models/classify_rules.py` · #90 · acceptance: `tests/unit/models/test_classify_rules.py`
+- [x] CLS-002.1 — Pure decision rules for both axes (R-CLS-3, 3a, 3b, 4, 6) in `classifier/models/classify_rules.py` · #90 · acceptance: `tests/unit/models/test_classify_rules.py`
+  - [x] CLS-002.1.1 — types, `nsfw_branch`, `validate_rules`, single-axis pick (thresholds, margin, default, ties) and top 5 · commit: 306838c
+  - [x] CLS-002.1.2 — nesting (CLS-002.D6) · commit: 45bfb48
+  - [x] CLS-002.1.3 — `choose`: twin removal, branch fallback, `needs_review` · commit: 9eb2dad
+  - [x] CLS-002.1.4 — privacy tests (repr, unchained errors, surrogates) and Results · commit: this one
 - [ ] CLS-002.2 — The `classify` node: working copy → vision backend → rules → ledger, with the `NodeContext` vision seam · #99 · acceptance: `tests/integration/test_classify_node.py`
 
 ## CLS-002 — Results
+
+### CLS-002.1 (#90, ml desk)
+
+- **Tests:** `tests/unit/models/test_classify_rules.py` passes (acceptance): 59 tests. The `unit` tier passes in full (1081 passed; the `db` and `integration` tiers run at pre-push). `make lint` is clean. No `gpu` or `eval/` run: no model, prompt or threshold is touched, and no value is invented.
+- **Behavior:** `classifier/models/classify_rules.py` is pure (an AST test checks its imports). `nsfw_branch` (inclusive threshold), `validate_rules` (the node's up-front check, CLS-002.D4: axis, branch, duplicates, parent chain, null `min_score` with a null axis default) and `choose` (R-CLS-3, 3a, 3b, 4, 6). `choose` keeps the null-default check as a backstop.
+- **Readings taken (lead-approved):** `>=` at both the `min_score` and margin boundaries, with a 1e-9 float tolerance; D2 per axis (an ineligible format winner is `unsorted` with review, an ineligible topic winner is no topic); the twin is the same-name topic only, and the stored top 5 is unfiltered; `unsorted` is never a candidate and always eligible.
+- **D9 (`nsfw.mode: separate` fails fast)** belongs to the node (CLS-002.2): this module never sees `nsfw.mode`.
+- **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) no caller yet, because the node (CLS-002.2) and the calibration (CLS-003.1) wire it in, so the integration is untested here; (2) `Choice` holds plain lists inside a frozen dataclass, so a caller could mutate them (the node serialises them straight away).
+- **Completion status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 
