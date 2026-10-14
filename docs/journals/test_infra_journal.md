@@ -453,6 +453,13 @@ references or host paths here. Use hashes.
 ## TST-008 — Tasks
 
 - [ ] TST-008.1 — Vision replay: the TST-008.D3 recording format, a replay `VisionBackend`, a `gpu` recorder, the lint extended · #96 · acceptance: `tests/devtools/test_vision_recordings.py`
+  - [x] TST-008.1.1 — key, image digest, array codec, text rule, loader (`tests/recordings/vision.py`)
+  - [x] TST-008.1.2 — lint extension in `lint_recordings`
+  - [x] TST-008.1.3 — `ReplayVisionBackend`, `RecordingVisionBackend`, `--record-vision`, `vision_backend` fixture, conformance to MOD-002.D1
+  - [x] TST-008.1.4 — `tests/recordings/README.md` vision section
+  - [x] TST-008.1.5 — privacy fixes from PR #113: model id must be a repo id; text input is an allowlist; the auditor's probes are refused
+  - [x] TST-008.1.6 — TST-008.D9 (privacy round 2): model ids only from `config.yaml` `models.classifier`/`models.nsfw` (tests register synthetic ids by fixture); text limited to ASCII letters, digits, single spaces, comma, apostrophe, no word of 3+ digits
+  - [x] TST-008.1.7 — privacy round 3: a registered test model id must be `synthetic/<name>`; three missing probes added; the at-least-one-letter check documented
 - [x] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
   - [x] TST-008.2.1 — parser, typed rows, fixed-text errors (a14ebe5)
   - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (11048a4)
@@ -470,3 +477,12 @@ references or host paths here. Use hashes.
   - Line numbers count physical lines with the header as line 1; a multi-line quoted cell reports its record's first line.
 - **Non-regular files:** refused by `lstat` + `S_ISREG`, tested with a directory (a symlink is not regular under `lstat`, so the same branch covers it). A path with a NUL is fixed text too (TST-008.2.3).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is exercised on the real labels only in TST-008.3, which is by design.
+
+### TST-008.1 — Results (#96)
+
+- **Built:** `tests/recordings/vision.py` (key, image digest, float32 codec, request and text rules, loader), `tests/recordings/vision_backend.py` (`ReplayVisionBackend`, `RecordingVisionBackend`), the `vision_backend` fixture and `--record-vision` in `tests/conftest.py`, the lint dispatch in `tests/recordings/replay.py`, a README section.
+- **Rulings applied:** TST-008.D7 (`param` kind for `logit_scale` and `logit_bias`), recorder tolerance `atol=1e-3`, a text rule that accepts every DESIGN §4.3 seed prompt (a test holds a copy of them).
+- **Conformance:** both backends are `isinstance` of the real `VisionBackend` (MOD-002.D1), and the replay drives `score_images`.
+- **Tests:** acceptance `tests/devtools/test_vision_recordings.py` (unit). `make test`: 1442 passed, 31 deselected. `make lint` clean. No `gpu` run: the recorder is tested on a fake backend, and the real recording belongs to MOD-002.D6.
+- **Privacy:** the text inputs and arrays are `repr=False` (planted-secret repr test); every error is fixed text, unchained; every filesystem call is wrapped; the lint refuses links, a model that is not `models.classifier` or `models.nsfw` in `config.yaml`, text outside ASCII letters, digits, single spaces, commas and apostrophes (no `.`, no leading or trailing space, at least one letter, no word of 3 or more digits), non-hash image inputs and extra keys (TST-008.1.5, TST-008.1.6, TST-008.1.7, TST-008.D9). A test may register an extra model id only as `synthetic/<name>` (`<name>` of 1 to 40 of `a-z`, `0-9`, `-`). Every probe string of both privacy rounds is a refused test case. This task commits no recordings.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gaps: the lint cannot prove a text input is synthetic, so it allows only the text characters above and the review checks the rest; the fixture's `upstream` wiring is exercised against a stub, not the ML desk's real gpu fixture.
