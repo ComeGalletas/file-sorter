@@ -1,5 +1,8 @@
 """The two-axis decision rules (CLS-002.1): pure, numeric scores, artificial category names."""
 
+import ast
+from pathlib import Path
+
 import pytest
 
 from classifier.config import AxisConfig, ClassifyConfig
@@ -424,3 +427,80 @@ def test_choose_is_deterministic_under_ties():
     )
     assert first.format_top == again.format_top and first.topic_top == again.topic_top
     assert first.format == again.format == "unsorted"
+
+
+# ---- privacy (checklist 2, 4, 5, 7)
+
+SECRET_NAME = "Qorvex-Planted-Name"
+SECRET_FOLDER = "Zhyndel-Planted-Folder"
+SECRET_SCORE = 0.31415926
+
+
+def test_repr_and_str_hide_every_name_folder_and_threshold():
+    planted = CategoryRule(
+        id=7,
+        axis="format",
+        name=SECRET_NAME,
+        folder=SECRET_FOLDER,
+        min_score=SECRET_SCORE,
+        branch="any",
+        parent_id=None,
+    )
+    topic = CategoryRule(7 + 1, "topic", "Vrelk-Planted-Topic", SECRET_FOLDER, 0.2, "any", None)
+    got = rules_mod.choose(
+        {SECRET_NAME: 0.97654321}, {"Vrelk-Planted-Topic": 0.8}, [planted, topic], "safe", cfg()
+    )
+    assert got.format == SECRET_NAME and got.topic == "Vrelk-Planted-Topic"
+    for text in (repr(planted), str(planted), repr(got), str(got)):
+        for secret in (SECRET_NAME, SECRET_FOLDER, "Vrelk-Planted-Topic", "0.3141", "0.9765"):
+            assert secret not in text
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: nsfw_branch(float("nan"), 0.7),
+        lambda: validate_rules([rule(SECRET_NAME, branch="adult")], cfg()),
+        lambda: validate_rules([rule(SECRET_NAME, axis="colour")], cfg()),
+        lambda: validate_rules([rule(SECRET_NAME), rule(SECRET_NAME)], cfg()),
+        lambda: validate_rules([rule(SECRET_NAME, parent_id=404)], cfg()),
+        lambda: validate_rules([rule(SECRET_NAME)], cfg(fmt_default=None)),
+        lambda: rules_mod.choose(
+            {SECRET_NAME: float("nan")}, {}, [rule(SECRET_NAME)], "safe", cfg()
+        ),
+        lambda: rules_mod.choose({}, {}, [rule(SECRET_NAME)], "adult", cfg()),
+        lambda: rules_mod.choose({SECRET_NAME: 0.9}, {}, [rule(SECRET_NAME)], "safe", cfg(None)),
+    ],
+)
+def test_errors_are_fixed_text_and_unchained(call):
+    with pytest.raises(ClassifyRulesError) as caught:
+        call()
+    error = caught.value
+    assert error.__cause__ is None and error.__context__ is None
+    assert SECRET_NAME not in str(error) and SECRET_NAME not in repr(error)
+
+
+def test_lone_surrogates_in_names_are_only_compared_never_quoted():
+    odd = "Qorvex-\ud800-lone"
+    rules = [rule(odd), rule("zhyndel")]
+    got = rules_mod.choose({odd: 0.9, "zhyndel": 0.1}, {}, rules, "safe", cfg())
+    assert got.format == odd
+    assert got.format_top[0]["category"] == odd
+    with pytest.raises(ClassifyRulesError) as caught:
+        validate_rules([rule(odd), rule(odd)], cfg())
+    assert "\ud800" not in str(caught.value)
+
+
+def test_the_module_has_no_io_imports():
+    tree = ast.parse(Path(rules_mod.__file__).read_text(encoding="utf-8"))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module.split(".")[0])
+    assert imported <= {"math", "collections", "dataclasses", "typing", "classifier"}
+    assert not any(
+        isinstance(n, ast.Call) and getattr(n.func, "id", "") in ("open", "print")
+        for n in ast.walk(tree)
+    )
