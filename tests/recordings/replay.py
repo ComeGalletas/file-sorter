@@ -112,6 +112,27 @@ def _is_file(path: Path, where: str) -> bool:
         raise RecordingError(f"{where} cannot be read as a file") from None
 
 
+def _is_symlink(path: Path, where: str) -> bool:
+    try:
+        return path.is_symlink()
+    except OSError:
+        raise RecordingError(f"{where} cannot be read as a file") from None
+
+
+def _is_vision_file(path: Path) -> bool:
+    """True when the stored request has a `kind`: a TST-008 vision recording, not an Ollama one.
+
+    Any read or parse failure is False here; the loader that follows reports it by label.
+    """
+    try:
+        recording = json.loads(path.read_bytes().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return isinstance(recording, dict) and (
+        isinstance(recording.get("request"), Mapping) and "kind" in recording["request"]
+    )
+
+
 def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     """A recording file, checked against the format; its name must be its request's key.
 
@@ -141,7 +162,8 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
     """Every problem with the `*.json` files under `root`, one line each (TST-005.1.3).
 
     Each file sits in `<package>/`, follows the format, is named by its request's key, and
-    its request is text only (P-3: never an `images` field).
+    its request is text only (P-3: never an `images` field). A request with a `kind` is a vision
+    recording (TST-008.D3) and is checked by `tests.recordings.vision` instead.
     """
     try:
         paths = sorted(root.rglob("*.json"))
@@ -159,7 +181,14 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
                 raise RecordingError(f"{where} must sit directly in tests/recordings/<package>/")
             if not PACKAGE_RE.fullmatch(parts[0]):
                 raise RecordingError(f"{where} is not in a plain lower-case package folder")
-            if "images" in load_recording(path, root)["request"]:
+            if _is_symlink(path, where):
+                raise RecordingError(f"{where} is a link; recordings are plain files")
+            if _is_vision_file(path):
+                # TST-008.1: the vision format is checked by its own loader (TST-008.D3, D7).
+                from tests.recordings.vision import load_vision_recording
+
+                load_vision_recording(path, where)
+            elif "images" in load_recording(path, root)["request"]:
                 raise RecordingError(f"{where} carries images; recordings are text only")
         except RecordingError as exc:
             problems.append(str(exc))

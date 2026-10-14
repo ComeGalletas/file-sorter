@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from tests.recordings.replay import RecordingError
+from tests.recordings.replay import RecordingError, lint_recordings, recording_key
 from tests.recordings.vision import (
     check_request,
     decode_array,
@@ -368,3 +368,94 @@ def test_load_refuses_a_malformed_file_privately(content: bytes, tmp_path: Path)
     with pytest.raises(RecordingError) as caught:
         load_vision_recording(path, "recording pkg/x.json")
     assert_private(caught.value)
+
+
+# --- the lint (TST-008.1.2) ---
+
+
+def raw_file(root: Path, request: dict[str, Any], response: object) -> Path:
+    """A file named by its request's key (when valid), holding whatever the test wants."""
+    try:
+        name = vision_key(request["model"], request["kind"], request["input"])
+    except (RecordingError, KeyError, TypeError):
+        name = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+    path = root / "pkg" / f"{name}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"request": request, "response": response}), encoding="utf-8")
+    return path
+
+
+def test_lint_accepts_every_kind(tmp_path: Path) -> None:
+    write_vision(tmp_path, MODEL, "text", "a photo of a cat", np.ones(4))
+    write_vision(tmp_path, MODEL, "image", image_digest(block()), np.ones(4))
+    write_vision(tmp_path, MODEL, "nsfw", image_digest(block()), np.float32(0.125))
+    write_vision(tmp_path, MODEL, "param", "logit_scale", np.float32(117.0))
+    write_vision(tmp_path, MODEL, "param", "logit_bias", np.float32(-16.5))
+    assert lint_recordings(tmp_path) == []
+
+
+def test_lint_leaves_ollama_files_to_the_old_rules(tmp_path: Path) -> None:
+    request = {"model": "m", "prompt": "p", "format": "json", "options": {}}
+    path = tmp_path / "pkg" / f"{recording_key(request)}.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps({"request": request, "response": {"response": "x"}}), encoding="utf-8"
+    )
+    write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    assert lint_recordings(tmp_path) == []
+
+
+def test_lint_reports_each_bad_vision_file_privately(tmp_path: Path) -> None:
+    ok = encode_array(np.ones(2))
+    bad = [
+        ({"model": MODEL, "kind": "text", "input": f"{SECRET} folder/x.png"}, ok),
+        ({"model": MODEL, "kind": "image", "input": SECRET}, ok),
+        ({"model": MODEL, "kind": "param", "input": "temperature"}, encode_array(1.0)),
+        ({"model": MODEL, "kind": "nsfw", "input": "a" * 64}, encode_array(np.ones(3))),
+        ({"model": MODEL, "kind": "text", "input": "alpha", "label": SECRET}, ok),
+        ({"model": MODEL, "kind": "text", "input": "beta"}, {"shape": [2], "dtype": "float64"}),
+    ]
+    for request, response in bad:
+        raw_file(tmp_path, request, response)
+    problems = lint_recordings(tmp_path)
+    assert len(problems) == len(bad)
+    assert all(SECRET not in p and "x.png" not in p for p in problems)
+
+
+def test_lint_refuses_a_tampered_or_misnamed_vision_file(tmp_path: Path) -> None:
+    path = write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    path.with_name("0" * 64 + ".json").write_bytes(path.read_bytes())
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    stored["request"]["input"] = "beta"
+    path.write_text(json.dumps(stored), encoding="utf-8")
+    problems = lint_recordings(tmp_path)
+    assert len(problems) == 2 and all("not named by the key" in p for p in problems)
+
+
+def test_lint_refuses_a_link(tmp_path: Path) -> None:
+    good = write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    link = tmp_path / "pkg" / ("2" * 64 + ".json")
+    try:
+        link.symlink_to(good)
+    except OSError:
+        pytest.fail("this host cannot create a symlink, so the link check cannot be tested")
+    problems = lint_recordings(tmp_path)
+    assert any("is a link" in p for p in problems) and all(SECRET not in p for p in problems)
+
+
+@pytest.mark.parametrize("method", ["read_bytes", "is_symlink", "is_file"])
+def test_lint_wraps_a_failing_filesystem_call(
+    method: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+
+    def denied(self: Path, *args: Any, **kwargs: Any) -> Any:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, method, denied)
+    (problem,) = lint_recordings(tmp_path)
+    assert str(tmp_path) not in problem and tmp_path.name not in problem
+
+
+def test_the_committed_tree_lints_clean() -> None:
+    assert lint_recordings() == []
