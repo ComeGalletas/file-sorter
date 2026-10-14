@@ -179,8 +179,8 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-002.1.3 — `tests/gpu/models/` conftest and `test_siglip.py`, the acceptance (`44edc54`)
   - ~~MOD-002.1.4~~ moved to MOD-002.2.4, then to MOD-002.3: the replay recordings wait for TST-008.1 (#96), which won't be on `main` in time (lead, #88 approval)
 - [ ] MOD-002.2 — `classifier/models/nsfw.py`: the NSFW gate score, GPU with CPU fallback, on the same protocol · #89 · acceptance: `tests/gpu/models/test_nsfw.py`
-  - [x] MOD-002.2.1 — `nsfw.py`: offline load, GPU/CPU choice, exactly-one-`nsfw`-label check, batched scores; unit tests on fakes (incl. `local_files_only` pin)
-  - [ ] MOD-002.2.2 — `SiglipBackend.nsfw_scores` wired to it (lazy), stub test replaced, SigLIP `local_files_only` pin (carried finding a)
+  - [x] MOD-002.2.1 — `nsfw.py`: offline load, GPU/CPU choice, exactly-one-`nsfw`-label check, batched scores; unit tests on fakes (incl. `local_files_only` pin) (`e658eee`)
+  - [x] MOD-002.2.2 — `SiglipBackend.nsfw_scores` wired to it (lazy), stub test replaced, SigLIP `local_files_only` pin (carried finding a)
   - [ ] MOD-002.2.3 — `tests/gpu/models/test_nsfw.py`, the acceptance; tie-safe ordering check in `test_siglip.py` (carried finding b)
   - ~~MOD-002.2.4~~ moved to MOD-002.3 (lead's approval on #89): replay recordings wait for TST-008.1 (#96)
 - [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · issue: lead to open
