@@ -1,0 +1,12 @@
+{
+  "request": {
+    "input": "59d852f4041321ee1e2ae7566d54b22b8f8e6c7b7e0243dceb30c8a9bc3b4e5e",
+    "kind": "nsfw",
+    "model": "Falconsai/nsfw_image_detection"
+  },
+  "response": {
+    "data": "LgOuOg==",
+    "dtype": "float32",
+    "shape": []
+  }
+}

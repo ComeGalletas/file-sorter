@@ -179,7 +179,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-002.2.1 — Settings check (`nsfw.mode`), `NodeContext.vision`, `ClassifyResult`, `RunResult.classify`
   - [x] CLS-002.2.2 — Working-copy opener (`O_NOFOLLOW` + `fstat`) on the name shared with sanitize
   - [x] CLS-002.2.3 — The node: select, score, `choose`, write, `mark_error`; registered after `sanitize`
-  - [ ] CLS-002.2.4 — Recordings under `tests/recordings/graph/` and the acceptance test
+  - [x] CLS-002.2.4 — Recordings under `tests/recordings/graph/` and the acceptance test
 
 ## CLS-002 — Results
 
