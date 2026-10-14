@@ -175,8 +175,8 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 - [ ] MOD-002.1 — `classifier/models/siglip.py`: offline SigLIP load, image and text embeddings, pure sigmoid/cosine scoring with max over prompts; the `VisionBackend` protocol · #88 · acceptance: `tests/gpu/models/test_siglip.py`
   - [x] MOD-002.1.1 — `classifier/models/vision.py`: the `VisionBackend` protocol and the pure scoring functions, with unit tests (`7040f7c`)
-  - [x] MOD-002.1.2 — `classifier/models/siglip.py`: `SiglipBackend` (offline, fp16, lazy once per id, batched), unit tests on a fake encoder (hash in the next commit)
-  - [ ] MOD-002.1.3 — `tests/gpu/models/` conftest and `test_siglip.py`, the acceptance
+  - [x] MOD-002.1.2 — `classifier/models/siglip.py`: `SiglipBackend` (offline, fp16, lazy once per id, batched), unit tests on a fake encoder (`f40c5ef`)
+  - [x] MOD-002.1.3 — `tests/gpu/models/` conftest and `test_siglip.py`, the acceptance (hash in the next commit)
   - ~~MOD-002.1.4~~ moved to MOD-002.2 (#89): the replay recordings wait for TST-008.1 (#96), which won't be on `main` in time (lead, #88 approval)
 - [ ] MOD-002.2 — `classifier/models/nsfw.py`: the NSFW gate score, GPU with CPU fallback, on the same protocol · #89 · acceptance: `tests/gpu/models/test_nsfw.py`
 
