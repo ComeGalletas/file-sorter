@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TypedDict
 
+from classifier.graph.classify import ClassifyResult
 from classifier.graph.ingest import IngestResult
 from classifier.graph.sanitize import SanitizeResult
 
@@ -38,4 +39,12 @@ class RunResult:
         found = self.counts["sanitize"]
         if not isinstance(found, SanitizeResult):
             raise TypeError(f"counts['sanitize'] is {type(found).__name__}, not a SanitizeResult")
+        return found
+
+    @property
+    def classify(self) -> ClassifyResult:
+        """The classify node's counts (CLI-005 and gate 3 read these)."""
+        found = self.counts["classify"]
+        if not isinstance(found, ClassifyResult):
+            raise TypeError(f"counts['classify'] is {type(found).__name__}, not a ClassifyResult")
         return found
