@@ -171,8 +171,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLS-002 — Tasks
 
 - [ ] CLS-002.1 — Pure decision rules for both axes (R-CLS-3, 3a, 3b, 4, 6) in `classifier/models/classify_rules.py` · #90 · acceptance: `tests/unit/models/test_classify_rules.py`
-  - [x] CLS-002.1.1 — types, `nsfw_branch`, `validate_rules`, single-axis pick (thresholds, margin, default, ties) and top 5 · commit: this one
-  - [ ] CLS-002.1.2 — nesting (CLS-002.D6)
+  - [x] CLS-002.1.1 — types, `nsfw_branch`, `validate_rules`, single-axis pick (thresholds, margin, default, ties) and top 5 · commit: 306838c
+  - [x] CLS-002.1.2 — nesting (CLS-002.D6) · commit: this one
   - [ ] CLS-002.1.3 — `choose`: twin removal, branch fallback, `needs_review`
   - [ ] CLS-002.1.4 — privacy tests (repr, unchained errors, surrogates) and Results
 - [ ] CLS-002.2 — The `classify` node: working copy → vision backend → rules → ledger, with the `NodeContext` vision seam · #99 · acceptance: `tests/integration/test_classify_node.py`

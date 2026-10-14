@@ -161,12 +161,57 @@ def _judge(
     return not others or score - others[0][1] + _EPS >= axis_config.margin
 
 
+def _is_descendant(
+    rule: CategoryRule, ancestor: CategoryRule, by_id: Mapping[int, CategoryRule]
+) -> bool:
+    """Whether `ancestor` is on `rule`'s `parent_id` chain (loop-safe; R-CLS-4)."""
+    cursor = rule
+    seen: set[int] = set()
+    while cursor.parent_id is not None and cursor.id not in seen:
+        seen.add(cursor.id)
+        parent = by_id.get(cursor.parent_id)
+        if parent is None:
+            return False
+        if parent.id == ancestor.id:
+            return True
+        cursor = parent
+    return False
+
+
 def _pick_axis(
-    ranked: Sequence[tuple[CategoryRule, float]], axis_config: AxisConfig, axis: str
+    ranked: Sequence[tuple[CategoryRule, float]],
+    axis_config: AxisConfig,
+    axis: str,
+    by_id: Mapping[int, CategoryRule] | None = None,
 ) -> CategoryRule | None:
-    """The winner of one ranked axis, or None when nothing clears the rules."""
+    """The winner of one ranked axis, or None when nothing clears the rules.
+
+    Nesting (R-CLS-4, CLS-002.D6): when the top two are ancestor and descendant, the margin is
+    skipped and the deeper one wins if it clears its own `min_score`. If it does not, the
+    ancestor is judged by the normal rule against the best category that is not its descendant.
+    """
     if not ranked:
         return None
+    if by_id is None:
+        by_id = {rule.id: rule for rule, _ in ranked}
+    if len(ranked) > 1:
+        (top, _), (second, _) = ranked[0], ranked[1]
+        if _is_descendant(second, top, by_id):
+            deeper, ancestor = ranked[1], ranked[0]
+        elif _is_descendant(top, second, by_id):
+            deeper, ancestor = ranked[0], ranked[1]
+        else:
+            deeper = ancestor = None
+        if deeper is not None and ancestor is not None:
+            rule, score = deeper
+            if score + _EPS >= _threshold(rule, axis_config, axis):
+                return rule
+            rest = [
+                item
+                for item in ranked
+                if item[0].id != ancestor[0].id and not _is_descendant(item[0], ancestor[0], by_id)
+            ]
+            return ancestor[0] if _judge(ancestor, rest, axis_config, axis) else None
     return ranked[0][0] if _judge(ranked[0], ranked[1:], axis_config, axis) else None
 
 

@@ -53,7 +53,8 @@ def rule(
 def pick(scores: dict[str, float], rules: list[CategoryRule], axis: str = "format", config=None):
     config = config or cfg()
     ranked = _rank(scores, [r for r in rules if r.axis == axis])
-    winner = _pick_axis(ranked, rules_mod._axis_config(axis, config), axis)
+    by_id = {r.id: r for r in rules}
+    winner = _pick_axis(ranked, rules_mod._axis_config(axis, config), axis, by_id)
     return winner.name if winner else None
 
 
@@ -204,3 +205,63 @@ def test_validate_refuses_missing_cross_axis_and_looping_parents():
         )
     with pytest.raises(ClassifyRulesError):
         validate_rules([rule("qorvex", id=930, parent_id=930)], cfg())
+
+
+# ---- nesting (R-CLS-4, CLS-002.D6)
+
+
+def nested(axis: str = "format"):
+    parent = rule("qorvex", axis, id=800)
+    child = rule("qorvex-zhyndel", axis, id=801, parent_id=800)
+    other = rule("vrelk", axis, id=802)
+    return parent, child, other
+
+
+def test_deeper_wins_inside_the_margin_when_it_clears_its_min_score():
+    parent, child, other = nested()
+    # the ancestor leads by less than the margin, or even trails: the margin is skipped
+    scores = {"qorvex": 0.80, "qorvex-zhyndel": 0.79, "vrelk": 0.1}
+    assert pick(scores, [parent, child, other]) == "qorvex-zhyndel"
+    scores = {"qorvex": 0.79, "qorvex-zhyndel": 0.80, "vrelk": 0.1}
+    assert pick(scores, [parent, child, other]) == "qorvex-zhyndel"
+
+
+def test_deeper_failing_its_own_min_score_leaves_the_ancestor_to_the_normal_rule():
+    parent = rule("qorvex", id=810)
+    child = rule("qorvex-zhyndel", id=811, parent_id=810, min_score=0.9)
+    other = rule("vrelk", id=812)
+    rules = [parent, child, other]
+    # the ancestor beats the next non-descendant by the margin: it wins
+    assert pick({"qorvex": 0.80, "qorvex-zhyndel": 0.79, "vrelk": 0.3}, rules) == "qorvex"
+    # the failed descendant is not the ancestor's competitor; the other category is
+    assert pick({"qorvex": 0.80, "qorvex-zhyndel": 0.79, "vrelk": 0.78}, rules) is None
+    # the ancestor must also clear its own min_score
+    assert pick({"qorvex": 0.40, "qorvex-zhyndel": 0.39, "vrelk": 0.1}, rules) is None
+
+
+def test_ancestor_with_only_a_failed_descendant_wins_on_min_score():
+    parent = rule("qorvex", id=820)
+    child = rule("qorvex-zhyndel", id=821, parent_id=820, min_score=0.9)
+    assert pick({"qorvex": 0.6, "qorvex-zhyndel": 0.5}, [parent, child]) == "qorvex"
+
+
+def test_unrelated_top_two_use_the_margin():
+    parent, child, other = nested()
+    scores = {"vrelk": 0.80, "qorvex": 0.78, "qorvex-zhyndel": 0.1}
+    assert pick(scores, [parent, child, other]) is None
+
+
+def test_nesting_works_on_the_topic_axis_and_across_levels():
+    root = rule("vrelk", "topic", id=830)
+    mid = rule("vrelk-ploon", "topic", id=831, parent_id=830)
+    leaf = rule("vrelk-ploon-snax", "topic", id=832, parent_id=831)
+    rules = [root, mid, leaf]
+    assert pick({"vrelk": 0.8, "vrelk-ploon-snax": 0.79}, rules, "topic") == "vrelk-ploon-snax"
+    assert pick({"vrelk": 0.8, "vrelk-ploon": 0.79}, rules, "topic") == "vrelk-ploon"
+
+
+def test_a_looping_chain_does_not_hang_the_pick():
+    a = rule("qorvex", id=840, parent_id=841)
+    b = rule("zhyndel", id=841, parent_id=840)
+    # validate_rules refuses this; the pick still terminates, and judges `a` on its own
+    assert pick({"qorvex": 0.9, "zhyndel": 0.1}, [a, b]) == "qorvex"
