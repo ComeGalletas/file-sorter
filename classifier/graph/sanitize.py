@@ -27,7 +27,7 @@ import httpx
 import psycopg
 
 from classifier.config import Config
-from classifier.fileops.copy_move import WorkingCopy, make_working_copy
+from classifier.fileops.copy_move import WorkingCopy, make_working_copy, working_copy_name
 from classifier.fileops.thumbs import make_thumbnail
 from classifier.graph.errors import mark_error, register_reasons
 from classifier.models.ollama import OllamaClient
@@ -205,6 +205,29 @@ def prepare_folders(source_root: Path, results_root: Path) -> _Folders:
     return _Folders(source=source, work=work, thumbs=thumbs)
 
 
+def check_work_dir(source_root: Path, results_root: Path) -> Path:
+    """The real `.work/` folder under `results_root`, read-only (CLS-002.D8).
+
+    The same checks as `prepare_folders` (a link can't redirect `.work`, the roots can't
+    overlap, an `OSError` becomes fixed text), but nothing is created. For nodes that only
+    read the working copies.
+    """
+    failed = False
+    try:
+        source = source_root.resolve()
+        results = results_root.resolve()
+        work = (results_root / WORK_DIR).resolve()
+    except (OSError, RuntimeError):
+        failed = True
+    if failed:
+        raise WorkDirError(_WORK_UNREADABLE)
+    if work != results / WORK_DIR:
+        raise WorkDirError("results_root/.work must be a real folder, not a link elsewhere")
+    if _under(results, source) or _under(source, results):
+        raise WorkDirError("results_root and source_root must not overlap (R-FOP-9)")
+    return work
+
+
 def _published(path: Path, folder: Path, name: str, folders: _Folders) -> None:
     """The file just published must really sit at `folder/name` (SAN-001.D16)."""
     try:
@@ -271,7 +294,7 @@ def _sanitize_one(
             MetadataStripError: METADATA_RESIDUAL,
         },
     )
-    _published(copy.path, folders.work, f"{row.source_hash}.{row.ext}", folders)
+    _published(copy.path, folders.work, working_copy_name(row.source_hash, row.ext), folders)
 
     thumb = _attempt(
         THUMBNAIL_FAILED,

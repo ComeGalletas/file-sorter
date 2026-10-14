@@ -44,6 +44,8 @@ from tests.recordings.replay import RecordingError, ReplayTransport
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 INGEST_ONLY = tuple(n for n in REGISTRY if n.name == "ingest")
+# M2 tests exercise ingest and sanitize only; classify has its own tests (CLS-002.2.4).
+M2_NODES = tuple(n for n in REGISTRY if n.name in ("ingest", "sanitize"))
 
 pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
 
@@ -177,7 +179,7 @@ class TestSanitize:
         images = _populate(source)
         hashes = {key: _hash(path) for key, path in images.items()}
 
-        result = run(config, dry_run=True)
+        result = run(config, dry_run=True, nodes=M2_NODES)
 
         assert result.ingest.new == 3
         assert (result.sanitize.sanitized, result.sanitize.errored) == (3, 0)
@@ -216,7 +218,7 @@ class TestSanitize:
     ) -> None:
         _populate(source)
         before = _tree(source)
-        run(config, dry_run=True)
+        run(config, dry_run=True, nodes=M2_NODES)
         assert _tree(source) == before  # P-1, R-SAN-1
         assert [p.name for p in results.iterdir()] == [".work"]
         work_dir = results / ".work"
@@ -231,11 +233,11 @@ class TestSanitize:
         self, source: Path, results: Path, config: Config, schema_dsn: str
     ) -> None:
         _populate(source)
-        run(config, dry_run=True)
+        run(config, dry_run=True, nodes=M2_NODES)
         files, log = _files(schema_dsn), _log(schema_dsn)
         work = _tree(results)
 
-        again = run(config, dry_run=True)
+        again = run(config, dry_run=True, nodes=M2_NODES)
 
         assert again.sanitize == SanitizeResult()  # R-PIPE-1, P-4
         assert _files(schema_dsn) == files
@@ -328,7 +330,7 @@ class TestFailClosed:
         monkeypatch.setattr(node, name, patched)
         caplog.set_level(logging.DEBUG)
 
-        result = run(config, dry_run=True)
+        result = run(config, dry_run=True, nodes=M2_NODES)
 
         assert (result.sanitize.sanitized, result.sanitize.errored) == (2, 1)
         assert dict(result.sanitize.by_reason) == {reason: 1}
@@ -353,7 +355,7 @@ class TestFailClosed:
             return rows
 
         monkeypatch.setattr(node, "strip_metadata", bad_field)
-        result = run(config, dry_run=True)
+        result = run(config, dry_run=True, nodes=M2_NODES)
 
         assert dict(result.sanitize.by_reason) == {"sanitize_ledger_rejected": 1}
         assert _files(schema_dsn)[target] == ("error", "sanitize_ledger_rejected", None)
@@ -368,10 +370,10 @@ class TestFailClosed:
         monkeypatch.setattr(
             node, "make_thumbnail", _only_for(target, OSError("x"), node.make_thumbnail)
         )
-        run(config, dry_run=True)
+        run(config, dry_run=True, nodes=M2_NODES)
         monkeypatch.undo()
 
-        again = run(config, dry_run=True)  # R-ING-2: ingest re-queues the error row
+        again = run(config, dry_run=True, nodes=M2_NODES)  # R-ING-2: ingest re-queues the error row
 
         assert again.ingest.new == 1
         assert again.sanitize.sanitized == 1
@@ -384,7 +386,7 @@ class TestFailClosed:
         # SAN-001.D18: a row re-queued after a later error gets a fresh log, not a second set.
         images = _populate(source)
         target = _hash(images["named"])
-        run(config, dry_run=True)
+        run(config, dry_run=True, nodes=M2_NODES)
         first = [row[2:] for row in _log(schema_dsn, target)]
         with psycopg.connect(schema_dsn) as conn:
             conn.execute(
@@ -392,7 +394,7 @@ class TestFailClosed:
                 (target,),
             )
 
-        run(config, dry_run=True)
+        run(config, dry_run=True, nodes=M2_NODES)
 
         assert sorted(row[2:] for row in _log(schema_dsn, target)) == sorted(first)
 
@@ -410,7 +412,7 @@ class TestPaths:
         before = _tree(source)
 
         with pytest.raises(WorkDirError, match="real folder") as raised:
-            run(config, dry_run=True)
+            run(config, dry_run=True, nodes=M2_NODES)
 
         assert _tree(source) == before
         assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
@@ -426,7 +428,7 @@ class TestPaths:
         before = _tree(source)
 
         with pytest.raises(WorkDirError, match="overlap"):
-            run(config, dry_run=True)
+            run(config, dry_run=True, nodes=M2_NODES)
 
         assert _tree(source) == before
 
@@ -440,7 +442,7 @@ class TestPaths:
         images["plain"].unlink()  # the test's own synthetic source, not the app writing it
         images["plain"].symlink_to(outside)
 
-        result = run(config, dry_run=True)
+        result = run(config, dry_run=True, nodes=M2_NODES)
 
         assert dict(result.sanitize.by_reason) == {"sanitize_working_copy_failed": 1}
         assert _files(schema_dsn)[target] == ("error", "sanitize_working_copy_failed", None)
@@ -461,7 +463,7 @@ class TestPaths:
             return copy
 
         monkeypatch.setattr(node, "make_working_copy", escaped)
-        result = run(config, dry_run=True)
+        result = run(config, dry_run=True, nodes=M2_NODES)
 
         assert dict(result.sanitize.by_reason) == {"sanitize_path_escape": 1}
         assert _files(schema_dsn)[target] == ("error", "sanitize_path_escape", None)
@@ -487,7 +489,7 @@ class TestPreFlight:
         _populate(source)
         config = _config(tmp_path, source, results, schema_dsn, **setting)
         with pytest.raises(SanitizeConfigError, match=match):
-            run(config, dry_run=True)
+            run(config, dry_run=True, nodes=M2_NODES)
         assert not results.exists()
         assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
 
@@ -497,7 +499,7 @@ class TestPreFlight:
         _populate(source)
         config = _config(tmp_path, source, results, schema_dsn, rules_file=str(tmp_path / "x"))
         with pytest.raises(SanitizeConfigError, match="make init"):
-            run(config, dry_run=True)
+            run(config, dry_run=True, nodes=M2_NODES)
         assert not results.exists()
 
     def test_a_missing_log_key_names_make_init(
@@ -506,7 +508,7 @@ class TestPreFlight:
         _populate(source)
         monkeypatch.delenv(LOG_KEY_ENV)
         with pytest.raises(SanitizeConfigError, match=f"{LOG_KEY_ENV}.*make init"):
-            run(config, dry_run=True)
+            run(config, dry_run=True, nodes=M2_NODES)
         assert not results.exists()
 
     def test_an_entity_rule_without_ollama_host_fails_fast(
@@ -520,7 +522,7 @@ class TestPreFlight:
         _populate(source)
         monkeypatch.delenv("OLLAMA_HOST")
         with pytest.raises(OllamaError, match="OLLAMA_HOST"):
-            run(entity_config, dry_run=True)
+            run(entity_config, dry_run=True, nodes=M2_NODES)
         assert not results.exists()
         assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
 
@@ -595,7 +597,7 @@ class TestEntity:
         spy = Spy(ollama_transport("models"))
         caplog.set_level(logging.DEBUG)
 
-        result = run(entity_config, dry_run=True, ollama_transport=spy)
+        result = run(entity_config, dry_run=True, nodes=M2_NODES, ollama_transport=spy)
 
         assert (result.sanitize.sanitized, result.sanitize.errored) == (4, 0)
         files = _files(schema_dsn)
@@ -631,7 +633,12 @@ class TestEntity:
         images = _populate_recorded(source)
         caplog.set_level(logging.DEBUG)
 
-        result = run(entity_config, dry_run=True, ollama_transport=httpx.MockTransport(answer))
+        result = run(
+            entity_config,
+            dry_run=True,
+            nodes=M2_NODES,
+            ollama_transport=httpx.MockTransport(answer),
+        )
 
         assert (result.sanitize.sanitized, result.sanitize.errored) == (0, 4)
         assert dict(result.sanitize.by_reason) == {"sanitize_entity_unavailable": 4}
@@ -642,7 +649,9 @@ class TestEntity:
         _assert_clean(caplog.text, result, files)
 
         # R-ING-2: once the backend answers, the next run retries and sanitizes them.
-        retried = run(entity_config, dry_run=True, ollama_transport=ollama_transport("models"))
+        retried = run(
+            entity_config, dry_run=True, nodes=M2_NODES, ollama_transport=ollama_transport("models")
+        )
         assert retried.ingest.new == 4
         assert retried.sanitize.sanitized == 4
         assert {_files(schema_dsn)[_hash(p)][0] for p in images.values()} == {"sanitized"}
@@ -655,7 +664,7 @@ class TestEntity:
         _image(source / "Unrecorded_Name_0001.jpg", "JPEG", 33)
         replay = ReplayTransport("models", request.node.nodeid)
         with pytest.raises(RecordingError):
-            run(entity_config, dry_run=True, ollama_transport=replay)
+            run(entity_config, dry_run=True, nodes=M2_NODES, ollama_transport=replay)
         assert {status for status, _, _ in _files(schema_dsn).values()} == {"queued"}
         assert _log(schema_dsn) == []
 
@@ -671,7 +680,7 @@ def test_a_sanitized_row_sent_to_error_leaves_no_log_and_a_retry_does_not_double
     # SAN-003.D2: classify (CLS-002.2) will send `sanitized` rows to `error` through this helper.
     images = _populate(source)
     target = _hash(images["named"])
-    run(config, dry_run=True)
+    run(config, dry_run=True, nodes=M2_NODES)
     first = _log(schema_dsn, target)
     assert first  # the named file has redactions
 
@@ -680,6 +689,6 @@ def test_a_sanitized_row_sent_to_error_leaves_no_log_and_a_retry_does_not_double
     assert _files(schema_dsn)[target] == ("error", THUMBNAIL_FAILED, None)
     assert _log(schema_dsn, target) == []
 
-    retried = run(config, dry_run=True)  # R-ING-2: error rows go back to the start
+    retried = run(config, dry_run=True, nodes=M2_NODES)  # R-ING-2: error rows go back to the start
     assert retried.sanitize.sanitized == 1
     assert [row[2:] for row in _log(schema_dsn, target)] == [row[2:] for row in first]

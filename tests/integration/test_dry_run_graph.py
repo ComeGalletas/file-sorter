@@ -24,6 +24,8 @@ RULES = {
 }
 # The PIPE-001 mechanics below stand in their own later nodes, so they run ingest alone.
 INGEST_ONLY = tuple(n for n in REGISTRY if n.name == "ingest")
+# M2 tests exercise ingest and sanitize only; classify has its own tests (CLS-002.2.4).
+M2_NODES = tuple(n for n in REGISTRY if n.name in ("ingest", "sanitize"))
 
 # Each test starts on an empty ledger of this module's own schema (TST-003.1).
 pytestmark = pytest.mark.usefixtures("empty_ledger")
@@ -79,9 +81,9 @@ class TestDryRun:
         _populate(source)
         config = _config(source, tmp_path, schema_dsn)
 
-        first = run(config, dry_run=True)
+        first = run(config, dry_run=True, nodes=M2_NODES)
         rows_after_first = _rows(schema_dsn)
-        second = run(config, dry_run=True)
+        second = run(config, dry_run=True, nodes=M2_NODES)
 
         assert first.dry_run and second.dry_run
         assert list(first.counts) == ["ingest", "sanitize"]  # M2: no fileops in a dry run
@@ -101,7 +103,7 @@ class TestDryRun:
     ) -> None:
         # PIPE-001.D1: no `proposed` until `name` exists; M2 ends at `sanitized`.
         _populate(source)
-        run(_config(source, tmp_path, schema_dsn), dry_run=True)
+        run(_config(source, tmp_path, schema_dsn), dry_run=True, nodes=M2_NODES)
         assert set(_statuses(schema_dsn)) == {"sanitized", "skipped"}
         sql = "select count(*) from files where proposed_path is not null"
         assert _rows(schema_dsn, sql) == [(0,)]
@@ -111,14 +113,17 @@ class TestDryRun:
     ) -> None:
         _populate(source)
         before = _tree(source)
-        run(_config(source, tmp_path, schema_dsn), dry_run=True)
+        run(_config(source, tmp_path, schema_dsn), dry_run=True, nodes=M2_NODES)
         assert _tree(source) == before
         # DESIGN §3: before M7 only .work/ (and reports/) exist under results_root.
         assert [p.name for p in (tmp_path / "results").iterdir()] == [".work"]
 
     def test_run_ids_differ_per_run(self, source: Path, tmp_path: Path, schema_dsn: str) -> None:
         config = _config(source, tmp_path, schema_dsn)
-        assert run(config, dry_run=True).run_id != run(config, dry_run=True).run_id
+        assert (
+            run(config, dry_run=True, nodes=M2_NODES).run_id
+            != run(config, dry_run=True, nodes=M2_NODES).run_id
+        )
 
 
 def _classify_stand_in(conn: psycopg.Connection, ctx: NodeContext) -> object:

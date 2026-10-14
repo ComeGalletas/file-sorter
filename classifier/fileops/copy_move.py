@@ -33,6 +33,20 @@ class SourceRefusedError(OSError):
     """
 
 
+def working_copy_name(source_hash: str, ext: str) -> str:
+    """`<source_hash>.<ext>`, the one name of a working copy in `.work/` (FOP-001.D1).
+
+    Sanitize writes it and classify reads it, both through this function, so they agree by
+    construction (CLS-002.D8). The hash and the extension are validated, so the name can never
+    carry a separator or a traversal. Errors are fixed text: never the value.
+    """
+    if not _SOURCE_HASH.fullmatch(source_hash):
+        raise ValueError("source_hash must be 64 lowercase hex characters")
+    if not _EXT.fullmatch(ext):
+        raise ValueError("ext must be a bare alphanumeric extension, without a dot")
+    return f"{source_hash}.{ext}"
+
+
 class WorkingCopy(NamedTuple):
     path: Path  # .work/<source_hash>.<ext>
     copy_sha256: str  # SHA-256 of the transformed copy, never the source_hash
@@ -126,12 +140,8 @@ def make_working_copy(
     failure the temp file is removed and the exception propagates, so a file that didn't
     pass `transform` never appears under the final name.
     """
-    if not _SOURCE_HASH.fullmatch(source_hash):
-        raise ValueError("source_hash must be 64 lowercase hex characters")
-    if not _EXT.fullmatch(ext):
-        raise ValueError("ext must be a bare alphanumeric extension, without a dot")
+    final = work_dir / working_copy_name(source_hash, ext)
     work_dir.mkdir(exist_ok=True)
-    final = work_dir / f"{source_hash}.{ext}"
     tmp = work_dir / f".{source_hash}.{ext}.tmp"  # FOP-001.D1; a crashed run's leftover is ours
     try:
         with _open_source(source) as src, _new_temp(tmp) as dst:

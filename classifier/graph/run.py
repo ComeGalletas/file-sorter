@@ -21,6 +21,7 @@ from langgraph.graph.state import CompiledStateGraph
 from classifier.config import Config
 from classifier.graph.nodes import REGISTRY, Node, NodeContext, plan
 from classifier.graph.state import GraphState, RunResult
+from classifier.models.vision import VisionBackend
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +32,13 @@ def run(
     dry_run: bool = False,
     nodes: tuple[Node, ...] = REGISTRY,
     ollama_transport: httpx.BaseTransport | None = None,
+    vision: VisionBackend | None = None,
 ) -> RunResult:
     """Run the pipeline once over `paths.source_root` and return the counts per node.
 
     `nodes` is for tests and later milestones; it defaults to the registered nodes.
-    `ollama_transport` is for tests only (TST-005.1's replay, or a failing fake).
+    `ollama_transport` and `vision` are for tests only (TST-005.1's and TST-008.1's replay,
+    or a failing fake); None means the real services.
     """
     dsn = config.db.dsn
     if not dsn:
@@ -46,6 +49,7 @@ def run(
         results_root=Path(config.paths.results_root),
         config=config,
         ollama_transport=ollama_transport,
+        vision=vision,
     )
     steps = plan(nodes, dry_run)
     run_id = uuid.uuid4().hex
