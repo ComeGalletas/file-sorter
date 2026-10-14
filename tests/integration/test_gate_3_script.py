@@ -1,27 +1,32 @@
-"""TST-008.3.4: gate 3 end to end on synthetic images and labels (TST-008.D4, D6).
+"""TST-008.3.4, .3.6: gate 3 end to end on synthetic images, the real nodes and replayed vision.
 
-Ingest and sanitize are the real nodes, in a fresh migrated schema. Until the classify node
-lands (CLS-002.2, #99) a stand-in node writes the ledger columns the real one will, from a table
-the test controls; once #99 is on main the stand-in is replaced by the real node over replayed
-vision (TST-008.1) and this docstring says so. Images are benign flat colours generated here, the
-label vocabulary is read from the gate's own migrated schema, and no adult content exists: a
-row's `adult` is a label column and a ledger `branch` is a string. The real fixtures only run at
-`make gate-3` (TST-004).
+Ingest, sanitize and classify are the real nodes (CLS-002.2) in a fresh migrated schema. The
+pictures are the four benign synthetic ones of the classify scenario, so TST-008.1's replay
+under tests/recordings/graph/ answers every SigLIP request. The adult cases use `NumericGate`,
+a double that returns plain numbers for `nsfw_scores` (flat pictures never score as adult on the
+real gate; lead ruling, #99): no content is made or described, and a row's `adult` is a label
+column and a ledger `branch` is a string. The gate's thresholds here are the test ones of the
+classify scenario, never the tuned ones. The real fixtures only run at `make gate-3` (TST-004).
+
+Labels are derived from what the node wrote on a first pass, so this test proves the wiring:
+vocabularies, label matching, the runner and the output. The measures themselves are proved on
+plain numbers in tests/unit/gate/.
 """
 
 import importlib.util
 import re
 from pathlib import Path
 
-import psycopg
+import numpy as np
 import pytest
-from PIL import Image
+import yaml
 
-from classifier.graph.nodes import Node, NodeContext
+from classifier.config import load_config
 from classifier.sanitize.rules import LOG_KEY_ENV
 from tests.db.db_support import require_db_dsn
+from tests.integration.classify_support import LABELS, REPO, TEST_MIN_SCORE, make_image
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "gate_3.py"
+SCRIPT = REPO / "scripts" / "gate_3.py"
 _spec = importlib.util.spec_from_file_location("gate_3_it", SCRIPT)
 assert _spec is not None and _spec.loader is not None
 gate_3 = importlib.util.module_from_spec(_spec)
@@ -33,12 +38,37 @@ rules:
   - {id: mine, type: literal, values: ["Zyxwq Plonk"], replace: "[PERSON]"}
 """
 HEADER = "file,format,topic,adult,reference,subject,tags\n"
+NAMES = dict(
+    zip(LABELS, ("a-secret.png", "b-secret.png", "c-secret.png", "d-secret.png"), strict=True)
+)
+FLAGGED = "a-secret.png"  # the double reports this one as adult; a number, not a picture
+
+
+class NumericGate:
+    """The replay for embeddings and parameters; `nsfw_scores` returns plain numbers."""
+
+    def __init__(self, replay) -> None:
+        self._replay = replay
+
+    def __getattr__(self, name: str):
+        return getattr(self._replay, name)
+
+    def nsfw_scores(self, images) -> np.ndarray:
+        red = [1.0 if image.getpixel((0, 0)) == (200, 30, 30) else 0.0 for image in images]
+        return np.array(red, dtype=np.float32)
 
 
 @pytest.fixture(autouse=True)
-def log_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(LOG_KEY_ENV, "00112233445566778899aabbccddeeff")
     monkeypatch.setenv("DB_DSN", require_db_dsn())
+    data = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8"))
+    for axis in ("format", "topic"):
+        data["classify"][axis]["default_min_score"] = TEST_MIN_SCORE
+        data["classify"][axis]["margin"] = 0.0
+    config = tmp_path / "config-test.yaml"
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    monkeypatch.setattr(gate_3, "CONFIG", config)
 
 
 @pytest.fixture
@@ -52,172 +82,142 @@ def rules_path(tmp_path: Path) -> Path:
 def images(tmp_path: Path) -> Path:
     root = tmp_path / "images-secret"
     root.mkdir()
-    for index, name in enumerate(("a-secret.png", "b-secret.png", "c-secret.png")):
-        Image.new("RGB", (8, 6), (10 * index + 5, 20, 30)).save(root / name)
+    for label, name in NAMES.items():
+        make_image(label).save(root / name)
     return root
 
 
-def vocabulary() -> tuple[str, str, str, str]:
-    """Two format names and two topic names from the committed categories, never hard-coded."""
-    from tests.integration.schema_support import migrated_schema
-
-    with migrated_schema(require_db_dsn()) as dsn:
-        formats, topics = gate_3.read_vocabularies(dsn)
-    fmts = sorted(formats - {"unsorted"})
-    tops = sorted(topics - set(fmts[:2]))
-    return fmts[0], fmts[1], tops[0], tops[1]
+@pytest.fixture
+def vision(vision_backend) -> NumericGate:
+    models = load_config().models
+    return NumericGate(vision_backend("graph", models.classifier, models.nsfw))
 
 
-def labels_file(tmp_path: Path, rows: list[str]) -> Path:
+def write_labels(tmp_path: Path, rows: list[str]) -> Path:
     path = tmp_path / "labels-secret.csv"
     path.write_text(HEADER + "\n".join(rows) + "\n", encoding="utf-8")
     return path
 
 
-def stand_in(table: dict[str, tuple[str, str | None, str]], status: str = "classified") -> Node:
-    """The classify stand-in: format, topic and branch by file name (CLS-002.2 writes these)."""
-
-    def run(conn: psycopg.Connection, ctx: NodeContext) -> None:
-        for source_hash, path in conn.execute(
-            "select source_hash, source_path from files where status = 'sanitized'"
-        ).fetchall():
-            fmt, topic, branch = table[Path(path).name]
-            conn.execute(
-                "update files set status = %s::file_status, format = %s, topic = %s, "
-                "branch = %s where source_hash = %s",
-                (status, fmt, topic, branch, source_hash),
-            )
-
-    return Node("classify", run)
-
-
-def registry(classify: Node) -> list[Node]:
-    from classifier.graph import nodes as graph_nodes
-
-    return [*graph_nodes.REGISTRY, classify]
-
-
-def gate(images: Path, labels: Path, rules: Path, classify: Node, *extra: str) -> int:
+def gate(images: Path, labels: Path, rules: Path, vision, *extra: str) -> int:
     return gate_3.main(
-        list(extra),
-        images=images,
-        labels_path=labels,
-        registry=registry(classify),
-        rules_path=rules,
+        list(extra), images=images, labels_path=labels, rules_path=rules, vision=vision
     )
 
 
-def good_case(tmp_path: Path):
-    f1, f2, t1, t2 = vocabulary()
-    labels = labels_file(
-        tmp_path,
-        [
-            f"a-secret.png,{f1},{t1},yes,,,",
-            f"b-secret.png,{f2},{t2},no,,,suggestive-negative",
-            f"c-secret.png,{f1},,no,,,",
-        ],
-    )
-    table = {
-        "a-secret.png": (f1, t1, "nsfw"),
-        "b-secret.png": (f2, t2, "safe"),
-        "c-secret.png": (f1, None, "safe"),
-    }
-    return labels, table
+def learn(tmp_path, images, rules, vision, monkeypatch) -> dict[str, tuple]:
+    """Run once on placeholder labels and return what the node wrote, by file name."""
+    seen: list = []
+    real = gate_3.evaluate
+
+    def spy(labels, outcomes):
+        seen.extend(outcomes)
+        return real(labels, outcomes)
+
+    monkeypatch.setattr(gate_3, "evaluate", spy)
+    probe = write_labels(tmp_path, [f"{n},,,no,,," for n in NAMES.values()])
+    gate(images, probe, rules, vision)
+    monkeypatch.setattr(gate_3, "evaluate", real)
+    return {o.names[0]: (o.format, o.topic, o.branch, o.status) for o in seen}
 
 
-PUBLIC_PASS = (
-    "format agreement: 100% (required >= 90%): ok",
-    "topic agreement: 100% (required >= 85%): ok",
-    "unrecognized format: 0% (required < 10%): ok",
-    "nsfw gate (adult flagged, safe not flagged): ok",
-    "suggestive-negative rows safe: ok",
-    "node errors: ok",
-    "labels and images match: ok",
-    "gate 3 PASS",
-)
+def agreeing_rows(learned: dict[str, tuple]) -> list[str]:
+    """Labels that agree with the node, one suggestive-negative among the safe rows."""
+    rows = []
+    tagged = False
+    for name, (fmt, topic, branch, _status) in sorted(learned.items()):
+        adult = "yes" if branch == "nsfw" else "no"
+        topic = "" if topic == fmt else (topic or "")
+        tag = ""
+        if adult == "no" and not tagged:
+            tag, tagged = "suggestive-negative", True
+        rows.append(f"{name},{fmt or ''},{topic},{adult},,,{tag}")
+    return rows
 
 
-def test_a_clean_run_prints_exactly_the_public_form(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
+PUBLIC_LINES = 8
+
+
+def test_the_node_flags_only_the_double_and_writes_formats(
+    tmp_path, images, rules_path, vision, monkeypatch
 ) -> None:
-    labels, table = good_case(tmp_path)
-    assert gate(images, labels, rules_path, stand_in(table)) == 0
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    assert set(learned) == set(NAMES.values())
+    assert {n for n, v in learned.items() if v[2] == "nsfw"} == {FLAGGED}
+    assert all(v[3] == "classified" for v in learned.values())
+
+
+def test_a_run_on_agreeing_labels_prints_the_public_form(
+    tmp_path, images, rules_path, vision, monkeypatch, capsys
+) -> None:
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    capsys.readouterr()
+    labels = write_labels(tmp_path, agreeing_rows(learned))
+    code = gate(images, labels, rules_path, vision)
     out = capsys.readouterr()
-    assert tuple(out.out.splitlines()) == PUBLIC_PASS and out.err == ""
+    lines = out.out.splitlines()
+    assert len(lines) == PUBLIC_LINES and out.err == ""
+    assert lines[0].startswith("format agreement: 100% ") and lines[0].endswith(": ok")
+    assert lines[3:7] == [
+        "nsfw gate (adult flagged, safe not flagged): ok",
+        "suggestive-negative rows safe: ok",
+        "node errors: ok",
+        "labels and images match: ok",
+    ]
+    assert lines[-1] == "gate 3 PASS" and code == 0
 
 
-def test_a_missed_adult_row_fails_with_no_digit_on_the_line(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
+def test_a_missed_adult_label_fails_the_nsfw_line_without_a_digit(
+    tmp_path, images, rules_path, vision, monkeypatch, capsys
 ) -> None:
-    labels, table = good_case(tmp_path)
-    table["a-secret.png"] = (*table["a-secret.png"][:2], "safe")
-    assert gate(images, labels, rules_path, stand_in(table)) == 1
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    capsys.readouterr()
+    rows = [r.replace(",yes,", ",no,") for r in agreeing_rows(learned)]
+    labels = write_labels(tmp_path, rows)
+    assert gate(images, labels, rules_path, vision) == 1
     lines = capsys.readouterr().out.splitlines()
     assert lines[3] == "nsfw gate (adult flagged, safe not flagged): FAIL"
     assert lines[-1] == "gate 3 FAIL"
 
 
-def test_a_flagged_suggestive_negative_row_fails_its_own_line(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    labels, table = good_case(tmp_path)
-    table["b-secret.png"] = (*table["b-secret.png"][:2], "nsfw")
-    assert gate(images, labels, rules_path, stand_in(table)) == 1
-    lines = capsys.readouterr().out.splitlines()
-    assert lines[4] == "suggestive-negative rows safe: FAIL"
-    assert not re.search(r"\d", lines[3] + lines[4])
-
-
 def test_an_unlabelled_image_fails_coverage(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path, images, rules_path, vision, monkeypatch, capsys
 ) -> None:
-    labels, table = good_case(tmp_path)
-    Image.new("RGB", (8, 6), (200, 20, 30)).save(images / "d-secret.png")
-    table["d-secret.png"] = table["c-secret.png"]
-    assert gate(images, labels, rules_path, stand_in(table)) == 1
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    capsys.readouterr()
+    labels = write_labels(tmp_path, agreeing_rows(learned)[:-1])
+    assert gate(images, labels, rules_path, vision) == 1
     assert "labels and images match: FAIL" in capsys.readouterr().out
 
 
-def test_a_node_error_fails(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    labels, table = good_case(tmp_path)
-    assert gate(images, labels, rules_path, stand_in(table, status="error")) == 1
-    assert "node errors: FAIL" in capsys.readouterr().out
-
-
 def test_a_label_outside_the_vocabulary_stops_with_a_line_and_a_column(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path, images, rules_path, vision, capsys
 ) -> None:
-    labels, table = good_case(tmp_path)
-    labels.write_text(HEADER + "a-secret.png,notacategory,,no,,,\n", encoding="utf-8")
-    assert gate(images, labels, rules_path, stand_in(table)) == 1
+    labels = write_labels(tmp_path, ["a-secret.png,notacategory,,no,,,"])
+    assert gate(images, labels, rules_path, vision) == 1
     err = capsys.readouterr().err
     assert err.strip() == "gate 3 FAIL: labels line 2, column format: not in the format vocabulary"
 
 
 def test_detail_stays_behind_the_flag(
-    tmp_path: Path, images: Path, rules_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path, images, rules_path, vision, monkeypatch, capsys
 ) -> None:
-    labels, table = good_case(tmp_path)
-    assert gate(images, labels, rules_path, stand_in(table)) == 0
-    assert "DETAIL" not in capsys.readouterr().out
-    assert gate(images, labels, rules_path, stand_in(table), "--detail") == 0
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    capsys.readouterr()
+    labels = write_labels(tmp_path, agreeing_rows(learned))
+    gate(images, labels, rules_path, vision)
+    plain = capsys.readouterr().out
+    assert "DETAIL" not in plain
+    gate(images, labels, rules_path, vision, "--detail")
     out = capsys.readouterr().out
-    assert tuple(out.splitlines()[: len(PUBLIC_PASS)]) == PUBLIC_PASS
+    assert out.splitlines()[:PUBLIC_LINES] == plain.splitlines()
     assert "DETAIL" in out and "never paste" in out
-    assert "secret" not in out  # no file name even in the detail
+    assert "secret" not in out
+    assert not re.search(r"\d", plain.splitlines()[3] + plain.splitlines()[4])
 
 
-def test_nothing_is_left_in_the_results_tree_or_the_default_schema(
-    tmp_path: Path, images: Path, rules_path: Path
-) -> None:
-    labels, table = good_case(tmp_path)
-    before = sorted(p.name for p in tmp_path.iterdir())
-    assert gate(images, labels, rules_path, stand_in(table)) == 0
-    assert sorted(p.name for p in tmp_path.iterdir()) == before
-    assert sorted(p.name for p in images.iterdir()) == [
-        "a-secret.png",
-        "b-secret.png",
-        "c-secret.png",
-    ]
+def test_the_source_folder_is_left_alone(tmp_path, images, rules_path, vision, monkeypatch) -> None:
+    learned = learn(tmp_path, images, rules_path, vision, monkeypatch)
+    before = {p.name: p.read_bytes() for p in images.iterdir()}
+    gate(images, write_labels(tmp_path, agreeing_rows(learned)), rules_path, vision)
+    assert {p.name: p.read_bytes() for p in images.iterdir()} == before

@@ -466,9 +466,9 @@ references or host paths here. Use hashes.
 - [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
   - [x] TST-008.3.1 — pure measures: `Outcome`, `Tally`, `evaluate` (exact integer ratios, calibration-only left out, coverage and error checks); unit tests (commit with .3.2)
   - [x] TST-008.3.2 — `judge`: the TST-008.D6 public form and `--detail` text; boundary tests (89.99 → `89%` FAIL, 90.0 → `90%` PASS) (commit with .3.1)
-  - [ ] TST-008.3.3 — runner: vocabularies from the throwaway schema, ingest → sanitize → classify, outcomes, `main`/`--detail`. Written and unit-tested against the registry seam (commit below); stays unticked until #99/#100 land and the integration test (.3.4) runs it end to end
+  - [x] TST-008.3.3 — runner: vocabularies from the throwaway schema, ingest → sanitize → classify through the graph registry (real `classify`, CLS-002.2), outcomes, `main`/`--detail` (32bcebe, then wired to the real node in the commit that ticks .3.6)
   - [x] TST-008.3.4 — `tests/integration/test_gate_3_script.py` on synthetic images and labels, real ingest and sanitize nodes, a classify stand-in until #99 (swap in the real node over replayed vision then; follow-up .3.6)
-  - [ ] TST-008.3.6 — after #99/#100 land: replace the stand-in with the real classify node over replayed vision
+  - [x] TST-008.3.6 — the integration test runs the real classify node over replayed vision (the classify scenario's four synthetic pictures, an NSFW-score double), the stand-in is gone
   - [ ] TST-008.3.5 — Results; the G1 run after #102 and the lead's go
 
 ## TST-008 — Results

@@ -286,7 +286,7 @@ def gate_nodes(registry: Sequence[Any]) -> tuple[Any, ...]:
     if tuple(node.name for node in picked) != NODES:
         raise GateSetupError(
             "the node registry must hold exactly one `ingest`, `sanitize` and `classify` node "
-            "(CLS-002.2, #99)"
+            "(CLS-002.2)"
         )
     return picked
 
@@ -360,6 +360,7 @@ def run_pipeline(
     labels_path: Path,
     nodes: Sequence[Any],
     rules_path: Path | None = None,
+    vision: Any = None,
 ) -> Measures:
     """Ingest -> sanitize -> classify into a fresh schema and a removed temp results tree
     (TST-005.D6), then tally the labels against the ledger (TST-008.D4)."""
@@ -373,7 +374,12 @@ def run_pipeline(
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
         formats, topics = read_vocabularies(schema)
         labels = fixture_labels.load_labels(labels_path, formats=formats, topics=topics)
-        run(load_config(images, results, schema, rules_path), dry_run=True, nodes=tuple(nodes))
+        run(
+            load_config(images, results, schema, rules_path),
+            dry_run=True,
+            nodes=tuple(nodes),
+            vision=vision,
+        )
         with psycopg.connect(schema) as conn:
             rows = conn.execute(
                 "select source_path, duplicate_paths, status::text, format, topic, branch "
@@ -388,8 +394,10 @@ def main(
     labels_path: Path = LABELS,
     registry: Sequence[Any] | None = None,
     rules_path: Path | None = None,
+    vision: Any = None,
 ) -> int:
-    """`images`, `labels_path`, `registry` and `rules_path` are test seams."""
+    """`images`, `labels_path`, `registry`, `rules_path` and `vision` are test seams: with
+    `vision=None` the classify node builds the real SigLIP and NSFW backends (CLS-002.2)."""
     import os
 
     detail = "--detail" in (sys.argv[1:] if argv is None else argv)
@@ -399,7 +407,7 @@ def main(
             from classifier.graph import nodes as graph_nodes
 
             registry = graph_nodes.REGISTRY
-        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry), rules_path)
+        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry), rules_path, vision)
     except (GateSetupError, GateRunError, fixture_labels.LabelsError) as exc:  # fixed text
         print(f"gate 3 FAIL: {exc}", file=sys.stderr)
         return 1
