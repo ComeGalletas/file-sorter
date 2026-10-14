@@ -183,7 +183,10 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-002.2.2 — `SiglipBackend.nsfw_scores` wired to it (lazy), stub test replaced, SigLIP `local_files_only` pin (carried finding a) (`f255a84`)
   - [x] MOD-002.2.3 — `tests/gpu/models/test_nsfw.py`, the acceptance; tie-safe ordering check in `test_siglip.py` (carried finding b) (`c074f43`)
   - ~~MOD-002.2.4~~ moved to MOD-002.3 (lead's approval on #89): replay recordings wait for TST-008.1 (#96)
-- [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · issue: lead to open
+- [x] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · #119 · acceptance: `tests/devtools/test_vision_recordings.py`
+  - [x] MOD-002.3.1 — `tests/unit/models/vision_inputs.py` (synthetic inputs, no font), `tests/gpu/models/test_record_vision.py`, 16 recordings made with `--record-vision`; re-run against them within atol 1e-3
+  - [x] MOD-002.3.2 — `tests/unit/models/test_vision_replay.py`: 9 replay-backed unit tests (backend contract, embeddings, params, sigmoid and max over real vectors, NSFW range and shape, a miss raises)
+  - [x] MOD-002.3.3 — journal Results
 
 ## MOD-002 — Results
 
@@ -206,3 +209,13 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Deferred:** MOD-002.2.4 (replay recordings) moved to MOD-002.3, to be opened by the lead after TST-008.1 (#96) merges.
 - **Reviewer / Privacy auditor:** pending (lead).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. The gap is the one acceptance item this PR doesn't carry: replay recordings (MOD-002.3, blocked on #96).
+
+### MOD-002.3 (ml desk, #119)
+
+- **Recordings:** 16 under `tests/recordings/models/`, made with `--record-vision` from `tests/unit/models/vision_inputs.py` (seeded PCG64 noise, flat colours, drawn bars; no font, so a Pillow change cannot move a digest). Model ids come from `config.yaml`. The recorder's lint passes on the real tree.
+- **Re-check:** a second `--record-vision` run against the committed set passed, so every recording matches the real models within the recorder's `atol` of 1e-3.
+- **Unit tests:** `test_vision_replay.py` adds 9 test functions (10 cases) on replay. Loader, failure and repr tests stay on fakes by design (a recording cannot express an injected failure).
+- **Tests run:** default tiers 1683 passed (38 gpu/gate deselected); `tests/devtools` 360 passed; the new gpu test passes with and without `--record-vision`; `make lint` clean.
+- **Noted:** a replay miss uses `raise ... from None` (QA's replay), so `__cause__` is None and the context is suppressed. The new test asserts that, not `__context__ is None`.
+- **Reviewer / Privacy auditor:** pending (lead).
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. The one point is that the "text-like" image is bars, not rendered text, so the old relative text-vs-landscape check stays gpu-only (MOD-002.D5).

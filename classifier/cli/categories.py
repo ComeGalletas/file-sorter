@@ -16,6 +16,7 @@ import psycopg
 import typer
 
 from classifier.config import Config, ConfigError, load_config
+from classifier.fileops.folders import FiledPair, FolderSyncError, sync_folders
 from classifier.fileops.layout import LayoutError, validate_folder_segment
 from classifier.models.classify_rules import (
     AXES,
@@ -206,6 +207,40 @@ def _run(config_path: str | None, work) -> None:
         conn.close()
     if problem is not None:
         raise _fail(problem, code)
+
+
+@categories_app.command("sync-folders")
+def sync_folders_command(config_path: ConfigOption = None) -> None:
+    """Create the empty category folders under results_root (FOP-002.2, R-CLS-7).
+
+    Always creates, whatever `folders.auto_create` says: that key only governs whether M7's
+    sort runs this itself. Only creates directories; none is ever removed or renamed.
+    """
+    config, conn = _open(config_path)
+    problem = None
+    rules: list[CategoryRule] = []
+    filed: list[FiledPair] = []
+    try:
+        with conn:
+            rules = _rules(conn)
+            rows = conn.execute(
+                "select topic, format, branch from files where status = 'filed'"
+            ).fetchall()
+            filed = [FiledPair(*row) for row in rows]
+    except psycopg.Error:
+        problem = _ERR_DB
+    finally:
+        conn.close()
+    if problem is not None:
+        raise _fail(problem, 1)
+    created = 0
+    try:
+        created = sync_folders(config.paths, rules, filed, config.folders, config.nsfw).created
+    except FolderSyncError as error:  # fixed text, or category names; never a path
+        problem = str(error)
+    if problem is not None:
+        raise _fail(problem)
+    typer.echo(f"created {created} folders")
 
 
 @categories_app.command("add")
