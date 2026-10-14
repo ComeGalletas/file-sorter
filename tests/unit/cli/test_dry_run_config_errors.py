@@ -205,7 +205,10 @@ def test_prepare_folders_errors_are_unchained(tmp_path: Path, monkeypatch, targe
 def _fake_run_result():
     ingest = SimpleNamespace(new=0, skipped_known=0, skipped_unreadable=0, duplicate=0, total=0)
     sanitize = SimpleNamespace(sanitized=0, errored=0, by_reason={})
-    return SimpleNamespace(run_id="0" * 32, ingest=ingest, sanitize=sanitize)
+    classify = SimpleNamespace(
+        classified=0, unsorted=0, no_topic=0, adult=0, errored=0, by_reason={}
+    )
+    return SimpleNamespace(run_id="0" * 32, ingest=ingest, sanitize=sanitize, classify=classify)
 
 
 class _FakeConn:
@@ -219,6 +222,7 @@ class _FakeConn:
 def _invoke_csv(config: Path, monkeypatch):
     monkeypatch.setattr("classifier.cli.psycopg.connect", lambda dsn: _FakeConn())
     monkeypatch.setattr("classifier.cli.dry_run_report.rows_under_root", lambda conn, root: [])
+    monkeypatch.setattr("classifier.cli.dry_run_report.folder_resolver", lambda conn, cfg: None)
     monkeypatch.setattr("classifier.cli.run", lambda cfg, dry_run: _fake_run_result())
     return CliRunner().invoke(
         app, ["dry-run", "--csv", "--config", str(config)], env={"DB_DSN": "postgresql://u:p@db/x"}
