@@ -1,12 +1,15 @@
 """CFG-002.1.4: `dry-run` exits 2 on a bad config without echoing a value, with no database."""
 
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
 from classifier.cli import app
+from classifier.cli.dry_run_report import REPORT_WRITE_FAILED, ReportWriteError, write_csv
 from classifier.graph.sanitize import WorkDirError, prepare_folders
 from classifier.sanitize.rules import SanitizeConfigError, load_rules
 
@@ -197,3 +200,64 @@ def test_prepare_folders_errors_are_unchained(tmp_path: Path, monkeypatch, targe
     assert caught.value.__context__ is None
     assert SECRET_DIR not in str(caught.value)
     assert "zhyndel" not in str(caught.value)
+
+
+def _fake_run_result():
+    ingest = SimpleNamespace(new=0, skipped_known=0, skipped_unreadable=0, duplicate=0, total=0)
+    sanitize = SimpleNamespace(sanitized=0, errored=0, by_reason={})
+    return SimpleNamespace(run_id="0" * 32, ingest=ingest, sanitize=sanitize)
+
+
+class _FakeConn:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _invoke_csv(config: Path, monkeypatch):
+    monkeypatch.setattr("classifier.cli.psycopg.connect", lambda dsn: _FakeConn())
+    monkeypatch.setattr("classifier.cli.dry_run_report.rows_under_root", lambda conn, root: [])
+    monkeypatch.setattr("classifier.cli.run", lambda cfg, dry_run: _fake_run_result())
+    return CliRunner().invoke(
+        app, ["dry-run", "--csv", "--config", str(config)], env={"DB_DSN": "postgresql://u:p@db/x"}
+    )
+
+
+@pytest.mark.parametrize("step", ["mkdir", "open"])
+def test_report_write_oserror_exits_2_with_fixed_text(
+    tmp_path: Path, monkeypatch, step: str
+) -> None:
+    config = _config_file(tmp_path)
+
+    real = getattr(Path, step)
+
+    def fail(self, *args, **kwargs):
+        if self.name == "reports" or self.suffix == ".csv":  # leave the config read alone
+            raise _oserror()
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, step, fail)
+    result = _invoke_csv(config, monkeypatch)
+    _assert_fixed_exit(result, "error: the dry-run report could not be written")
+
+
+def test_report_write_error_is_unchained_and_has_no_payload(tmp_path: Path, monkeypatch) -> None:
+    def fail(self, *args, **kwargs):
+        raise _oserror()
+
+    monkeypatch.setattr(Path, "mkdir", fail)
+    with pytest.raises(ReportWriteError) as caught:
+        write_csv(str(tmp_path), datetime(2026, 10, 6, tzinfo=UTC), [])
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert caught.value.args == (REPORT_WRITE_FAILED,)
+    assert SECRET_DIR not in repr(caught.value) + str(caught.value)
+    assert "zhyndel" not in repr(caught.value) + str(caught.value)
+
+
+def test_report_still_retries_when_the_name_exists(tmp_path: Path) -> None:
+    stamp = datetime(2026, 10, 6, tzinfo=UTC)
+    first = write_csv(str(tmp_path), stamp, [])
+    assert write_csv(str(tmp_path), stamp, []) != first
