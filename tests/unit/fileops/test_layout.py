@@ -90,3 +90,82 @@ def test_other_layout_fails_fast():
 def test_unknown_branch_is_refused():
     with pytest.raises(LayoutError):
         _folder(branch="both")
+
+
+def test_nested_topic_is_parent_folder_plus_its_own():
+    assert _folder(topic_path=("Qorvex", "Vlimp")) == PurePosixPath("Qorvex/Vlimp/Zhyndel")
+    assert _folder(topic_path=("Qorvex", "Vlimp"), branch="nsfw") == PurePosixPath(
+        "Zorblax/Qorvex/Vlimp/Zhyndel"
+    )
+
+
+def test_case_is_left_alone():
+    assert _folder(topic_path=("qORvex",), format_folder="ZHYNDEL") == PurePosixPath(
+        "qORvex/ZHYNDEL"
+    )
+
+
+BAD_SEGMENTS = [
+    "",
+    ".",
+    "..",
+    "a/b",
+    "a\\b",
+    "C:",
+    "a:stream",
+    "a\x00b",
+    "a\nb",
+    "a*b",
+    'a"b',
+    "a ",
+    "a.",
+    "NUL",
+    "con.txt",
+    "lpt1",
+    "a\ud800b",
+    None,
+    7,
+]
+
+
+@pytest.mark.parametrize("bad", BAD_SEGMENTS)
+@pytest.mark.parametrize("where", ["topic", "nested", "format"])
+def test_bad_segment_is_refused(where, bad):
+    if where == "format" and bad is None:
+        return  # None is the `unsorted` format, not a bad name
+    kwargs = dict(
+        topic=dict(topic_path=(bad,)),
+        nested=dict(topic_path=("Qorvex", bad)),
+        format=dict(format_folder=bad),
+    )[where]
+    with pytest.raises(LayoutError, match="invalid folder name"):
+        _folder(**kwargs)
+
+
+@pytest.mark.parametrize("bad", BAD_SEGMENTS)
+def test_bad_no_topic_and_nsfw_root_are_refused(bad):
+    no_topic = FoldersConfig.model_construct(
+        auto_create=True, layout="{topic}/{format}", no_topic=bad, animated_subfolder=False
+    )
+    with pytest.raises(LayoutError, match="invalid folder name"):
+        _folder(topic_path=(), folders=no_topic)
+    with pytest.raises(LayoutError, match="invalid folder name"):
+        result_folder(
+            branch="nsfw",
+            topic_path=("Qorvex",),
+            format_folder="Zhyndel",
+            animated=False,
+            folders=_folders(),
+            nsfw_root=bad,
+        )
+
+
+def test_bad_nsfw_root_is_ignored_on_the_safe_branch():
+    assert result_folder(
+        branch="safe",
+        topic_path=("Qorvex",),
+        format_folder="Zhyndel",
+        animated=False,
+        folders=_folders(),
+        nsfw_root="..",
+    ) == PurePosixPath("Qorvex/Zhyndel")
