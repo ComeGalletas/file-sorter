@@ -456,7 +456,7 @@ references or host paths here. Use hashes.
   - [x] TST-008.1.1 — key, image digest, array codec, text rule, loader (`tests/recordings/vision.py`)
   - [x] TST-008.1.2 — lint extension in `lint_recordings`
   - [x] TST-008.1.3 — `ReplayVisionBackend`, `RecordingVisionBackend`, `--record-vision`, `vision_backend` fixture, conformance to MOD-002.D1
-  - [ ] TST-008.1.4 — `tests/recordings/README.md` vision section
+  - [x] TST-008.1.4 — `tests/recordings/README.md` vision section
 - [x] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
   - [x] TST-008.2.1 — parser, typed rows, fixed-text errors (a14ebe5)
   - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (11048a4)
