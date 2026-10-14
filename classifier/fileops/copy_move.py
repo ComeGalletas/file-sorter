@@ -10,6 +10,7 @@ import errno
 import hashlib
 import os
 import re
+import stat
 from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO, NamedTuple
@@ -17,6 +18,16 @@ from typing import BinaryIO, NamedTuple
 _CHUNK = 1024 * 1024
 _SOURCE_HASH = re.compile(r"[0-9a-f]{64}")
 _EXT = re.compile(r"[A-Za-z0-9]{1,16}")  # bare: no dot, no separator, so names stay in .work/
+
+
+SOURCE_REFUSED = "the source file could not be opened as a regular file"  # fixed: never a path
+
+
+class SourceRefusedError(OSError):
+    """The original is missing, unreadable, a link or not a regular file (SAN-003.1.2).
+
+    Fixed text only, raised unchained: an OS error's message carries the path.
+    """
 
 
 class WorkingCopy(NamedTuple):
@@ -30,6 +41,30 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _open_source(source: Path) -> BinaryIO:
+    """Open an original for reading, refusing links and non-regular files (SAN-003.1.2).
+
+    `O_NONBLOCK` keeps a FIFO from blocking the open. `O_NOFOLLOW` makes the kernel refuse a
+    link at the last component, so there is no gap between a check and the open; `fstat` on
+    the open fd then refuses a device, a pipe or a folder before any read. Any failure
+    becomes `SourceRefusedError`, raised outside the
+    handler so it carries no `__cause__` or `__context__`.
+    """
+    fd = -1
+    handle = None
+    try:
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            handle = os.fdopen(fd, "rb")
+    except (OSError, ValueError):  # ValueError: a NUL or a lone surrogate in the path
+        pass
+    if handle is None:
+        if fd >= 0:
+            os.close(fd)  # opened but refused, or fdopen failed: nothing owns it
+        raise SourceRefusedError(SOURCE_REFUSED)
+    return handle
 
 
 def _new_temp(tmp: Path) -> BinaryIO:
@@ -67,7 +102,7 @@ def make_working_copy(
     final = work_dir / f"{source_hash}.{ext}"
     tmp = work_dir / f".{source_hash}.{ext}.tmp"  # FOP-001.D1; a crashed run's leftover is ours
     try:
-        with source.open("rb") as src, _new_temp(tmp) as dst:
+        with _open_source(source) as src, _new_temp(tmp) as dst:
             while chunk := src.read(_CHUNK):
                 dst.write(chunk)
             dst.flush()

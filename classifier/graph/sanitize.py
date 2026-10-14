@@ -242,9 +242,8 @@ def _sanitize_one(
         stripped[:] = strip_metadata(tmp, rules)
 
     def working_copy() -> WorkingCopy:
+        # ING-001.D6: a link since ingest is refused by the open itself (SAN-003.1.2)
         original = Path(row.source_path)
-        if original.is_symlink():  # ING-001.D6: replaced by a link since ingest; never followed
-            raise OSError("the source file is a symbolic link")
         return make_working_copy(original, folders.work, row.source_hash, row.ext, transform)
 
     copy = _attempt(
