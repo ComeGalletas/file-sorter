@@ -41,20 +41,23 @@ HASH_RE = re.compile(r"[0-9a-f]{64}")
 MAX_ELEMENTS = 4096
 MAX_RANK = 2
 MAX_TEXT_CHARS = 256
-# TST-008.1.5: a text input is an allowlist of shapes, not a blacklist of path shapes. Only ASCII
-# letters, digits, spaces and , ' - ( ) . pass; a "." only as sentence punctuation (never between
-# two letters or digits, so no file extension); and no camera-stem token (letters, then "-" or
-# digits). The DESIGN §4.3 prompts all pass.
-_TEXT_CHARS = re.compile(r"[A-Za-z0-9 ,'()\-.]+")
-_DOT_INSIDE_WORD = re.compile(r"[A-Za-z0-9]\.[A-Za-z0-9]")
-_STEM_TOKEN = re.compile(r"[A-Za-z]+-\d+|[A-Za-z]{2,}\d{3,}")
-_TOKEN_SPLIT = re.compile(r"[ ,'().]+")
-# A Hugging Face repo id (owner/name): the model field must never carry a local path.
-MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
+# TST-008.D9: a text input is limited to the characters the DESIGN §4.3 prompts use: ASCII
+# letters, digits, single spaces, comma and apostrophe. No "." and none of ( ) - _ / \ ~ :.
+# No word (split on spaces and commas) holds 3 or more digits. At most 256 characters, no
+# leading or trailing space, at least one letter.
+_TEXT_CHARS = re.compile(r"[A-Za-z0-9 ,']+")
+_TOKEN_SPLIT = re.compile(r"[ ,]+")
+MAX_WORD_DIGITS = 2
 TEXT_RULE = (
-    "a vision text input may hold only ASCII letters, digits, spaces and , ' - ( ) . "
-    "with no dot inside a word and no file-stem token"
+    "a vision text input may hold only ASCII letters, digits, single spaces, commas and "
+    "apostrophes, no leading or trailing space, and no word with 3 or more digits"
 )
+# TST-008.D9: a model id must be one of the ids in config.yaml's models section that the vision
+# backend uses (models.classifier and models.nsfw). The shape regex is only a sanity check on a
+# test registration; it never decides what the lint accepts.
+CONFIG_FILE = Path(__file__).resolve().parents[2] / "config.yaml"
+MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
+_test_models: set[str] = set()
 
 
 def _fixed(text: str) -> RecordingError:
@@ -152,27 +155,57 @@ def decode_array(response: object) -> np.ndarray:
     return array
 
 
+def _digits(word: str) -> int:
+    return sum(char.isdigit() for char in word)
+
+
 def check_text_input(text: str) -> None:
     """A text input must pass the allowlist `TEXT_RULE` (TST-008.1.5).
 
-    The lint can't prove a string is synthetic. The allowlist keeps out the shapes of a path,
-    a file name and a camera stem; the review checks the rest. The DESIGN §4.3 prompts all pass
-    (a test holds a copy).
+    The lint can't prove a string is synthetic. The rule is the character set the DESIGN §4.3
+    prompts use, and nothing more: ASCII letters, digits, single spaces, comma and apostrophe,
+    no leading or trailing space, no word of 3 or more digits (TST-008.D9). The review checks
+    the rest. The DESIGN §4.3 prompts all pass (a test holds a copy).
     """
     if not text or len(text) > MAX_TEXT_CHARS:
         raise _fixed("a vision text input is empty or longer than 256 characters")
     if (
         not _TEXT_CHARS.fullmatch(text)
-        or _DOT_INSIDE_WORD.search(text)
-        or any(_STEM_TOKEN.fullmatch(token) for token in _TOKEN_SPLIT.split(text))
+        or "  " in text
+        or text != text.strip(" ")
+        or not any(char.isalpha() for char in text)
+        or any(_digits(word) > MAX_WORD_DIGITS for word in _TOKEN_SPLIT.split(text))
     ):
         raise _fixed(TEXT_RULE)
 
 
-def check_model_id(model: object) -> str:
-    """A model id is a Hugging Face repo id, `owner/name`: never a path (TST-008.1.5)."""
+def config_models() -> frozenset[str]:
+    """`models.classifier` and `models.nsfw` from the committed config.yaml (TST-008.D9)."""
+    from classifier.config import load_config
+
+    try:
+        models = load_config(CONFIG_FILE).models
+        return frozenset((models.classifier, models.nsfw))
+    except Exception:
+        pass  # the loader's message names a path or quotes the file: raised below, unchained
+    raise _fixed("config.yaml could not be read for the vision model ids")
+
+
+def register_test_model(model: str) -> None:
+    """Allow one extra synthetic id for a test; pair with `unregister_test_model` (fixture)."""
     if not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model) or ".." in model:
-        raise _fixed("a vision model id must be a repo id such as owner/name, never a path")
+        raise _fixed("a test model id must have the shape owner/name")
+    _test_models.add(model)
+
+
+def unregister_test_model(model: str) -> None:
+    _test_models.discard(model)
+
+
+def check_model_id(model: object) -> str:
+    """A model id must be one of the config.yaml vision models, or a registered test id."""
+    if not isinstance(model, str) or model not in config_models() | _test_models:
+        raise _fixed("a vision model id is not one of the vision models in config.yaml")
     return model
 
 

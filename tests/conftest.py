@@ -23,6 +23,7 @@ import httpx
 import pytest
 
 from tests.recordings.replay import RecordingTransport, ReplayTransport
+from tests.recordings.vision import register_test_model, unregister_test_model
 from tests.recordings.vision_backend import (
     NO_UPSTREAM,
     RecordingVisionBackend,
@@ -157,3 +158,22 @@ def vision_backend(
             f"Vision recording failure caught by the code under test: {failures[0]}",
             pytrace=False,
         )
+
+
+@pytest.fixture
+def extra_vision_models() -> Iterator[Callable[..., None]]:
+    """Register synthetic model ids for one test (TST-008.D9). Removed at teardown.
+
+    The recordings lint accepts only the vision models in config.yaml; a test that records or
+    replays with a made-up `owner/name` id registers it here, for its own run only.
+    """
+    added: list[str] = []
+
+    def add(*models: str) -> None:
+        for model in models:
+            register_test_model(model)
+            added.append(model)
+
+    yield add
+    for model in added:
+        unregister_test_model(model)

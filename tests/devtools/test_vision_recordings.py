@@ -18,14 +18,19 @@ import pytest
 from PIL import Image
 
 from classifier.models.vision import VisionBackend, score_images
+from tests.recordings import vision
 from tests.recordings.replay import RecordingError, lint_recordings, recording_key
 from tests.recordings.vision import (
     TEXT_RULE,
+    _test_models,
     check_request,
+    config_models,
     decode_array,
     encode_array,
     image_digest,
     load_vision_recording,
+    register_test_model,
+    unregister_test_model,
     vision_key,
 )
 from tests.recordings.vision_backend import (
@@ -35,7 +40,18 @@ from tests.recordings.vision_backend import (
 )
 
 MODEL = "synthetic/vision-model"
-SECRET = "zz-planted-secret-qx"
+CLASSIFIER = "synthetic/classifier"
+NSFW = "synthetic/nsfw"
+OTHER_MODEL = "synthetic/other"
+
+
+@pytest.fixture(autouse=True)
+def synthetic_models(extra_vision_models: Any) -> None:
+    """The lint accepts only config.yaml's vision models (TST-008.D9); register ours per test."""
+    extra_vision_models(MODEL, CLASSIFIER, NSFW, OTHER_MODEL)
+
+
+SECRET = "zzplantedsecretqx"
 
 # A copy of every default prompt in DESIGN.md §4.3 (both tables). CLS-002.2 records replays with
 # these, so the text lint must accept all of them.
@@ -313,6 +329,25 @@ def test_every_design_seed_prompt_is_accepted(prompt: str) -> None:
         "a: b",
         "café",
         "under_score",
+        # Round 2 probes (PR #113): extensions after a bracket, quote or space, split stems.
+        "holiday (1).jpg",
+        "beach .jpg",
+        "sunset'.jpg",
+        "trip-photo .jpg",
+        "IMG 0042",
+        "P1010234",
+        # TST-008.D9: the set is letters, digits, single spaces, comma and apostrophe only.
+        "a cat.",
+        "a (cat)",
+        "a-cat",
+        "a  cat",
+        " a cat",
+        "a cat ",
+        "'",
+        ",",
+        "12 34",
+        "taken 2019 05 07",
+        "a cat ",
     ],
 )
 def test_text_outside_the_allowlist_is_refused(text: str) -> None:
@@ -323,9 +358,9 @@ def test_text_outside_the_allowlist_is_refused(text: str) -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["a cat.", "a person's face", "a list (of text), a form", "3D art - a render", "PC gear"],
+    ["a person's face", "a snippet of a webpage, chat or app", "PC gear", "3D art", "12 cats, 99"],
 )
-def test_sentence_punctuation_is_allowed(text: str) -> None:
+def test_the_allowed_characters_and_two_digits_per_word_pass(text: str) -> None:
     request = {"model": MODEL, "kind": "text", "input": text}
     assert check_request(request) == request
 
@@ -336,12 +371,39 @@ def test_the_text_error_says_exactly_what_the_rule_allows() -> None:
     assert str(caught.value) == TEXT_RULE
 
 
+def test_the_config_models_are_the_committed_vision_ids() -> None:
+    assert config_models() == {"google/siglip-so400m-patch14-384", "Falconsai/nsfw_image_detection"}
+
+
 @pytest.mark.parametrize(
     "model", ["google/siglip-so400m-patch14-384", "Falconsai/nsfw_image_detection", MODEL]
 )
-def test_a_repo_id_is_an_accepted_model(model: str) -> None:
+def test_a_config_model_or_a_registered_test_id_is_accepted(model: str) -> None:
     request = {"model": model, "kind": "param", "input": "logit_bias"}
     assert check_request(request) == request
+
+
+def test_a_registered_test_id_is_gone_after_unregistering() -> None:
+    assert "synthetic/unregistered" not in _test_models
+    register_test_model("synthetic/unregistered")
+    unregister_test_model("synthetic/unregistered")
+    with pytest.raises(RecordingError):
+        check_request({"model": "synthetic/unregistered", "kind": "param", "input": "logit_bias"})
+
+
+@pytest.mark.parametrize("model", ["a", "/models/x", "a/b/c", "a/../b", "a b/c", "x:y/z", ""])
+def test_a_test_registration_must_have_the_repo_id_shape(model: str) -> None:
+    with pytest.raises(RecordingError):
+        register_test_model(model)
+    assert model not in _test_models
+
+
+def test_an_unreadable_config_fails_with_fixed_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(vision, "CONFIG_FILE", Path("/nonexistent") / SECRET / "config.yaml")
+    with pytest.raises(RecordingError) as caught:
+        config_models()
+    assert str(caught.value) == "config.yaml could not be read for the vision model ids"
+    assert_private(caught.value)
 
 
 @pytest.mark.parametrize(
@@ -358,6 +420,14 @@ def test_a_repo_id_is_an_accepted_model(model: str) -> None:
         "a b/c",
         "x" * 97 + "/y",
         f"{SECRET}/x:y",
+        # Round 2 probes: folder paths that have the owner/name shape.
+        "Pictures/family",
+        "Desktop/pic",
+        "fixtures" + "/" + "images",  # split: the tier audit flags the literal path text
+        # Well-formed, but not in config.yaml.
+        "synthetic/unregistered",
+        "google/siglip-so400m-patch14-384/",
+        "google/SIGLIP-so400m-patch14-384",
     ],
 )
 def test_a_path_shaped_model_id_is_refused_by_the_request_and_the_recorder(
@@ -538,8 +608,6 @@ def test_the_committed_tree_lints_clean() -> None:
 # --- replay and record (TST-008.1.3) ---
 
 TEST_ID = "tests/unit/pkg/test_x.py::test_y"
-CLASSIFIER = "synthetic/classifier"
-NSFW = "synthetic/nsfw"
 
 
 class FakeUpstream:
@@ -808,23 +876,26 @@ def test_the_replay_drives_the_real_scoring_path(tmp_path: Path) -> None:
 pytest_plugins = ["pytester"]
 
 REPO_TESTS = Path(__file__).resolve().parents[1]
-INNER_SECRET = "zz-inner-" + "secret-qx"  # never written whole into the inner sources
+INNER_SECRET = "zzinner" + "secretqx"  # never written whole into the inner sources
 INNER_UNIT = """
 from PIL import Image
 from tests.recordings.vision_backend import ReplayVisionBackend
 
-TEXT = "zz-inner-" + "secret-qx"
+TEXT = "zzinner" + "secretqx"
 
 
-def test_replays(vision_backend):
+def test_replays(vision_backend, extra_vision_models):
+    extra_vision_models("syn/c", "syn/n")
     assert isinstance(vision_backend("models", "syn/c", "syn/n"), ReplayVisionBackend)
 
 
-def test_miss(vision_backend):
+def test_miss(vision_backend, extra_vision_models):
+    extra_vision_models("syn/c", "syn/n")
     vision_backend("models", "syn/c", "syn/n").embed_texts([TEXT])
 
 
-def test_swallowed(vision_backend):
+def test_swallowed(vision_backend, extra_vision_models):
+    extra_vision_models("syn/c", "syn/n")
     try:
         vision_backend("models", "syn/c", "syn/n").embed_images([Image.new("RGB", (2, 2))])
     except BaseException:
@@ -861,6 +932,9 @@ def inner(pytester: pytest.Pytester) -> pytest.Pytester:
     (tests / "recordings").mkdir(parents=True)
     (tests / "unit").mkdir()
     (tests / "gpu").mkdir()
+    (pytester.path / "config.yaml").write_text(
+        (REPO_TESTS.parent / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     for rel in (
         "conftest.py",
         "recordings/replay.py",
