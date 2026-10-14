@@ -185,7 +185,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - ~~MOD-002.2.4~~ moved to MOD-002.3 (lead's approval on #89): replay recordings wait for TST-008.1 (#96)
 - [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · #119 · acceptance: `tests/devtools/test_vision_recordings.py`
   - [x] MOD-002.3.1 — `tests/unit/models/vision_inputs.py` (synthetic inputs, no font), `tests/gpu/models/test_record_vision.py`, 16 recordings made with `--record-vision`; re-run against them within atol 1e-3
-  - [ ] MOD-002.3.2 — replay-backed unit tests (scoring, backend contract, NSFW)
+  - [x] MOD-002.3.2 — `tests/unit/models/test_vision_replay.py`: 9 replay-backed unit tests (backend contract, embeddings, params, sigmoid and max over real vectors, NSFW range and shape, a miss raises)
   - [ ] MOD-002.3.3 — journal Results
 
 ## MOD-002 — Results
