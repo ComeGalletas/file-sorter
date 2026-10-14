@@ -306,6 +306,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-003.1.2 — scoring: `SiglipBackend` scores of the working copies, the score cache, the label join (1f821d7)
   - [x] CLS-003.1.3 — `eval/classify_eval.py`: the throwaway-db run, the CLI, the public and `--detail` report, the proposal printout (a7ba20e)
   - [x] CLS-003.1.4 — the `gpu` acceptance test, the real-fixture run, Results (hash in the PR)
+  - [ ] CLS-003.1.5 — rule out a bug on the box: the NSFW label index, the sanitized working copy as input, exact coverage; each `ok`/`FAIL` (#101, lead's comment)
+  - [x] CLS-003.1.6 — box-only NSFW block in `--detail`, and `--hold-nsfw-threshold` (the sweep side; the CLI side lands with CLS-003.1.5)
 - [ ] CLS-003.2 — Commit the calibrated values the human approved, in `config.yaml` and migration `0004` (CLS-003.D2) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
 
 ## CLS-003 — Results

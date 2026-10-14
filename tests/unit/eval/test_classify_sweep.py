@@ -256,3 +256,29 @@ def test_reprs_hold_no_label_name_or_score():
                 "0.5599",
             ):
                 assert number not in text
+
+
+# --- CLS-003.1.6 ------------------------------------------------------------------------
+
+
+def test_the_diagnostic_counts_the_two_kinds_of_miss_at_the_best_threshold():
+    items = [
+        nsfw_item(0.9, True),
+        nsfw_item(0.8, True),
+        nsfw_item(0.3, True),
+        nsfw_item(0.1, False),
+        nsfw_item(0.2, False),
+        nsfw_item(0.5, False, True),  # a safe calibration-only row that scores high
+    ]
+    found = sweep.nsfw_diagnostic(items)
+    assert found.adult_below + found.safe_above == 1  # one miss is the best any threshold does
+
+
+def test_holding_the_threshold_skips_the_nsfw_sweep_and_still_fits_the_categories(coarse):
+    items = make_items(n=45)
+    infeasible = [*items, nsfw_item(0.99, False), nsfw_item(0.01, True)]
+    assert not sweep.calibrate(infeasible, rules(), base_config()).feasible
+    held = sweep.calibrate(infeasible, rules(), base_config(), hold_nsfw=0.7)
+    assert held.feasible and held.nsfw_held and held.nsfw_threshold == 0.7
+    assert not held.fitted.adult_ok  # measured at the held value: the two extra rows miss
+    assert held.fitted.format_total > 0

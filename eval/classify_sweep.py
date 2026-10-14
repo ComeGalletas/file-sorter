@@ -98,6 +98,7 @@ class Calibration:
     held_out: Metrics = field(repr=False)
     format_overrides_survive: bool | None = field(repr=False)  # None: none were proposed
     topic_overrides_survive: bool | None = field(repr=False)
+    nsfw_held: bool = field(repr=False, default=False)  # the threshold was an input, not swept
 
 
 def _pct(part: int, whole: int) -> float:
@@ -216,6 +217,28 @@ def _best_effort_nsfw(items: Sequence[Item], near: float) -> float:
         return sum((item.nsfw >= threshold) != item.adult for item in items)
 
     return min(candidates, key=lambda t: (errors(t), abs(t - near)))
+
+
+@dataclass(frozen=True)
+class NsfwDiagnostic:
+    """Box console only (CLS-003.1.6): how far the NSFW rows are from separable."""
+
+    threshold: float = field(repr=False)
+    adult_below: int = field(repr=False)
+    safe_above: int = field(repr=False)
+
+
+def nsfw_diagnostic(items: Sequence[Item]) -> NsfwDiagnostic:
+    """The threshold with the fewest misclassified rows, and its two kinds of miss.
+
+    Over every row, calibration-only included, as the NSFW sweep sees them.
+    """
+    best = _best_effort_nsfw(items, 0.5)
+    return NsfwDiagnostic(
+        best,
+        sum(1 for item in items if item.adult and item.nsfw < best),
+        sum(1 for item in items if not item.adult and item.nsfw >= best),
+    )
 
 
 # --- Grid search on one axis -----------------------------------------------------------------
@@ -415,6 +438,7 @@ def calibrate(
     base: ClassifyConfig,
     seed: int = SEED,
     slack_points: float = SLACK_POINTS,
+    hold_nsfw: float | None = None,
 ) -> Calibration:
     """Fit on every labelled row, check on 5 held-out folds, decide the overrides (CLS-003.D3).
 
@@ -422,10 +446,13 @@ def calibrate(
     feasible threshold the result says so and carries no category proposal. Overrides stay in
     the proposal only if the pooled held-out agreement of their axis does not drop with them
     (the lead's rule on #101).
+
+    `hold_nsfw` (CLS-003.1.6) skips the NSFW sweep and runs everything else with that
+    `nsfw.threshold`, an input and not a proposal; the NSFW verdict is then measured at it.
     """
     if not gate_items(items):
         raise SweepError(_ERR_EMPTY)
-    threshold = fit_nsfw(items)
+    threshold = hold_nsfw if hold_nsfw is not None else fit_nsfw(items)
     zero = AxisFit(0.0, 0.0)
     if threshold is None:
         best = _best_effort_nsfw(items, base_nsfw_near(items))
@@ -444,7 +471,7 @@ def calibrate(
         train = [item for i, item in enumerate(items) if i not in held_set]
         if not gate_items(train) or not test:
             continue
-        thr = _fit_threshold(train, threshold)
+        thr = threshold if hold_nsfw is not None else _fit_threshold(train, threshold)
         base_fit = sweep_axis(train, rules, base, thr, "format", slack_points=slack_points)
         ov_fit = fit_overrides(train, rules, base, thr, "format", base_fit)
         fold_fits.append((train, test, thr, base_fit, ov_fit))
@@ -503,6 +530,7 @@ def calibrate(
         held_out,
         format_survive,
         topic_survive,
+        hold_nsfw is not None,
     )
 
 
