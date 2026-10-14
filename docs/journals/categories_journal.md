@@ -207,6 +207,9 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## FOP-002 — Tasks
 
 - [ ] FOP-002.1 — `classifier/fileops/layout.py`: the result folder for a branch, topic, format and `animated` flag · #91 · acceptance: `tests/unit/fileops/test_layout.py`
+  - [x] FOP-002.1.1 — the layout, `General`, `Unsorted`, the `Adult/` prefix and the `Animated/` rule · commit: filled by the next commit
+  - [ ] FOP-002.1.2 — nested topics (D2) and segment validation of every folder name
+  - [ ] FOP-002.1.3 — privacy tests (fixed, unchained errors) and Results
 - [ ] FOP-002.2 — `sync_folders` and `classifier categories sync-folders`, with case-insensitive collision checks · #98 · acceptance: `tests/db/fileops/test_sync_folders.py`
 
 ## FOP-002 — Results
