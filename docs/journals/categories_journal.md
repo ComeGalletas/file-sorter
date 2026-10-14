@@ -225,7 +225,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] FOP-002.1.2 — nested topics (D2) and segment validation of every folder name · commit: d72428d
   - [x] FOP-002.1.3 — privacy tests (fixed, unchained errors) and Results · commit: this one
 - [ ] FOP-002.2 — `sync_folders` and `classifier categories sync-folders`, with case-insensitive collision checks · #98 · acceptance: `tests/db/fileops/test_sync_folders.py`
-  - [x] FOP-002.2.1 — `fileops/folders.py`: the pure planner (D3), the case-insensitive collision check (D4) and the safe `mkdir` walk, with their tests (planned subtask 2.2 merged in: one module) · commit: HASH1
+  - [x] FOP-002.2.1 — `fileops/folders.py`: the pure planner (D3), the case-insensitive collision check (D4) and the safe `mkdir` walk, with their tests (planned subtask 2.2 merged in: one module) · commit: 5e8b27b
   - [x] FOP-002.2.3 — `classifier categories sync-folders` and its command tests · commit: HASH2
   - [ ] FOP-002.2.4 — Results and PR
 
