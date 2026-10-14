@@ -302,8 +302,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLS-003 — Tasks
 
 - [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
-  - [x] CLS-003.1.1 — `eval/classify_sweep.py`: the pure sweep, overrides and 5-fold check, with unit tests (hash in the next commit)
-  - [ ] CLS-003.1.2 — scoring: ingest and sanitize in a throwaway db, `SiglipBackend` scores, the score cache
+  - [x] CLS-003.1.1 — `eval/classify_sweep.py`: the pure sweep, overrides and 5-fold check, with unit tests (17176ee)
+  - [x] CLS-003.1.2 — scoring: `SiglipBackend` scores of the working copies, the score cache, the label join (hash in the next commit)
   - [ ] CLS-003.1.3 — `eval/classify_eval.py`: the CLI, the public and `--detail` report, the proposal printout
   - [ ] CLS-003.1.4 — the `gpu` acceptance test, the real-fixture run, Results
 - [ ] CLS-003.2 — Commit the calibrated values the human approved, in `config.yaml` and migration `0004` (CLS-003.D2) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
