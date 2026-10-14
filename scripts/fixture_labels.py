@@ -8,8 +8,10 @@ lines is reported at the first line of its record.
 
 import csv
 import io
+import stat
 from collections.abc import Collection
 from dataclasses import dataclass, field
+from pathlib import Path
 
 COLUMNS = ("file", "format", "topic", "adult", "reference", "subject", "tags")
 TAG_SUGGESTIVE_NEGATIVE = "suggestive-negative"
@@ -21,6 +23,15 @@ _BAD_CELLS = "wrong number of cells"
 _BAD_CSV = "malformed CSV"
 _BAD_ADULT = "must be yes or no"
 _BLANK_FILE = "must not be blank"
+_UNKNOWN_FORMAT = "not in the format vocabulary"
+_UNKNOWN_TOPIC = "not in the topic vocabulary"
+_SAME_AXES = "topic repeats the format"
+_UNKNOWN_TAG = "unknown tag"
+_CONTRADICTION = "suggestive-negative cannot be adult"
+_DUPLICATE = "duplicate file"
+_UNREADABLE = "cannot read the labels file"
+_NOT_REGULAR = "the labels path is not a regular file"
+_BAD_ENCODING = "the labels file is not valid UTF-8"
 
 
 class LabelsError(ValueError):
@@ -42,6 +53,18 @@ class LabelRow:
 class LabelSet:
     rows: tuple[LabelRow, ...] = field(repr=False)
 
+    def gate_rows(self) -> tuple[LabelRow, ...]:
+        """The rows every gate measure counts: those not tagged calibration-only (TST-008.D2)."""
+        return tuple(r for r in self.rows if TAG_CALIBRATION_ONLY not in r.tags)
+
+    def suggestive_negatives(self) -> tuple[LabelRow, ...]:
+        """The gate rows tagged suggestive-negative (CLS-001.D12)."""
+        return tuple(r for r in self.gate_rows() if TAG_SUGGESTIVE_NEGATIVE in r.tags)
+
+    def calibration_rows(self) -> tuple[LabelRow, ...]:
+        """The rows tagged calibration-only, for the NSFW sweep only (TST-008.D2)."""
+        return tuple(r for r in self.rows if TAG_CALIBRATION_ONLY in r.tags)
+
 
 def _fail(line: int, column: str, reason: str) -> LabelsError:
     return LabelsError(f"labels line {line}, column {column}: {reason}")
@@ -51,6 +74,7 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
     """Parse labels text. ``formats`` and ``topics`` are the vocabularies the caller read."""
     reader = csv.reader(io.StringIO(text, newline=""))
     rows: list[LabelRow] = []
+    seen: set[str] = set()
     csv_broken_at = 0
     header_seen = False
     start = 1
@@ -67,7 +91,11 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
                 continue
             if len(cells) != len(COLUMNS):
                 raise _fail(line, "row", _BAD_CELLS)
-            rows.append(_row(line, cells))
+            row = _row(line, cells, formats, topics)
+            if row.file in seen:
+                raise _fail(line, "file", _DUPLICATE)
+            seen.add(row.file)
+            rows.append(row)
     except csv.Error:
         csv_broken_at = start
     if csv_broken_at:
@@ -77,12 +105,25 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
     return LabelSet(rows=tuple(rows))
 
 
-def _row(line: int, cells: list[str]) -> LabelRow:
+def _row(
+    line: int, cells: list[str], formats: Collection[str], topics: Collection[str]
+) -> LabelRow:
     file, fmt, topic, adult, reference, subject, tags = (c.strip() for c in cells)
     if not file:
         raise _fail(line, "file", _BLANK_FILE)
     if adult not in ("yes", "no"):
         raise _fail(line, "adult", _BAD_ADULT)
+    if fmt and fmt not in formats:
+        raise _fail(line, "format", _UNKNOWN_FORMAT)
+    if topic and topic not in topics:
+        raise _fail(line, "topic", _UNKNOWN_TOPIC)
+    if fmt and fmt == topic:
+        raise _fail(line, "topic", _SAME_AXES)  # CLS-001.D10
+    tag_set = frozenset(t.strip() for t in tags.replace(";", ",").split(",") if t.strip())
+    if not tag_set <= TAGS:
+        raise _fail(line, "tags", _UNKNOWN_TAG)
+    if adult == "yes" and TAG_SUGGESTIVE_NEGATIVE in tag_set:
+        raise _fail(line, "tags", _CONTRADICTION)  # CLS-001.D12
     return LabelRow(
         file=file,
         format=fmt or None,
@@ -90,5 +131,28 @@ def _row(line: int, cells: list[str]) -> LabelRow:
         adult=adult == "yes",
         reference=reference,
         subject=subject,
-        tags=frozenset(),
+        tags=tag_set,
     )
+
+
+def load_labels(path: Path, *, formats: Collection[str], topics: Collection[str]) -> LabelSet:
+    """Read and parse the labels file. Refuses anything but a regular file; no path in errors."""
+    problem = ""
+    data = b""
+    try:
+        if not stat.S_ISREG(path.lstat().st_mode):
+            problem = _NOT_REGULAR
+        else:
+            data = path.read_bytes()
+    except OSError:
+        problem = _UNREADABLE
+    if problem:
+        raise LabelsError(f"labels file: {problem}")
+    text = ""
+    try:
+        text = data.decode("utf-8-sig", errors="surrogatepass")
+    except UnicodeError:
+        problem = _BAD_ENCODING
+    if problem:
+        raise LabelsError(f"labels file: {problem}")
+    return parse_labels(text, formats=formats, topics=topics)

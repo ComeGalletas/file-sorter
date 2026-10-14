@@ -108,3 +108,142 @@ def test_repr_and_str_hide_every_planted_value() -> None:
         for text in (repr(obj), str(obj), f"{obj}", f"{obj!r}"):
             for secret in secrets:
                 assert secret not in text
+
+
+# --- TST-008.2.2: vocabulary, tags, duplicates and the file-level read ---
+
+
+def test_unknown_format_and_topic_name_their_column() -> None:
+    assert str(error_of("a1.zz,blorp,,no,,,\n")) == (
+        "labels line 2, column format: not in the format vocabulary"
+    )
+    assert str(error_of("a1.zz,zorbs,blorp,no,,,\n")) == (
+        "labels line 2, column topic: not in the topic vocabulary"
+    )
+
+
+def test_topic_may_not_repeat_the_format() -> None:
+    assert str(error_of("a1.zz,zorbs,zorbs,no,,,\n")) == (
+        "labels line 2, column topic: topic repeats the format"
+    )
+
+
+def test_a_topic_that_is_also_a_format_name_is_fine_when_different() -> None:
+    assert parse("a1.zz,zorbs,qwims,no,,,\n").rows[0].topic == "qwims"
+
+
+def test_tags_accept_both_separators_and_whitespace() -> None:
+    rows = parse(
+        "a1.zz,zorbs,,no,,,suggestive-negative\n"
+        'b2.zz,zorbs,,no,,,"suggestive-negative; calibration-only"\n'
+        'c3.zz,zorbs,,yes,,,"calibration-only , "\n'
+        "d4.zz,zorbs,,no,,,   \n"
+    ).rows
+    assert rows[0].tags == {"suggestive-negative"}
+    assert rows[1].tags == {"suggestive-negative", "calibration-only"}
+    assert rows[2].tags == {"calibration-only"}
+    assert rows[3].tags == frozenset()
+
+
+def test_unknown_tag_stops_the_load() -> None:
+    error = error_of("a1.zz,zorbs,,no,,,qorvex-tag\n")
+    assert str(error) == "labels line 2, column tags: unknown tag"
+    assert "qorvex" not in str(error)
+
+
+def test_suggestive_negative_cannot_be_adult() -> None:
+    assert str(error_of("a1.zz,zorbs,,yes,,,suggestive-negative\n")) == (
+        "labels line 2, column tags: suggestive-negative cannot be adult"
+    )
+
+
+def test_duplicate_file_names_the_later_line() -> None:
+    assert str(error_of("a1.zz,zorbs,,no,,,\na1.zz,qwims,,no,,,\n")) == (
+        "labels line 3, column file: duplicate file"
+    )
+
+
+def test_calibration_rows_are_left_out_of_the_gate_rows() -> None:
+    result = parse(
+        "a1.zz,zorbs,,no,,,\n"
+        "b2.zz,zorbs,,yes,,,calibration-only\n"
+        "c3.zz,qwims,,no,,,suggestive-negative\n"
+        "d4.zz,qwims,,no,,,suggestive-negative;calibration-only\n"
+    )
+    assert [r.file for r in result.gate_rows()] == ["a1.zz", "c3.zz"]
+    assert [r.file for r in result.suggestive_negatives()] == ["c3.zz"]
+    assert [r.file for r in result.calibration_rows()] == ["b2.zz", "d4.zz"]
+
+
+def test_repr_hides_planted_tags_and_values_after_full_validation() -> None:
+    result = parse("QorvexFile.zz,zorbs,plinth,no,Zhyndel Ref,Zhyndel sub,suggestive-negative\n")
+    for text in (repr(result.rows[0]), repr(result), str(result.rows[0])):
+        for secret in ("QorvexFile", "Zhyndel", "plinth", "suggestive-negative"):
+            assert secret not in text
+
+
+def load(path: Path):
+    return fl.load_labels(path, formats=FORMATS, topics=TOPICS)
+
+
+def assert_fixed_unchained(error: fl.LabelsError, forbidden: str) -> None:
+    assert forbidden not in str(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+def test_load_reads_a_regular_file_with_a_bom(tmp_path: Path) -> None:
+    path = tmp_path / "labels-qorvex.csv"
+    path.write_bytes(b"\xef\xbb\xbf" + (HEADER + "a1.zz,zorbs,,no,,,\n").encode())
+    assert len(load(path).rows) == 1
+
+
+def test_load_missing_file_is_fixed_text_without_the_path(tmp_path: Path) -> None:
+    with pytest.raises(fl.LabelsError) as info:
+        load(tmp_path / "qorvex-missing.csv")
+    assert str(info.value) == "labels file: cannot read the labels file"
+    assert_fixed_unchained(info.value, "qorvex")
+
+
+def test_load_refuses_a_directory(tmp_path: Path) -> None:
+    folder = tmp_path / "qorvex-dir"
+    folder.mkdir()
+    with pytest.raises(fl.LabelsError) as info:
+        load(folder)
+    assert str(info.value) == "labels file: the labels path is not a regular file"
+    assert_fixed_unchained(info.value, "qorvex")
+
+
+def test_load_refuses_a_symlink_where_one_can_be_made(tmp_path: Path) -> None:
+    target = tmp_path / "real.csv"
+    target.write_text(HEADER, encoding="utf-8")
+    link = tmp_path / "qorvex-link.csv"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        return  # no symlink privilege on this host; the directory case covers the check
+    with pytest.raises(fl.LabelsError) as info:
+        load(link)
+    assert str(info.value) == "labels file: the labels path is not a regular file"
+    assert_fixed_unchained(info.value, "qorvex")
+
+
+@pytest.mark.parametrize("payload", [b"\xff\xfe\x00bad", b"\xc3("])
+def test_load_bad_encoding_is_fixed_text(tmp_path: Path, payload: bytes) -> None:
+    path = tmp_path / "labels.csv"
+    path.write_bytes(HEADER.encode() + b"a1.zz,zorbs,,no,," + payload + b",\n")
+    with pytest.raises(fl.LabelsError) as info:
+        load(path)
+    assert str(info.value) == "labels file: the labels file is not valid UTF-8"
+    assert_fixed_unchained(info.value, "zorbs")
+
+
+def test_an_encoded_lone_surrogate_loads_and_is_never_quoted(tmp_path: Path) -> None:
+    path = tmp_path / "labels.csv"
+    path.write_bytes(HEADER.encode() + b"a1.zz,zorbs,,no,,\xed\xa0\x80,\n")
+    assert len(load(path).rows) == 1
+    path.write_bytes(HEADER.encode() + b"a1.zz,blorp\xed\xa0\x80,,no,,,\n")
+    with pytest.raises(fl.LabelsError) as info:
+        load(path)
+    assert str(info.value) == "labels line 2, column format: not in the format vocabulary"
+    assert_fixed_unchained(info.value, "blorp")
