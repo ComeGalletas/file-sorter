@@ -178,10 +178,10 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-002.1.2 — `classifier/models/siglip.py`: `SiglipBackend` (offline, fp16, lazy once per id, batched), unit tests on a fake encoder (`957bffe`)
   - [x] MOD-002.1.3 — `tests/gpu/models/` conftest and `test_siglip.py`, the acceptance (`44edc54`)
   - ~~MOD-002.1.4~~ moved to MOD-002.2.4, then to MOD-002.3: the replay recordings wait for TST-008.1 (#96), which won't be on `main` in time (lead, #88 approval)
-- [ ] MOD-002.2 — `classifier/models/nsfw.py`: the NSFW gate score, GPU with CPU fallback, on the same protocol · #89 · acceptance: `tests/gpu/models/test_nsfw.py`
+- [x] MOD-002.2 — `classifier/models/nsfw.py`: the NSFW gate score, GPU with CPU fallback, on the same protocol · #89 · acceptance: `tests/gpu/models/test_nsfw.py`
   - [x] MOD-002.2.1 — `nsfw.py`: offline load, GPU/CPU choice, exactly-one-`nsfw`-label check, batched scores; unit tests on fakes (incl. `local_files_only` pin) (`e658eee`)
   - [x] MOD-002.2.2 — `SiglipBackend.nsfw_scores` wired to it (lazy), stub test replaced, SigLIP `local_files_only` pin (carried finding a) (`f255a84`)
-  - [x] MOD-002.2.3 — `tests/gpu/models/test_nsfw.py`, the acceptance; tie-safe ordering check in `test_siglip.py` (carried finding b)
+  - [x] MOD-002.2.3 — `tests/gpu/models/test_nsfw.py`, the acceptance; tie-safe ordering check in `test_siglip.py` (carried finding b) (`c074f43`)
   - ~~MOD-002.2.4~~ moved to MOD-002.3 (lead's approval on #89): replay recordings wait for TST-008.1 (#96)
 - [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · issue: lead to open
 
@@ -195,3 +195,14 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Deferred:** MOD-002.1.4 (replay recordings) moved to MOD-002.2 (#89), after TST-008.1 (#96) lands (lead's approval on #88). `nsfw_scores` is a fixed-text `VisionError` stub until MOD-002.2.
 - **Reviewer / Privacy auditor:** pending (lead).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. The gap is the one named acceptance item that this PR cannot cover, recordings for the replay (moved to #89).
+
+### MOD-002.2 (ml desk, #89)
+
+- **Tests:** `unit` 21 new in `test_nsfw_client.py` and 4 new in `test_siglip_backend.py` (the stub test replaced); the tier audit passes. `gpu` acceptance `tests/gpu/models/test_nsfw.py` plus `test_siglip.py`: 13 passed on the real models. Default tiers (`make test`): 1326 passed, 37 deselected. `make lint` clean. No `eval/` run: no prompt, threshold or category changed.
+- **Label check (MOD-002.D3):** exactly one `id2label` entry equal to `nsfw` (case-insensitive); none or several is a fixed-text refusal, covered on fakes.
+- **Devices (MOD-002.D4):** fp16 on CUDA, fp32 on CPU. The forced-CPU path agrees with the GPU path within an absolute 2e-2 on probabilities (fp16 vs fp32); two-run and batch-shape checks use 2e-3.
+- **Carried findings (PR #111):** (a) a fake-`transformers` test pins `local_files_only=True` on every `from_pretrained` call, SigLIP's and the NSFW model's; (b) the ordering check compares only rows with a strict cosine gap.
+- **Lazy load:** the gate loads on the first `nsfw_scores`; a unit test shows `embed_images`, `embed_texts` and the scoring parameters never trigger it.
+- **Deferred:** MOD-002.2.4 (replay recordings) moved to MOD-002.3, to be opened by the lead after TST-008.1 (#96) merges.
+- **Reviewer / Privacy auditor:** pending (lead).
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. The gap is the one acceptance item this PR doesn't carry: replay recordings (MOD-002.3, blocked on #96).
