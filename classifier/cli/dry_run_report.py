@@ -7,6 +7,7 @@ option A, DOC-007.D1): `files.original_sanitized`, empty until the sanitize node
 """
 
 import csv
+import io
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -169,51 +170,64 @@ def write_csv(
 ) -> Path:
     """Write the report and return its path; `proposed_output` stays empty (PIPE-001.D1).
 
-    `proposed_folder` comes from `folder_of`, computed for every row before the file is
-    opened, so a folder problem leaves no half-written report (CLI-005.1). The file is UTF-8
-    with `surrogateescape`: a non-UTF-8 name written back as its original bytes. Any other
-    lone surrogate is a `ReportWriteError`, fixed text.
+    `proposed_folder` comes from `folder_of`, computed for every row before anything is
+    written, and the whole file is encoded in memory before it is created (CLI-005.1.4). So a
+    folder problem or an unencodable character leaves no report, not even a header. The file is
+    UTF-8 with `surrogateescape`: a non-UTF-8 name is written back as its original bytes. Any
+    other lone surrogate is a `ReportWriteError`, fixed text. If the write itself fails after
+    the file was created, that file (and only it) is removed.
 
     The file is opened exclusively, so two runs in the same second never overwrite each
     other: the later one gets a numeric suffix.
     """
     folders = [folder_of(row) if folder_of else "" for row in rows]
     failed = False  # SAN-003.3: an OSError message carries the path; raise fixed text after
+    path = report_path(results_root, stamp)
+    created = False
     try:
-        report_path(results_root, stamp).parent.mkdir(parents=True, exist_ok=True)
+        buffer = io.StringIO(newline="")
+        writer = csv.writer(buffer)
+        writer.writerow(COLUMNS)
+        for row, folder in zip(rows, folders, strict=True):
+            writer.writerow(
+                [
+                    row.source_hash,
+                    row.short_hash,
+                    row.source_path,
+                    row.sanitized_name or "",
+                    row.status,
+                    row.reason or "",
+                    "",
+                    row.format or "",
+                    row.topic or "",
+                    row.branch or "",
+                    # `needs_review` defaults to false in the ledger: blank until classified
+                    "" if row.format is None else str(bool(row.needs_review)).lower(),
+                    row.review_reason or "",
+                    folder,
+                ]
+            )
+        data = buffer.getvalue().encode("utf-8", errors="surrogateescape")
+        path.parent.mkdir(parents=True, exist_ok=True)
         attempt = 0
         while True:
             path = report_path(results_root, stamp, attempt)
             try:
-                handle = path.open("x", encoding="utf-8", errors="surrogateescape", newline="")
+                handle = path.open("xb")
             except FileExistsError:
                 attempt += 1
                 continue
+            created = True
             break
         with handle:
-            writer = csv.writer(handle)
-            writer.writerow(COLUMNS)
-            for row, folder in zip(rows, folders, strict=True):
-                writer.writerow(
-                    [
-                        row.source_hash,
-                        row.short_hash,
-                        row.source_path,
-                        row.sanitized_name or "",
-                        row.status,
-                        row.reason or "",
-                        "",
-                        row.format or "",
-                        row.topic or "",
-                        row.branch or "",
-                        # `needs_review` defaults to false in the ledger: blank until classified
-                        "" if row.format is None else str(bool(row.needs_review)).lower(),
-                        row.review_reason or "",
-                        folder,
-                    ]
-                )
+            handle.write(data)
     except (OSError, UnicodeError):
         failed = True
     if failed:
+        if created:
+            try:
+                path.unlink()
+            except OSError:
+                pass  # nothing more to do; the error below is fixed text either way
         raise ReportWriteError(REPORT_WRITE_FAILED)
     return path
