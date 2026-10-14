@@ -96,7 +96,7 @@ One file per request, `tests/recordings/<package>/<key>.json`:
 - **`model`** is `classifier_id` for `image`, `text` and `param`, and `nsfw_id` for `nsfw`.
 - Arrays are float32, little-endian, base64, so the replay is exact. NaN and infinity are refused.
 
-`tests/devtools/test_vision_recordings.py` lints every committed file (and `test_recordings.py` runs the same walk): a plain `<package>/` folder, no links, exactly `request` and `response`, exactly `model`, `kind`, `input`, the name is the key, a 64-hex input for `image` and `nsfw`, a short single-line text that is not path-like (no leading `/`, drive prefix, backslash, `..`, `x/y.ext` or file extension), strict base64 of the right length, at most 4096 floats, rank at most 2.
+`tests/devtools/test_vision_recordings.py` lints every committed file (and `test_recordings.py` runs the same walk): a plain `<package>/` folder, no links, exactly `request` and `response`, exactly `model`, `kind`, `input`, the name is the key, a 64-hex input for `image` and `nsfw`, a `model` that is a repo id (`owner/name`, at most 96 characters a side, no `..`, never a path), a text of at most 256 characters made only of ASCII letters, digits, spaces and `, ' - ( ) .` (a `.` never between two letters or digits, so no file extension; no `/ \ ~ : _`; no stem token such as `IMG-0042` or `IMG0042`; so `and/or` is refused too), strict base64 of the right length, at most 4096 floats, rank at most 2.
 
 ## Recording
 
@@ -108,4 +108,4 @@ docker compose -p <project> --profile test run --rm test pytest -m gpu --record-
 
 - `--record-vision` is refused if the selection holds any test outside `gpu`.
 - An existing recording is kept when the new answer is within `atol=1e-3` (fp16 runs differ in the last bits). A bigger difference fails naming the key: delete the file to re-record on purpose.
-- The recorder refuses an input the lint would refuse, so a path-like string never reaches disk.
+- The recorder refuses an input the lint would refuse, so a model id or text outside those shapes never reaches disk.

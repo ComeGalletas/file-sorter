@@ -41,18 +41,19 @@ HASH_RE = re.compile(r"[0-9a-f]{64}")
 MAX_ELEMENTS = 4096
 MAX_RANK = 2
 MAX_TEXT_CHARS = 256
-# Path shapes a text input must not take: it could name a file (TST-008.1 lint). A plain "/"
-# between words ("and/or") is fine; the DESIGN §4.3 prompts all pass.
-_PATH_SHAPES = (
-    re.compile(r"^/"),  # a leading slash
-    re.compile(r"\\"),  # any backslash
-    re.compile(r"^[A-Za-z]:[\\/]"),  # a drive prefix
-    re.compile(r"(?:^|[/\s])\.\.(?:[/\s]|$)"),  # a parent segment
-    re.compile(r"\S/\S*\.[A-Za-z0-9]+"),  # x/y.ext
-    re.compile(
-        r"\w\.(?:jpe?g|png|gif|webp|bmp|tiff?|heic|heif|avif|mp4|webm|mov|txt|csv|json|ya?ml|pdf)",
-        re.IGNORECASE,
-    ),  # a file-name-like token
+# TST-008.1.5: a text input is an allowlist of shapes, not a blacklist of path shapes. Only ASCII
+# letters, digits, spaces and , ' - ( ) . pass; a "." only as sentence punctuation (never between
+# two letters or digits, so no file extension); and no camera-stem token (letters, then "-" or
+# digits). The DESIGN §4.3 prompts all pass.
+_TEXT_CHARS = re.compile(r"[A-Za-z0-9 ,'()\-.]+")
+_DOT_INSIDE_WORD = re.compile(r"[A-Za-z0-9]\.[A-Za-z0-9]")
+_STEM_TOKEN = re.compile(r"[A-Za-z]+-\d+|[A-Za-z]{2,}\d{3,}")
+_TOKEN_SPLIT = re.compile(r"[ ,'().]+")
+# A Hugging Face repo id (owner/name): the model field must never carry a local path.
+MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
+TEXT_RULE = (
+    "a vision text input may hold only ASCII letters, digits, spaces and , ' - ( ) . "
+    "with no dot inside a word and no file-stem token"
 )
 
 
@@ -152,15 +153,27 @@ def decode_array(response: object) -> np.ndarray:
 
 
 def check_text_input(text: str) -> None:
-    """A text input must be short, single-line, printable and not path-like (TST-008.1 lint).
+    """A text input must pass the allowlist `TEXT_RULE` (TST-008.1.5).
 
-    The lint can't prove a string is synthetic; it refuses what could carry a path or a name.
-    The DESIGN §4.3 prompts all pass (a test holds a copy).
+    The lint can't prove a string is synthetic. The allowlist keeps out the shapes of a path,
+    a file name and a camera stem; the review checks the rest. The DESIGN §4.3 prompts all pass
+    (a test holds a copy).
     """
-    if len(text) > MAX_TEXT_CHARS or not text or not text.isprintable():
-        raise _fixed("a vision text input is empty, too long or not single-line printable text")
-    if any(shape.search(text) for shape in _PATH_SHAPES):
-        raise _fixed("a vision text input looks like a path or a file name")
+    if not text or len(text) > MAX_TEXT_CHARS:
+        raise _fixed("a vision text input is empty or longer than 256 characters")
+    if (
+        not _TEXT_CHARS.fullmatch(text)
+        or _DOT_INSIDE_WORD.search(text)
+        or any(_STEM_TOKEN.fullmatch(token) for token in _TOKEN_SPLIT.split(text))
+    ):
+        raise _fixed(TEXT_RULE)
+
+
+def check_model_id(model: object) -> str:
+    """A model id is a Hugging Face repo id, `owner/name`: never a path (TST-008.1.5)."""
+    if not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model) or ".." in model:
+        raise _fixed("a vision model id must be a repo id such as owner/name, never a path")
+    return model
 
 
 def check_request(request: object) -> dict[str, str]:
@@ -168,8 +181,9 @@ def check_request(request: object) -> dict[str, str]:
     if not isinstance(request, Mapping) or set(request) != REQUEST_FIELDS:
         raise _fixed("a vision request must hold exactly model, kind and input")
     model, kind, value = request["model"], request["kind"], request["input"]
-    if not isinstance(model, str) or not model or not isinstance(value, str):
-        raise _fixed("a vision request holds a non-text model or input")
+    model = check_model_id(model)
+    if not isinstance(value, str):
+        raise _fixed("a vision request holds a non-text input")
     if kind not in KINDS:
         raise _fixed("a vision recording kind is not image, text, nsfw or param")
     if kind in ("image", "nsfw") and not HASH_RE.fullmatch(value):

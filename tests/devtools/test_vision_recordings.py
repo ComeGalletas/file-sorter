@@ -20,6 +20,7 @@ from PIL import Image
 from classifier.models.vision import VisionBackend, score_images
 from tests.recordings.replay import RecordingError, lint_recordings, recording_key
 from tests.recordings.vision import (
+    TEXT_RULE,
     check_request,
     decode_array,
     encode_array,
@@ -296,17 +297,84 @@ def test_every_design_seed_prompt_is_accepted(prompt: str) -> None:
         "qorvex.JPG",
         "notes.txt",
         "tab\there",
+        # The privacy auditor's probes (PR #113): names, stems and paths the first rule missed.
+        "sample.CR2",
+        "clip.mkv",
+        "report.docx",
+        "archive.zip",
+        "sample.NEF",
+        "sample.dng",
+        "Pictures/family",
+        "IMG_0042",
+        "~/Pictures/trip",
+        "DSC-1234",
+        "IMG0042",
+        "a photo and/or a drawing",
+        "a: b",
+        "café",
+        "under_score",
     ],
 )
-def test_path_like_or_unprintable_text_is_refused(text: str) -> None:
+def test_text_outside_the_allowlist_is_refused(text: str) -> None:
     with pytest.raises(RecordingError) as caught:
         check_request({"model": MODEL, "kind": "text", "input": text})
     assert_private(caught.value)
 
 
-def test_a_plain_slash_between_words_is_fine() -> None:
-    request = {"model": MODEL, "kind": "text", "input": "a photo and/or a drawing"}
+@pytest.mark.parametrize(
+    "text",
+    ["a cat.", "a person's face", "a list (of text), a form", "3D art - a render", "PC gear"],
+)
+def test_sentence_punctuation_is_allowed(text: str) -> None:
+    request = {"model": MODEL, "kind": "text", "input": text}
     assert check_request(request) == request
+
+
+def test_the_text_error_says_exactly_what_the_rule_allows() -> None:
+    with pytest.raises(RecordingError) as caught:
+        check_request({"model": MODEL, "kind": "text", "input": "IMG_0042"})
+    assert str(caught.value) == TEXT_RULE
+
+
+@pytest.mark.parametrize(
+    "model", ["google/siglip-so400m-patch14-384", "Falconsai/nsfw_image_detection", MODEL]
+)
+def test_a_repo_id_is_an_accepted_model(model: str) -> None:
+    request = {"model": model, "kind": "param", "input": "logit_bias"}
+    assert check_request(request) == request
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "",
+        "model",
+        "/models/x",
+        "C:\\x",
+        "../x",
+        "~/x",
+        "a/../b",
+        "a/b/c",
+        "a b/c",
+        "x" * 97 + "/y",
+        f"{SECRET}/x:y",
+    ],
+)
+def test_a_path_shaped_model_id_is_refused_by_the_request_and_the_recorder(
+    model: str, tmp_path: Path
+) -> None:
+    with pytest.raises(RecordingError) as caught:
+        check_request({"model": model, "kind": "param", "input": "logit_bias"})
+    assert_private(caught.value)
+
+    class Local(FakeUpstream):
+        classifier_id = model
+
+    recorder = RecordingVisionBackend("pkg", Local(), TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        recorder.embed_texts(["alpha"])
+    assert_private(caught.value)
+    assert not (tmp_path / "pkg").exists()
 
 
 @pytest.mark.parametrize("kind", ["image", "nsfw"])
@@ -604,7 +672,7 @@ def test_replay_refuses_a_path_like_text_without_looking_it_up(tmp_path: Path) -
     replay = replayer(tmp_path)
     with pytest.raises(RecordingError) as caught:
         replay.embed_texts([f"folder/{SECRET}.png"])
-    assert "looks like a path" in str(caught.value)
+    assert str(caught.value).startswith(TEXT_RULE)
     assert_private(caught.value)
 
 
@@ -749,16 +817,16 @@ TEXT = "zz-inner-" + "secret-qx"
 
 
 def test_replays(vision_backend):
-    assert isinstance(vision_backend("models", "c", "n"), ReplayVisionBackend)
+    assert isinstance(vision_backend("models", "syn/c", "syn/n"), ReplayVisionBackend)
 
 
 def test_miss(vision_backend):
-    vision_backend("models", "c", "n").embed_texts([TEXT])
+    vision_backend("models", "syn/c", "syn/n").embed_texts([TEXT])
 
 
 def test_swallowed(vision_backend):
     try:
-        vision_backend("models", "c", "n").embed_images([Image.new("RGB", (2, 2))])
+        vision_backend("models", "syn/c", "syn/n").embed_images([Image.new("RGB", (2, 2))])
     except BaseException:
         pass
 """
@@ -816,7 +884,7 @@ def test_fixture_replays_outside_gpu_and_fails_each_miss_once(inner: pytest.Pyte
     # test_swallowed: its call passes, and its teardown reports the miss as an error.
     result.assert_outcomes(passed=2, failed=1, errors=1)
     output = result.stdout.str() + result.stderr.str()
-    key = vision_key("c", "text", INNER_SECRET)
+    key = vision_key("syn/c", "text", INNER_SECRET)
     assert f"no recording models/{key}.json" in output
     assert "tests/unit/test_inner_unit.py::test_miss" in output
     assert "Vision recording failure caught by the code under test" in output
