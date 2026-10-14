@@ -27,7 +27,12 @@ from classifier.graph.nodes import REGISTRY, NodeContext
 from classifier.graph.run import run
 from classifier.graph.sanitize import REASONS, SanitizeResult, WorkDirError
 from classifier.models.ollama import OllamaError
-from classifier.sanitize.exif import MetadataStripError, is_allowed, read_tags
+from classifier.sanitize.exif import (
+    MetadataStripError,
+    MetadataUnavailableError,
+    is_allowed,
+    read_tags,
+)
 from classifier.sanitize.rules import (
     LOG_KEY_ENV,
     Redaction,
@@ -286,6 +291,10 @@ FAILURES = {
     "sanitize_name": (ValueError(f"bad name {EXC_SECRET}"), "sanitize_name_failed"),
     "make_working_copy": (OS_ERROR, "sanitize_working_copy_failed"),
     "strip_metadata": (MetadataStripError(EXC_SECRET), "sanitize_metadata_residual"),
+    "strip_metadata_exiftool": (  # SAN-003.D1: the subclass maps first
+        MetadataUnavailableError(EXC_SECRET),
+        "sanitize_metadata_unavailable",
+    ),
     "make_thumbnail": (RecursionError(EXC_SECRET), "sanitize_thumbnail_failed"),
     "make_thumbnail_pillow": (UnidentifiedImageError(EXC_SECRET), "sanitize_thumbnail_failed"),
 }
@@ -306,7 +315,7 @@ class TestFailClosed:
         images = _populate(source)
         target = _hash(images["named"])
         exc, reason = FAILURES[step]
-        name = step.removesuffix("_pillow")
+        name = step.removesuffix("_pillow").removesuffix("_exiftool")
         if name == "sanitize_name":
             # The relative path carries the named folder: fail on that one only.
             patched = _only_for(NAMED_DIR, exc, node.sanitize_name)
@@ -651,5 +660,5 @@ class TestEntity:
 
 
 def test_every_reason_is_a_fixed_label() -> None:
-    assert len(set(REASONS)) == len(REASONS) == 7  # SAN-001.D17
+    assert len(set(REASONS)) == len(REASONS) == 8  # SAN-001.D17
     assert all(reason.startswith("sanitize_") and reason.isascii() for reason in REASONS)
