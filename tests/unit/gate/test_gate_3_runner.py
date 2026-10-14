@@ -56,7 +56,7 @@ def test_to_outcomes_maps_duplicates_and_rejects_foreign_paths() -> None:
 def test_prerequisites_name_what_is_missing(tmp_path: Path) -> None:
     with pytest.raises(gate_3.GateSetupError, match="DB_DSN"):
         gate_3.check_prerequisites(None, tmp_path)
-    with pytest.raises(gate_3.GateSetupError, match="fixtures/images"):
+    with pytest.raises(gate_3.GateSetupError, match="missing or empty"):
         gate_3.check_prerequisites("postgresql://x", tmp_path)  # empty folder
     (tmp_path / "x").write_bytes(b"")
     assert gate_3.check_prerequisites("postgresql://x", tmp_path) == "postgresql://x"
