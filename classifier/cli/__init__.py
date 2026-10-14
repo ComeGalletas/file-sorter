@@ -93,5 +93,10 @@ def dry_run(
     for reason, count in sorted(sanitized.by_reason.items()):
         typer.echo(f"sanitize error, {reason}: {count}")
     if csv:
-        target = dry_run_report.write_csv(config.paths.results_root, started, rows)
+        try:
+            target = dry_run_report.write_csv(config.paths.results_root, started, rows)
+        except dry_run_report.ReportWriteError as error:
+            # SAN-003.3: run has committed, so the ledger is written; a re-run rebuilds the report.
+            typer.echo(f"error: {error}", err=True)
+            raise typer.Exit(2) from None
         typer.echo(f"report: {target.name} ({len(rows)} rows)")
