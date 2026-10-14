@@ -304,8 +304,19 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
   - [x] CLS-003.1.1 — `eval/classify_sweep.py`: the pure sweep, overrides and 5-fold check, with unit tests (17176ee)
   - [x] CLS-003.1.2 — scoring: `SiglipBackend` scores of the working copies, the score cache, the label join (1f821d7)
-  - [x] CLS-003.1.3 — `eval/classify_eval.py`: the throwaway-db run, the CLI, the public and `--detail` report, the proposal printout (hash in the next commit)
-  - [ ] CLS-003.1.4 — the `gpu` acceptance test, the real-fixture run, Results
+  - [x] CLS-003.1.3 — `eval/classify_eval.py`: the throwaway-db run, the CLI, the public and `--detail` report, the proposal printout (a7ba20e)
+  - [x] CLS-003.1.4 — the `gpu` acceptance test, the real-fixture run, Results (hash in the PR)
 - [ ] CLS-003.2 — Commit the calibrated values the human approved, in `config.yaml` and migration `0004` (CLS-003.D2) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
 
 ## CLS-003 — Results
+
+### CLS-003.1 — Results (ML, #101)
+
+- **Tests:** `unit` 48 in `tests/unit/eval/` (sweep, cross-validation, scoring, cache, label join, report, entry point, repr/privacy); `gpu` `tests/gpu/models/test_classify_eval.py` 3 passed (real SigLIP and NSFW on synthetic noise images and synthetic labels, ingest and sanitize in a throwaway schema, the cache hit on a second run, the public form, `--detail` behind its flag, a coverage failure as fixed text).
+- **Sweep objective (CLS-003.1.D1, ML):** agreement alone only improves as the thresholds fall, so the fit takes the most conservative values within a 1-point slack of the best agreement (`--slack-points`), and keeps the unrecognized share under the gate's 10% when the best does. Overrides: coordinate ascent, at least one whole row of gain, the highest value among the best gains, kept only if the pooled held-out agreement of their axis does not drop.
+- **Real-fixture run (public form):**
+  - `adult flagged and the rest safe: FAIL`
+  - `suggestive-negative safe: ok`
+  - no `nsfw.threshold` satisfies every labelled NSFW row, so nothing else was swept. The constraint was not relaxed (lead's rule on #101).
+- **Completion status:** DONE_WITH_CONCERNS. The harness is complete and tested, but thresholds alone cannot satisfy the NSFW criterion on the real labels. Proposed follow-up: the human decides how to proceed (CLS-003.D1: which rows, or whether the gate model or its labelling needs a task of its own); no values are proposed.
+- **Self-rating:** 8/10, proud: yes. Gaps: (1) the category sweep and the overrides have run only on synthetic data, because the real run stopped at NSFW; (2) the grid cost on a large fixture set is untested.
