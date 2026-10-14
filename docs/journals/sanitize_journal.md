@@ -321,6 +321,8 @@ Decisions:
 
 - [ ] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
 - [ ] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
+  - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `HASH1`
+  - [ ] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it
 - [ ] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
 
 ## SAN-003 — Results
