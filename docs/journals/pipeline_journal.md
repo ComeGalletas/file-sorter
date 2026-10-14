@@ -196,7 +196,8 @@ references or host paths here. Use hashes.
   - [x] CLI-005.1.1 — the report module: `LedgerRow` as a frozen dataclass with `repr=False`, the classify columns, `folder_resolver` (FOP-002.1's `result_folder`), `surrogateescape` CSV; `topic_chain` made public in `fileops/folders.py`
   - [x] CLI-005.1.2 — the console counts and the M3 dry run in the CLI; the console contract pinned in a test
   - [x] CLI-005.1.3 — Results
-  - [x] CLI-005.1.4 — review fixes: the report is encoded in memory before the file is created (a failed write removes only that file); a CLI-level lone-surrogate test; the unknown-format/removed-topic folder test
+  - [x] CLI-005.1.4 — review fixes: the report is encoded in memory before the file is created (a raw write failure leaves the partial file, see CLI-005.1.5); a CLI-level lone-surrogate test; the unknown-format/removed-topic folder test
+  - [x] CLI-005.1.5 — lead's ask: `write_csv` no longer unlinks a half-written report (deleting is `fileops/delete.py`'s alone); encode-first stays; a partial file may remain and a re-run writes a new one
 
 ## CLI-005 — Results
 

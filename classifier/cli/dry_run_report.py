@@ -175,7 +175,9 @@ def write_csv(
     folder problem or an unencodable character leaves no report, not even a header. The file is
     UTF-8 with `surrogateescape`: a non-UTF-8 name is written back as its original bytes. Any
     other lone surrogate is a `ReportWriteError`, fixed text. If the write itself fails after
-    the file was created, that file (and only it) is removed.
+    the file was created (a full disk, say), the partial file is left in place, because deleting
+    is `fileops/delete.py`'s alone (CLAUDE.md); the fixed error is raised, and a re-run writes
+    a new report under the next free name.
 
     The file is opened exclusively, so two runs in the same second never overwrite each
     other: the later one gets a numeric suffix.
@@ -183,7 +185,6 @@ def write_csv(
     folders = [folder_of(row) if folder_of else "" for row in rows]
     failed = False  # SAN-003.3: an OSError message carries the path; raise fixed text after
     path = report_path(results_root, stamp)
-    created = False
     try:
         buffer = io.StringIO(newline="")
         writer = csv.writer(buffer)
@@ -217,17 +218,11 @@ def write_csv(
             except FileExistsError:
                 attempt += 1
                 continue
-            created = True
             break
         with handle:
             handle.write(data)
     except (OSError, UnicodeError):
         failed = True
     if failed:
-        if created:
-            try:
-                path.unlink()
-            except OSError:
-                pass  # nothing more to do; the error below is fixed text either way
         raise ReportWriteError(REPORT_WRITE_FAILED)
     return path

@@ -127,7 +127,7 @@ def test_an_unencodable_row_leaves_no_report_file_at_all(tmp_path: Path) -> None
     assert list((tmp_path / "reports").iterdir()) == []
 
 
-def test_a_write_failure_after_the_file_was_created_removes_only_that_file(
+def test_a_write_failure_after_the_file_was_created_leaves_it_and_a_rerun_writes_anew(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     first = write_csv(str(tmp_path), STAMP, [_classified()])
@@ -153,8 +153,15 @@ def test_a_write_failure_after_the_file_was_created_removes_only_that_file(
     monkeypatch.setattr(Path, "open", opening)
     with pytest.raises(ReportWriteError) as caught:
         write_csv(str(tmp_path), STAMP, [_classified()])
-    assert PLANTED not in str(caught.value)
-    assert [p.name for p in (tmp_path / "reports").iterdir()] == [first.name]
+    assert str(caught.value) == REPORT_WRITE_FAILED
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    # the partial file stays (only fileops/delete.py deletes); nothing else is touched
+    left = sorted(p.name for p in (tmp_path / "reports").iterdir())
+    assert left == sorted([first.name, "dry-run-20261006T120000Z-1.csv"])
+    monkeypatch.undo()
+    again = write_csv(str(tmp_path), STAMP, [_classified()])
+    assert again.name == "dry-run-20261006T120000Z-2.csv"  # a re-run writes a new report
 
 
 def test_the_cli_reports_a_lone_surrogate_path_with_fixed_text(
