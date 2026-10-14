@@ -18,6 +18,7 @@ from PIL import Image
 
 from classifier.config import Config
 from classifier.graph.classify import (
+    LEDGER_WRITE_FAILED,
     WORKING_COPY_UNREADABLE,
     ClassifyConfigError,
     ClassifyResult,
@@ -322,3 +323,25 @@ def test_the_node_needs_runs_transaction(
     with psycopg.connect(migrated_db, autocommit=True) as conn:
         with pytest.raises(ValueError, match="transaction"):
             classify(conn, _ctx(folders, config, FakeVision()))
+
+
+@pytest.mark.usefixtures("categories")
+def test_one_rejected_write_errors_only_that_row(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    caplog: pytest.LogCaptureFixture,
+) -> None:  # CLS-002.2.5: one savepoint per file
+    first, bad, last = (_add(db, folders[1], n, red=0) for n in (20, 21, 22))
+    # The ledger refuses to hold this one row as `classified`; the other rows are unaffected.
+    db.execute(
+        f"alter table files add constraint t_refuse check "
+        f"(source_hash <> '{bad}' or status <> 'classified')"
+    )
+    with caplog.at_level(logging.INFO):
+        result = classify(db, _ctx(folders, config, FakeVision()))
+    assert (result.classified, result.errored) == (2, 1)
+    assert dict(result.by_reason) == {LEDGER_WRITE_FAILED: 1}
+    assert _row(db, first)["status"] == _row(db, last)["status"] == "classified"
+    assert (_row(db, bad)["status"], _row(db, bad)["error"]) == ("error", LEDGER_WRITE_FAILED)
+    assert bad[:8] in caplog.text and "t_refuse" not in caplog.text

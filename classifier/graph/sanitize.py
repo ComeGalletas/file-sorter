@@ -27,7 +27,7 @@ import httpx
 import psycopg
 
 from classifier.config import Config
-from classifier.fileops.copy_move import WorkingCopy, make_working_copy
+from classifier.fileops.copy_move import WorkingCopy, make_working_copy, working_copy_name
 from classifier.fileops.thumbs import make_thumbnail
 from classifier.graph.errors import mark_error, register_reasons
 from classifier.models.ollama import OllamaClient
@@ -294,7 +294,7 @@ def _sanitize_one(
             MetadataStripError: METADATA_RESIDUAL,
         },
     )
-    _published(copy.path, folders.work, f"{row.source_hash}.{row.ext}", folders)
+    _published(copy.path, folders.work, working_copy_name(row.source_hash, row.ext), folders)
 
     thumb = _attempt(
         THUMBNAIL_FAILED,

@@ -44,7 +44,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 WORKING_COPY_UNREADABLE = "classify_working_copy_unreadable"  # CLS-002.D7
-register_reasons((WORKING_COPY_UNREADABLE,))  # SAN-003.D2: mark_error stores only fixed reasons
+LEDGER_WRITE_FAILED = "classify_ledger_write_failed"  # CLS-002.2.5
+register_reasons(
+    (WORKING_COPY_UNREADABLE, LEDGER_WRITE_FAILED)
+)  # SAN-003.D2: mark_error stores only fixed reasons
 
 IMAGE_VEC_DIM = 1152  # files.image_vec is vector(1152), migration 0003 (CLS-002.D10)
 _SANITIZED = "sanitized"
@@ -268,21 +271,30 @@ def _batches(
                 axes[rule.axis][rule.name] = value
             branch = nsfw_branch(float(nsfw_score), config.nsfw.threshold)  # R-CLS-1
             choice = choose(axes["format"], axes["topic"], rules, branch, config.classify)
-            moved = conn.execute(
-                _CLASSIFIED,
-                (
-                    branch,
-                    float(nsfw_score),
-                    choice.format,
-                    choice.topic,
-                    Jsonb(choice.format_top),
-                    Jsonb(choice.topic_top),
-                    choice.needs_review,
-                    choice.review_reason,
-                    _vector_literal(vector),
-                    row.source_hash,
-                ),
-            ).rowcount
+            write = (
+                branch,
+                float(nsfw_score),
+                choice.format,
+                choice.topic,
+                Jsonb(choice.format_top),
+                Jsonb(choice.topic_top),
+                choice.needs_review,
+                choice.review_reason,
+                _vector_literal(vector),
+                row.source_hash,
+            )
+            moved = 0
+            rejected = False
+            try:
+                with conn.transaction():  # a savepoint: one bad row can't undo the others
+                    moved = conn.execute(_CLASSIFIED, write).rowcount
+            except psycopg.Error:
+                rejected = True  # acted on below, outside the handler; the text may hold values
+            if rejected:
+                mark_error(conn, row.source_hash, LEDGER_WRITE_FAILED, from_statuses=(_SANITIZED,))
+                reasons[LEDGER_WRITE_FAILED] += 1
+                log.warning("classify: %s error %s", row.short_hash, LEDGER_WRITE_FAILED)
+                continue
             if moved != 1:  # no longer `sanitized`: another run got there first
                 continue
             classified += 1
