@@ -97,6 +97,9 @@ update files
 """
 
 
+_WORK_UNREADABLE = "results_root or source_root could not be resolved"
+
+
 class WorkDirError(Exception):
     """`.work/` would resolve outside `results_root` or into `source_root` (SAN-001.D16).
 
@@ -167,12 +170,24 @@ def prepare_folders(source_root: Path, results_root: Path) -> _Folders:
     Checked before anything is created, so a symlinked results folder or `.work` can't
     redirect even the `mkdir` into the source; and again after, on the real folders.
     """
-    source = source_root.resolve()
+    unreadable = False  # SAN-003.3: an OSError or loop message carries the path; raise fixed text
+    try:
+        source = source_root.resolve()
+    except (OSError, RuntimeError):
+        unreadable = True
+    if unreadable:
+        raise WorkDirError(_WORK_UNREADABLE)
 
     def check() -> tuple[Path, Path]:
-        results = results_root.resolve()
-        work = (results_root / WORK_DIR).resolve()
-        thumbs = (results_root / WORK_DIR / THUMBS_DIR).resolve()
+        failed = False
+        try:
+            results = results_root.resolve()
+            work = (results_root / WORK_DIR).resolve()
+            thumbs = (results_root / WORK_DIR / THUMBS_DIR).resolve()
+        except (OSError, RuntimeError):
+            failed = True
+        if failed:
+            raise WorkDirError(_WORK_UNREADABLE)
         if work != results / WORK_DIR or thumbs != work / THUMBS_DIR:
             raise WorkDirError("results_root/.work must be a real folder, not a link elsewhere")
         if _under(results, source) or _under(source, results):
@@ -180,7 +195,12 @@ def prepare_folders(source_root: Path, results_root: Path) -> _Folders:
         return work, thumbs
 
     check()
-    (results_root / WORK_DIR / THUMBS_DIR).mkdir(parents=True, exist_ok=True)
+    try:
+        (results_root / WORK_DIR / THUMBS_DIR).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        unreadable = True
+    if unreadable:
+        raise WorkDirError("results_root/.work/thumbs could not be created")
     work, thumbs = check()
     return _Folders(source=source, work=work, thumbs=thumbs)
 

@@ -327,7 +327,10 @@ Decisions:
 - [x] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`
   - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it · `e74c94f`
-- [ ] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
+- [x] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
+  - [x] SAN-003.3.1 — `load_rules`: a `read_text` `OSError` becomes `SanitizeConfigError`, fixed text with no path, unchained; the CLI maps it to exit 2 · `637a800`
+  - [x] SAN-003.3.2 — `prepare_folders`: `resolve` and `mkdir` `OSError` (and the symlink-loop `RuntimeError`) become `WorkDirError` · `8721b37`
+  - [x] SAN-003.3.3 — `write_csv`: `mkdir` and `open` `OSError` become `ReportWriteError`, mapped by the CLI to exit 2 · (this commit; hash in Results)
 
 ## SAN-003 — Results
 
@@ -364,3 +367,15 @@ Decisions:
   - **Lint:** `make lint` clean. **Default tiers:** 1378 passed (unit, db, integration).
 - **Self-rating:** 9/10, proud: yes. Gap: `mark_error` always nulls `original_sanitized` (matching the node's earlier update); CLS-002.2 may want to keep it for a classify error and should say so on its issue. `O_NOFOLLOW` guards only the last path component; parent links stay with the existing `resolve` checks.
 - **Review:** pending.
+
+### SAN-003.3 (worker: pipeline)
+
+- **Status:** DONE. SAN-003.3.1 landed in `637a800`, SAN-003.3.2 in `8721b37`, SAN-003.3.3 in the commit that carries this section (issue #94). Triage was corrected to medium by the lead.
+- **What changed:**
+  - `load_rules` maps a `read_text` `OSError` to `SanitizeConfigError`; `prepare_folders` maps `resolve()` (`OSError`, symlink-loop `RuntimeError`) and the `.work/thumbs` `mkdir` to `WorkDirError`; `write_csv` maps its `mkdir` and `open` to the new `ReportWriteError`, which the CLI turns into exit 2. All messages are fixed text with no path, raised outside the `except` block, so `__cause__` and `__context__` are both None.
+  - No catch-all `OSError` in the CLI (lead's approval): each site has its own test.
+  - The report is written after `run` has committed, so on a report failure the ledger rows already exist; a re-run regenerates the report.
+- **Tests:** `tests/unit/cli/test_dry_run_config_errors.py` (acceptance), 27 passed in `tests/unit/cli`. `make test` (unit + db + integration): 1370 passed, 37 deselected. `make lint`: clean.
+- **Self-rating:** 9/10, proud: yes. The one point is that `prepare_folders` is also edited by #92 (SAN-003.1); whoever merges second brings in `origin/main`.
+- **Reviewer / Privacy auditor:** pending.
+

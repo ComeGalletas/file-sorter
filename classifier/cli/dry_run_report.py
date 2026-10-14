@@ -33,6 +33,13 @@ select source_hash, short_hash, source_path, original_sanitized, status, error
 """
 
 
+REPORT_WRITE_FAILED = "the dry-run report could not be written (results_root/reports)"
+
+
+class ReportWriteError(Exception):
+    """The report folder or file could not be created or written (SAN-003.3). Fixed text only."""
+
+
 class LedgerRow(NamedTuple):
     source_hash: str
     short_hash: str
@@ -75,29 +82,35 @@ def write_csv(results_root: str, stamp: datetime, rows: Sequence[LedgerRow]) -> 
     The file is opened exclusively, so two runs in the same second never overwrite each
     other: the later one gets a numeric suffix.
     """
-    report_path(results_root, stamp).parent.mkdir(parents=True, exist_ok=True)
-    attempt = 0
-    while True:
-        path = report_path(results_root, stamp, attempt)
-        try:
-            handle = path.open("x", encoding="utf-8", newline="")
-        except FileExistsError:
-            attempt += 1
-            continue
-        break
-    with handle:
-        writer = csv.writer(handle)
-        writer.writerow(COLUMNS)
-        for row in rows:
-            writer.writerow(
-                [
-                    row.source_hash,
-                    row.short_hash,
-                    row.source_path,
-                    row.sanitized_name or "",
-                    row.status,
-                    row.reason or "",
-                    "",
-                ]
-            )
+    failed = False  # SAN-003.3: an OSError message carries the path; raise fixed text after
+    try:
+        report_path(results_root, stamp).parent.mkdir(parents=True, exist_ok=True)
+        attempt = 0
+        while True:
+            path = report_path(results_root, stamp, attempt)
+            try:
+                handle = path.open("x", encoding="utf-8", newline="")
+            except FileExistsError:
+                attempt += 1
+                continue
+            break
+        with handle:
+            writer = csv.writer(handle)
+            writer.writerow(COLUMNS)
+            for row in rows:
+                writer.writerow(
+                    [
+                        row.source_hash,
+                        row.short_hash,
+                        row.source_path,
+                        row.sanitized_name or "",
+                        row.status,
+                        row.reason or "",
+                        "",
+                    ]
+                )
+    except OSError:
+        failed = True
+    if failed:
+        raise ReportWriteError(REPORT_WRITE_FAILED)
     return path
