@@ -207,9 +207,20 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## FOP-002 — Tasks
 
 - [ ] FOP-002.1 — `classifier/fileops/layout.py`: the result folder for a branch, topic, format and `animated` flag · #91 · acceptance: `tests/unit/fileops/test_layout.py`
+  - [x] FOP-002.1.1 — the layout, `General`, `Unsorted`, the `Adult/` prefix and the `Animated/` rule · commit: 8d55950
+  - [x] FOP-002.1.2 — nested topics (D2) and segment validation of every folder name · commit: d72428d
+  - [x] FOP-002.1.3 — privacy tests (fixed, unchained errors) and Results · commit: this one
 - [ ] FOP-002.2 — `sync_folders` and `classifier categories sync-folders`, with case-insensitive collision checks · #98 · acceptance: `tests/db/fileops/test_sync_folders.py`
 
 ## FOP-002 — Results
+
+### FOP-002.1 (#91, pipeline desk)
+
+- **Tests:** `tests/unit/fileops/test_layout.py` passes (acceptance). The default tiers pass in full (`unit + db + integration`: 1219 passed, 24 deselected). `make lint` is clean. No `gpu` or `eval/` run: no model or prompt is touched.
+- **Behavior:** `result_folder()` returns `[Adult/]<Topic|General>/<Format>[/Animated]` or `[Adult/]Unsorted` as a relative `PurePosixPath`. It does no file system access (R-CLS-5, R-ING-9, FOP-002.D1, D2). Every segment (topic path, `no_topic`, format, `Unsorted`, the `nsfw` root) is validated, and errors are fixed text with no cause or context.
+- **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) no caller yet, because CLI-005.1 and M7 wire it in, so the integration is untested here; (2) case-insensitive collisions are left to FOP-002.2 (FOP-002.D4).
+- **Completion status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 
