@@ -82,29 +82,19 @@ norm_segments() {
     | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
-# A whole word in a normalized segment; a path prefix counts (/usr/bin/git, c:/x/git.exe).
-has_word() { printf '%s' "$1" | grep -Eq "(^| |/)($2)( |\$)"; }
 
 # Any segment that mentions git (or gh) together with a guarded word is treated as that
 # operation, whatever comes between (global options, -c/-C values, aliases, a wrapping shell).
 # Only the exact sync forms pass (D1, D2). A commit message that mentions these words must
 # go through `git commit -F <file>`: the false positive is the price of failing closed.
 worker_bash_ok() {
-  local seg segs indirect=0 guarded=0
+  local segs rawind=0 verdict
   segs="$(norm_segments)"
   # RUN-008.D6: a command built at run time ($(...), backticks, ${...}, eval, or a variable as
   # the program) can split "git" from "merge". It is refused when it names a guarded operation
   # anywhere: merge, pull, tag, or push with main. Plain $(...) uses (a branch name, a commit
   # message read from a file) still pass.
-  while IFS= read -r seg; do
-    case "$seg" in '$'*) indirect=1 ;; esac
-    has_word "$seg" 'eval' && indirect=1
-    printf '%s' "$seg" | grep -Eq '(^| |/|=)(merge|pull|tag)( |$)' && guarded=1   # also m=merge
-    has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)' && guarded=1
-  done <<EOF
-$segs
-EOF
-  printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && indirect=1
+  printf '%s' "$cmd" | grep -Fq -e '`' -e '${' -e '$(' && rawind=1
   # RUN-010.D1: ANSI-C quoting ($'mer\x67e', g$'\x69't) and brace expansion (git {merge,} x,
   # g{i,}t) build a word, even the program name, that the text can't show. So neither is
   # allowed anywhere in a worker's command. Bash never expands braces inside quotes, so quoted
@@ -121,7 +111,7 @@ EOF
     # open at the end (a heredoc body with an apostrophe, say) make the reading unsure, so
     # the command is refused then too: this branch only runs when a brace expression is there.
     local bare
-    bare="$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' -v bs='\\' 'BEGIN { RS = "\001" } {
+    bare="$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' -v bs='\' 'BEGIN { RS = "\001" } {
       s = $0; out = ""; q = ""; n = length(s)
       for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
@@ -138,37 +128,51 @@ EOF
       why="unquoted brace expansion ({a,b}, {1..3}) isn't allowed in a worker's command, and neither are braces with quotes left open; write the words out (RUN-010.D1, D8)"; return 1
     fi
   fi
-  if [ "$indirect" = 1 ] && [ "$guarded" = 1 ]; then
-    why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)"; return 1
-  fi
-  while IFS= read -r seg; do
-    [ -n "$seg" ] || continue
-    if has_word "$seg" 'gh|gh\.exe' && printf '%s' "$seg" | grep -Eq '(^| |/)merge( |$|\?)'; then
-      why="workers never merge a PR; the lead merges (CLAUDE.md section 1.6)"; return 1
-    fi
-    has_word "$seg" 'git|git\.exe' || continue
-    case "$seg" in *alias.*)
-      why="no git aliases on a worker desk (RUN-008.D4)"; return 1 ;;
-    esac
-    if has_word "$seg" 'tag'; then
-      why="workers never tag; the mN-approved tags are the human's (CLAUDE.md section 1.6)"; return 1
-    fi
-    if has_word "$seg" 'push' && printf '%s' "$seg" | grep -Eq '(^| |:|\+)(refs/heads/)?main( |$)|(^| )--(mirror|all)( |$)'; then
-      why="workers never push to main (nor --all/--mirror, which include it); push your task branch and open a PR"; return 1
-    fi
-    if has_word "$seg" 'merge'; then
-      printf '%s' "$seg" | grep -Eq '^git merge( --no-edit| --no-ff)* origin/main$' && continue
-      printf '%s' "$seg" | grep -Eq '^git merge --(abort|continue)$' && continue
-      why="the only merge a worker runs is 'git merge [--no-edit] origin/main' into its own branch, or --abort/--continue (RUN-008.D1). A commit message that mentions merge goes through 'git commit -F <file>'"; return 1
-    fi
-    if has_word "$seg" 'pull'; then
-      [ "$seg" = "git pull --ff-only" ] && continue
-      why="the only pull a worker runs is 'git pull --ff-only' (RUN-008.D2). A commit message that mentions pull goes through 'git commit -F <file>'"; return 1
-    fi
-  done <<EOF
-$segs
-EOF
-  return 0
+  # RUN-014.D1: every per-segment check runs in ONE awk process. The rules are unchanged; one
+  # grep per segment per rule meant thousands of process launches on a long heredoc, which on
+  # Git Bash took many minutes and froze the desk inside its PreToolUse hook.
+  verdict="$(printf '%s\n' "$segs" | awk -v rawind="$rawind" '
+    function hw(s, re) { return s ~ ("(^| |/)(" re ")( |$)") }
+    {
+      seg = $0
+      if (seg == "") next
+      if (substr(seg, 1, 1) == "$") ind = 1
+      if (hw(seg, "eval")) ind = 1
+      if (seg ~ /(^| |\/|=)(merge|pull|tag)( |$)/) guarded = 1   # also m=merge
+      if (hw(seg, "push") && seg ~ /(^| |:|\+)(refs\/heads\/)?main( |$)/) guarded = 1
+      segs[++n] = seg
+    }
+    END {
+      if ((ind || rawind) && guarded) { print "indirect"; exit }
+      for (i = 1; i <= n; i++) {
+        s = segs[i]
+        if (hw(s, "gh|gh[.]exe") && s ~ /(^| |\/)merge( |$|\?)/) { print "ghmerge"; exit }
+        if (!hw(s, "git|git[.]exe")) continue
+        if (index(s, "alias.")) { print "alias"; exit }
+        if (hw(s, "tag")) { print "tag"; exit }
+        if (hw(s, "push") && s ~ /(^| |:|\+)(refs\/heads\/)?main( |$)|(^| )--(mirror|all)( |$)/) { print "pushmain"; exit }
+        if (hw(s, "merge")) {
+          if (s ~ /^git merge( --no-edit| --no-ff)* origin\/main$/ || s ~ /^git merge --(abort|continue)$/) continue
+          print "merge"; exit
+        }
+        if (hw(s, "pull")) {
+          if (s == "git pull --ff-only") continue
+          print "pull"; exit
+        }
+      }
+    }')"
+  case "$verdict" in
+    "") return 0 ;;
+    indirect) why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)" ;;
+    ghmerge) why="workers never merge a PR; the lead merges (CLAUDE.md section 1.6)" ;;
+    alias) why="no git aliases on a worker desk (RUN-008.D4)" ;;
+    tag) why="workers never tag; the mN-approved tags are the human's (CLAUDE.md section 1.6)" ;;
+    pushmain) why="workers never push to main (nor --all/--mirror, which include it); push your task branch and open a PR" ;;
+    merge) why="the only merge a worker runs is 'git merge [--no-edit] origin/main' into its own branch, or --abort/--continue (RUN-008.D1). A commit message that mentions merge goes through 'git commit -F <file>'" ;;
+    pull) why="the only pull a worker runs is 'git pull --ff-only' (RUN-008.D2). A commit message that mentions pull goes through 'git commit -F <file>'" ;;
+    *) why="the guard could not judge this command; refusing (RUN-014.D1)" ;;
+  esac
+  return 1
 }
 
 # Classify a write target: images | own:<lowercased path relative to this tree> | repo | outside

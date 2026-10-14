@@ -453,3 +453,26 @@ def test_lead_merge_names_the_reviewed_head(
     sandbox: dict[str, Path], command: str, expected: int
 ) -> None:
     assert guard(sandbox, "repo", bash(command)) == expected
+
+
+# ---- RUN-014.D1: a long command is judged in about a second ----
+
+
+def test_worker_guard_handles_a_long_heredoc_quickly(sandbox: dict[str, Path]) -> None:
+    import time
+
+    body = "".join(
+        f"{i}. **Item {i}:** `classifier/x.py` (R-CLS-{i}); repr=False; unchained errors.\n"
+        for i in range(2000)
+    )
+    command = f"cat > plan.md <<'EOF'\n{body}EOF\ngh issue comment 1 --body-file plan.md"
+    start = time.monotonic()
+    assert guard(sandbox, "wt", bash(command)) == 0
+    # The per-line grep version took minutes on this; one awk pass takes about a second.
+    assert time.monotonic() - start < 15
+
+
+def test_worker_guard_still_refuses_inside_a_long_heredoc(sandbox: dict[str, Path]) -> None:
+    body = "".join(f"line {i}\n" for i in range(2000))
+    command = f"cat > plan.md <<'EOF'\n{body}EOF\ngit merge office/other-desk"
+    assert guard(sandbox, "wt", bash(command)) == 2
