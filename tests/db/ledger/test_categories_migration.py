@@ -144,11 +144,14 @@ def test_files_has_no_index_on_image_vec_and_no_fk_from_names(
     alembic_cfg: Config, schema: str
 ) -> None:
     command.upgrade(alembic_cfg, "head")
-    assert _rows(
-        schema,
-        f"select indexname from pg_indexes where schemaname = '{schema}' "
-        "and tablename = 'files' and indexdef ilike '%image_vec%'",
-    ) == []
+    assert (
+        _rows(
+            schema,
+            f"select indexname from pg_indexes where schemaname = '{schema}' "
+            "and tablename = 'files' and indexdef ilike '%image_vec%'",
+        )
+        == []
+    )
     # DB-003.D1: files.format and files.topic stay plain names.
     assert _constraints(schema, "files", "f") == []
 
@@ -257,3 +260,84 @@ def test_downgrade_to_0002_and_back(alembic_cfg: Config, schema: str) -> None:
 
     command.upgrade(alembic_cfg, "head")
     assert _columns(schema, "files")["image_vec"] is True
+
+
+# DESIGN §4.3, copied by hand into the test (not loaded from DESIGN.md at test time): the format
+# and topic tables in order, each as (name, folder, prompts); `unsorted` follows the formats.
+SEEDED_FORMATS = [
+    ("photos", "Photos",
+     ["a photo taken with a camera", "a portrait", "a photo of an object"]),
+    ("game-screenshots", "Game Screenshots",
+     ["a screenshot taken inside a video game", "a video game scene with a game HUD",
+      "a video game character in a 3D game world"]),
+    ("screenshots", "Screenshots",
+     ["a screenshot of a phone", "a screenshot of a desktop app or website",
+      "a cropped screen capture of part of a window",
+      "a snippet of a webpage, chat or app"]),
+    ("memes", "Memes", ["a meme with text", "a reaction image"]),
+    ("artwork", "Artwork",
+     ["a digital illustration", "a drawing", "concept art", "an animated abstract graphic"]),
+    ("documents", "Documents", ["a scanned document", "a receipt", "a form"]),
+    ("unsorted", "Unsorted", []),
+]  # fmt: skip
+SEEDED_TOPICS = [
+    ("videogames", "Videogames",
+     ["a video game screenshot", "a video game character", "a game user interface"]),
+    ("anime", "Anime", ["an anime character", "manga style art"]),
+    ("cartoons", "Cartoons", ["a western cartoon character", "a comic drawing"]),
+    ("pc-equipment", "PC Equipment", ["a computer case", "PC hardware components"]),
+    ("animals", "Animals", ["a photo of a cat", "a photo of a dog", "an animal"]),
+    ("people", "People", ["a photo of people", "a person's face"]),
+    ("landscapes", "Landscapes",
+     ["a landscape", "a beach", "a cityscape", "a view from a high floor"]),
+    ("music", "Music", ["a list of song names", "a music player"]),
+    ("tv-shows", "TV Shows", ["a still from a TV show"]),
+    ("software", "Software", ["a code editor", "a mobile app screen"]),
+    ("memes", "Memes", ["a joke or humorous image", "an image with an ironic meaning"]),
+    ("documents", "Documents", ["a document", "a receipt", "a form", "a list of text"]),
+]  # fmt: skip
+
+
+def _seeded(conn: psycopg.Connection, axis: str) -> list[tuple[str, str, list[str]]]:
+    rows = conn.execute(
+        "select c.name, c.folder, "
+        "coalesce(array_agg(p.prompt order by p.position) filter (where p.id is not null), "
+        "'{}') from categories c left join category_prompts p on p.category_id = c.id "
+        "where c.axis = %s group by c.id order by c.id",
+        (axis,),
+    ).fetchall()
+    return [(name, folder, list(prompts)) for name, folder, prompts in rows]
+
+
+def test_seed_is_design_4_3_verbatim_in_table_order(conn: psycopg.Connection) -> None:
+    assert _seeded(conn, "format") == SEEDED_FORMATS
+    assert _seeded(conn, "topic") == SEEDED_TOPICS
+
+
+def test_seed_defaults(conn: psycopg.Connection) -> None:
+    # DB-003.D3: every min_score null; the seed is flat, on branch `any`.
+    assert conn.execute(
+        "select count(*), count(min_score), count(parent_id), "
+        "count(*) filter (where branch = 'any') from categories"
+    ).fetchone() == (len(SEEDED_FORMATS) + len(SEEDED_TOPICS), 0, 0, 19)
+    # DB-003.D2: `unsorted` is a format row without prompts.
+    assert conn.execute(
+        "select count(*) from categories c join category_prompts p on p.category_id = c.id "
+        "where c.name = 'unsorted'"
+    ).fetchone() == (0,)
+    # position follows the prompt order, from 0 and without gaps.
+    assert conn.execute(
+        "select count(*) from (select category_id, array_agg(position order by position) pos, "
+        "count(*) n from category_prompts group by category_id) g "
+        "where pos <> array(select generate_series(0, (n - 1)::int))"
+    ).fetchone() == (0,)
+
+
+def test_downgrade_removes_the_seed_and_a_second_upgrade_reseeds(
+    alembic_cfg: Config, schema: str
+) -> None:
+    command.upgrade(alembic_cfg, "head")
+    command.downgrade(alembic_cfg, "0002")
+    command.upgrade(alembic_cfg, "head")
+    assert _rows(schema, "select count(*) from categories") == [(19,)]
+    assert _rows(schema, "select count(*) from category_prompts") == [(48,)]

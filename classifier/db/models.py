@@ -11,12 +11,12 @@ from typing import Any
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    REAL,
     BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     Enum,
-    REAL,
     Float,
     ForeignKey,
     Index,
