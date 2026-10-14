@@ -24,3 +24,8 @@ def siglip_backend() -> SiglipBackend:
     except VisionError as error:
         pytest.fail(f"SigLIP did not load ({error}); prerequisites: {SIGLIP_PREREQS}")
     return backend
+
+
+@pytest.fixture(scope="session")
+def nsfw_model_id() -> str:
+    return load_config().models.nsfw

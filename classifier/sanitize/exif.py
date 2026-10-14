@@ -30,6 +30,7 @@ FIELD_PREFIX = "exif:"  # DB-002.D1
 UNKNOWN_TAG = "unknown"  # SAN-001.D14: a tag name exiftool doesn't know may be free text
 
 RESIDUAL_REASON = "sanitize_metadata_residual"  # SAN-001.D2
+UNAVAILABLE_REASON = "sanitize_metadata_unavailable"  # SAN-003.D1
 
 _READ_ARGS = ("-j", "-G0:1", "-a", "-u", "-n", "-e", "-b")
 _WRITE_ARGS = ("-m", "-q", "-q", "-overwrite_original")
@@ -105,10 +106,22 @@ class MetadataStripError(Exception):
     """The strip could not be done or proven: the file fails closed (SAN-001.D2).
 
     The message is fixed text: never a tag value, a tag name read from the file, or
-    exiftool's own output.
+    exiftool's own output. `reason` is the fixed label the node records (SAN-001.D17):
+
+    - `sanitize_metadata_residual` (this class): the read-back found tags outside the
+      allow-list, exiftool's output could not be accounted for, or it exited non-zero.
+    - `sanitize_metadata_unavailable` (`MetadataUnavailableError`, SAN-003.D1): the working
+      copy can't be read (missing, a link, not a regular file), or exiftool can't be run
+      or timed out.
     """
 
     reason = RESIDUAL_REASON
+
+
+class MetadataUnavailableError(MetadataStripError):
+    """The working copy or exiftool could not be reached, so nothing was read (SAN-003.D1)."""
+
+    reason = UNAVAILABLE_REASON
 
 
 @dataclass(frozen=True)
@@ -171,7 +184,9 @@ def _absolute(path: str | Path) -> Path:
     except (OSError, RuntimeError, ValueError):  # RuntimeError: a link loop; ValueError: NUL
         problem = "metadata strip: the working copy can't be opened"
     if problem is not None or resolved is None:
-        raise MetadataStripError(problem or "metadata strip: the working copy can't be opened")
+        raise MetadataUnavailableError(
+            problem or "metadata strip: the working copy can't be opened"
+        )
     return resolved
 
 
@@ -230,7 +245,9 @@ def read_tags(path: str | Path) -> Tags:
     """Every tag exiftool reads from `path`, except file-system facts and composites."""
     file = _absolute(path)
     done = _exiftool([*_READ_ARGS, str(file)])
-    pairs = _parse(done.stdout) if done is not None and done.returncode == 0 else None
+    if done is None:
+        raise MetadataUnavailableError("metadata read-back: exiftool could not be run")
+    pairs = _parse(done.stdout) if done.returncode == 0 else None
     tags = None
     if pairs is not None:
         # Raised after the except block: unexpected JSON (a non-pair, a non-string key, a
@@ -248,7 +265,9 @@ def read_tags(path: str | Path) -> Tags:
 def _known_tags() -> frozenset[str]:
     """Every tag name exiftool knows (`exiftool -list`), read once per process."""
     done = _exiftool(["-list"])
-    if done is None or done.returncode != 0:
+    if done is None:
+        raise MetadataUnavailableError("metadata strip: exiftool could not be run")
+    if done.returncode != 0:
         raise MetadataStripError("metadata strip: exiftool could not list its tag names")
     return _tag_names(done.stdout.decode("ascii", "replace"))
 
@@ -320,7 +339,9 @@ def _allowed(tag: Tag, rules: Rules) -> bool:
 
 def _write(args: list[str], file: Path) -> None:
     done = _exiftool([*_WRITE_ARGS, *args, str(file)])
-    if done is None or done.returncode != 0:
+    if done is None:
+        raise MetadataUnavailableError("metadata strip: exiftool could not be run")
+    if done.returncode != 0:
         raise MetadataStripError("metadata strip: exiftool could not rewrite the file")
 
 

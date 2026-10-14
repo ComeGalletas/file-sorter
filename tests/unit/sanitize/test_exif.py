@@ -7,6 +7,7 @@ import logging
 import re
 import shutil
 import subprocess
+import traceback
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,9 @@ from classifier.sanitize import exif
 from classifier.sanitize.exif import (
     RESIDUAL_REASON,
     STRIP_ALL_RULE_ID,
+    UNAVAILABLE_REASON,
     MetadataStripError,
+    MetadataUnavailableError,
     Tag,
     Tags,
     log_field,
@@ -618,3 +621,159 @@ def test_working_copy_with_spaces_and_non_ascii_name(tmp_path: Path) -> None:
     target = Path(shutil.move(path, folder / "copie çà.webp"))
     strip_metadata(target, rules())
     assert not NEVER_SURVIVES & names(read_tags(target))
+
+
+# --- unavailable vs residual (SAN-003.D1) -----------------------------------------------
+
+PLANT = "Zyxwq-Plonk-Planted"  # a made-up name that must reach no message, log or chain
+
+
+def assert_unavailable(error: MetadataStripError, caplog: pytest.LogCaptureFixture) -> None:
+    assert isinstance(error, MetadataUnavailableError)
+    assert error.reason == UNAVAILABLE_REASON == "sanitize_metadata_unavailable"
+    assert error.__cause__ is None and error.__context__ is None
+    shown = "".join(traceback.format_exception(error)) + repr(error) + str(error.args)
+    assert PLANT not in shown and PLANT not in caplog.text
+
+
+def planted_run(error: BaseException) -> object:
+    def run(*args: object, **kwargs: object) -> object:
+        raise error
+
+    return run
+
+
+def test_the_reasons_are_two_fixed_labels() -> None:
+    assert issubclass(MetadataUnavailableError, MetadataStripError)
+    assert {RESIDUAL_REASON, UNAVAILABLE_REASON} == {
+        "sanitize_metadata_residual",
+        "sanitize_metadata_unavailable",
+    }
+
+
+def test_a_missing_working_copy_is_unavailable(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(tmp_path / f"{PLANT}.jpg", rules())
+    assert_unavailable(caught.value, caplog)
+
+
+def test_a_directory_is_unavailable(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    folder = tmp_path / f"{PLANT}.jpg"
+    folder.mkdir()
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(folder, rules())
+    assert_unavailable(caught.value, caplog)
+
+
+def test_a_symbolic_link_is_unavailable(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    target = seeded(tmp_path, "jpg")
+    link = tmp_path / f"{PLANT}.jpg"
+    link.symlink_to(target)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(link, rules())
+    assert_unavailable(caught.value, caplog)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        FileNotFoundError(2, PLANT, f"/{PLANT}/exiftool"),
+        PermissionError(13, PLANT, f"/{PLANT}/exiftool"),
+        subprocess.TimeoutExpired([PLANT], 1),
+    ],
+    ids=["missing", "not-executable", "timeout"],
+)
+def test_exiftool_that_cannot_run_is_unavailable(
+    failure: BaseException,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    path = seeded(tmp_path, "jpg")
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(exif.subprocess, "run", planted_run(failure))
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(path, rules())
+    assert_unavailable(caught.value, caplog)
+    with pytest.raises(MetadataStripError) as caught:
+        read_tags(path)
+    assert_unavailable(caught.value, caplog)
+
+
+def test_a_tag_listing_that_cannot_run_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    exif._known_tags.cache_clear()
+    monkeypatch.setattr(exif.subprocess, "run", planted_run(FileNotFoundError(2, PLANT, PLANT)))
+    try:
+        with pytest.raises(MetadataStripError) as caught:
+            log_field(Tag("EXIF", "IFD0", "Artist", PLANT))
+    finally:
+        exif._known_tags.cache_clear()
+    assert_unavailable(caught.value, caplog)
+
+
+def write_call(args: list[str]) -> bool:
+    return tuple(args[: len(exif._WRITE_ARGS)]) == exif._WRITE_ARGS
+
+
+def test_a_rewrite_that_cannot_run_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = seeded(tmp_path, "jpg")
+    real = exif._exiftool
+
+    def unrunnable_write(args: list[str]) -> subprocess.CompletedProcess[bytes] | None:
+        return None if write_call(args) else real(args)
+
+    monkeypatch.setattr(exif, "_exiftool", unrunnable_write)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(path, rules())
+    assert_unavailable(caught.value, caplog)
+
+
+def finished(code: int, out: bytes = b"") -> subprocess.CompletedProcess[bytes]:
+    return subprocess.CompletedProcess([], code, out, b"")
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [finished(1), finished(0, b"not json"), finished(0, b"[{}]")],
+    ids=["non-zero-exit", "unparseable", "no-file-type"],
+)
+def test_a_read_exiftool_cannot_account_for_stays_residual(
+    answer: subprocess.CompletedProcess[bytes], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = seeded(tmp_path, "jpg")
+    monkeypatch.setattr(exif, "_exiftool", lambda args: answer)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(path, rules())
+    error = caught.value
+    assert not isinstance(error, MetadataUnavailableError)
+    assert error.reason == RESIDUAL_REASON
+    assert error.__cause__ is None and error.__context__ is None
+
+
+def test_a_rewrite_that_exits_non_zero_stays_residual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = seeded(tmp_path, "jpg")
+    real = exif._exiftool
+
+    def failing_write(args: list[str]) -> subprocess.CompletedProcess[bytes] | None:
+        return finished(1) if write_call(args) else real(args)
+
+    monkeypatch.setattr(exif, "_exiftool", failing_write)
+    with pytest.raises(MetadataStripError) as caught:
+        strip_metadata(path, rules())
+    assert not isinstance(caught.value, MetadataUnavailableError)
+    assert caught.value.reason == RESIDUAL_REASON
+
+
+def test_the_unavailable_error_shows_only_its_fixed_text() -> None:
+    error = MetadataUnavailableError("metadata strip: exiftool could not be run")
+    assert PLANT not in surfaces(error)
+    assert error.__cause__ is None and error.__context__ is None

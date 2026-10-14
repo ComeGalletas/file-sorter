@@ -25,6 +25,7 @@ from typing import Any, Protocol
 import numpy as np
 from PIL import Image
 
+from classifier.models.nsfw import NsfwLoader, load_nsfw, score_nsfw
 from classifier.models.vision import VisionError, l2_normalize
 
 # CLS-002.D11: a module constant, not a config key. Sized for the 16 GB card with fp16.
@@ -41,7 +42,6 @@ BAD_IMAGE = "embed_images takes decoded PIL images only"
 BAD_TEXT = "embed_texts takes strings only"
 BAD_OUTPUT = "the SigLIP model returned an unexpected embedding shape"
 NON_FINITE = "the SigLIP model returned a non-finite embedding"
-NSFW_NOT_AVAILABLE = "the NSFW gate is not wired into this backend yet (MOD-002.2)"
 
 
 class Encoder(Protocol):
@@ -145,12 +145,20 @@ def load_encoder(model_id: str, *, cuda_check: Callable[[], bool] = _cuda_availa
 
 
 class SiglipBackend:
-    """`VisionBackend` over SigLIP. `nsfw_scores` arrives with MOD-002.2."""
+    """`VisionBackend` over SigLIP, with the NSFW gate from `nsfw.py` loaded on first use."""
 
-    def __init__(self, classifier_id: str, nsfw_id: str, *, loader: Loader = load_encoder) -> None:
+    def __init__(
+        self,
+        classifier_id: str,
+        nsfw_id: str,
+        *,
+        loader: Loader = load_encoder,
+        nsfw_loader: NsfwLoader = load_nsfw,
+    ) -> None:
         self._classifier_id = classifier_id
         self._nsfw_id = nsfw_id
         self._loader = loader
+        self._nsfw_loader = nsfw_loader
         self._encoder: Encoder | None = None
 
     @property
@@ -213,4 +221,9 @@ class SiglipBackend:
         return self._embed(list(texts), encoder.encode_texts, encoder.dim)
 
     def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:
-        raise VisionError(NSFW_NOT_AVAILABLE)
+        # MOD-002.2: the gate loads on the first call, so embedding never pays for it.
+        if not all(isinstance(image, Image.Image) for image in images):
+            raise VisionError(BAD_IMAGE)
+        if not images:
+            return np.zeros((0,), dtype=np.float32)
+        return score_nsfw(self._nsfw_loader(self._nsfw_id), images)
