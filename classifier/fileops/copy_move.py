@@ -23,6 +23,9 @@ _EXT = re.compile(r"[A-Za-z0-9]{1,16}")  # bare: no dot, no separator, so names 
 SOURCE_REFUSED = "the source file could not be opened as a regular file"  # fixed: never a path
 
 
+TEMP_FAILED = "the temp file could not be opened for writing"  # fixed: never a path
+
+
 class SourceRefusedError(OSError):
     """The original is missing, unreadable, a link or not a regular file (SAN-003.1.2).
 
@@ -76,7 +79,17 @@ def _new_temp(tmp: Path) -> BinaryIO:
     """
     tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    return os.fdopen(os.open(tmp, flags, 0o644), "wb")
+    fd = os.open(tmp, flags, 0o644)
+    handle = None
+    try:
+        handle = os.fdopen(fd, "wb")
+    except Exception:  # SAN-003.1.3: nothing owns the fd yet, so it is closed here
+        pass
+    if handle is None:
+        os.close(fd)
+        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+        raise OSError(TEMP_FAILED)  # fixed text, unchained
+    return handle
 
 
 def make_working_copy(

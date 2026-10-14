@@ -322,7 +322,7 @@ Decisions:
 - [ ] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
   - [x] SAN-003.1.1 — `NodeContext.source_root` and `results_root` `repr=False`, planted-root test
   - [x] SAN-003.1.2 — originals opened `O_NOFOLLOW` + `S_ISREG`, fixed-text unchained errors
-  - [ ] SAN-003.1.3 — `_new_temp` guards `os.fdopen`
+  - [x] SAN-003.1.3 — `_new_temp` guards `os.fdopen`
   - [ ] SAN-003.1.4 — `graph/errors.py` `mark_error` clears `sanitize_log`; every past-`queued` error write routed through it
 - [x] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`

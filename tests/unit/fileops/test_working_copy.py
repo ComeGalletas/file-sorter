@@ -10,6 +10,7 @@ import pytest
 
 from classifier.fileops.copy_move import (
     SOURCE_REFUSED,
+    TEMP_FAILED,
     SourceRefusedError,
     WorkingCopy,
     make_working_copy,
@@ -380,3 +381,58 @@ class TestWriteNew:
             write_new(dest, b"thumb-bytes")
         assert raised.value.errno == errno.EIO
         assert _names(dest.parent) == []
+
+
+class TestTempFdGuard:
+    """SAN-003.1.3: a failing `os.fdopen` can't leak the fd or leave the temp behind."""
+
+    @pytest.fixture
+    def failing_fdopen(self, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+        opened: list[int] = []
+        real_open = os.open
+
+        def spy_open(*args: object, **kwargs: object) -> int:
+            fd = real_open(*args, **kwargs)  # type: ignore[arg-type]
+            if str(args[0]).endswith(".tmp"):
+                opened.append(fd)
+            return fd
+
+        real_fdopen = os.fdopen
+
+        def failing(fd: int, *args: object, **kwargs: object) -> object:
+            if fd in opened:  # only the temp's fd fails; the source open is real
+                raise OSError(24, "qorvex-planted-path")
+            return real_fdopen(fd, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", spy_open)
+        monkeypatch.setattr(os, "fdopen", failing)
+        return opened
+
+    def _assert_closed(self, fd: int) -> None:
+        with pytest.raises(OSError) as closed:
+            os.fstat(fd)
+        assert closed.value.errno == errno.EBADF
+
+    def test_make_working_copy_closes_the_fd_and_leaves_no_temp(
+        self, source: Path, work_dir: Path, failing_fdopen: list[int]
+    ) -> None:
+        with pytest.raises(OSError) as raised:
+            make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == TEMP_FAILED
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+        self._assert_closed(failing_fdopen[0])
+        assert list(work_dir.iterdir()) == []
+
+    def test_write_new_closes_the_fd_and_leaves_no_temp(
+        self, work_dir: Path, failing_fdopen: list[int]
+    ) -> None:
+        work_dir.mkdir()
+        dest = work_dir / f"{HASH}.webp"
+        with pytest.raises(OSError) as raised:
+            write_new(dest, b"x")
+        assert str(raised.value) == TEMP_FAILED
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+        self._assert_closed(failing_fdopen[0])
+        assert list(work_dir.iterdir()) == []
