@@ -8,8 +8,10 @@ import enum
 from datetime import datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     ARRAY,
+    REAL,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -18,8 +20,10 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -104,6 +108,8 @@ class File(Base):
     error: Mapped[str | None] = mapped_column(Text)
     # SAN-001.D8: the sanitized stem; models get this, never source_path.
     original_sanitized: Mapped[str | None] = mapped_column(Text)
+    # CLS-002.D10: the SigLIP image embedding of the sanitized copy.
+    image_vec: Mapped[Any | None] = mapped_column(Vector(1152))
 
 
 class SanitizeLog(Base):
@@ -134,3 +140,58 @@ class SanitizeLog(Base):
     before_hash: Mapped[str] = mapped_column(String(64))
     after_value: Mapped[str | None] = mapped_column(Text)  # the replacement token only
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Category(Base):
+    """One category on one axis (DESIGN §5, R-CLS-0). `files.format`/`topic` hold names, no FK."""
+
+    __tablename__ = "categories"
+    __table_args__ = (
+        CheckConstraint("axis in ('format', 'topic')", name="categories_axis"),
+        CheckConstraint("branch in ('any', 'safe', 'nsfw')", name="categories_branch"),
+        UniqueConstraint("axis", "name", name="uq_categories_axis_name"),
+        # FOP-002.D4: siblings differ by case-insensitive folder; top-level counts as parent 0.
+        Index(
+            "uq_categories_axis_parent_folder",
+            "axis",
+            text("coalesce(parent_id, 0)"),
+            text("lower(folder)"),
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    axis: Mapped[str] = mapped_column(String(8))
+    name: Mapped[str] = mapped_column(Text)
+    folder: Mapped[str] = mapped_column(Text)
+    min_score: Mapped[float | None] = mapped_column(REAL)  # null = axis default (DB-003.D3)
+    branch: Mapped[str] = mapped_column(String(8), server_default="any")  # R-CLS-6
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("categories.id", name="fk_categories_parent_id_categories")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        # Names and folders can be user-added, so they stay out of logs and tracebacks.
+        return f"Category(id={self.id!r}, axis={self.axis!r})"
+
+
+class CategoryPrompt(Base):
+    """One SigLIP prompt of a category; `position` follows the seed's table order (DB-003.D4)."""
+
+    __tablename__ = "category_prompts"
+    __table_args__ = (
+        UniqueConstraint("category_id", "position", name="uq_category_prompts_category_position"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    category_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "categories.id", name="fk_category_prompts_category_id_categories", ondelete="CASCADE"
+        )
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    prompt: Mapped[str] = mapped_column(Text)  # a hand-tuned value (CLAUDE.md §1.7)
+
+    def __repr__(self) -> str:
+        return f"CategoryPrompt(category_id={self.category_id!r}, position={self.position!r})"

@@ -86,12 +86,12 @@ def _columns(schema: str, table: str) -> dict[str, bool]:
 
 def test_0002_is_the_single_head_after_0001(alembic_cfg: Config) -> None:
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["0002"]
+    assert len(script.get_heads()) == 1  # later migrations extend the chain; one head only
     assert script.get_revision("0002").down_revision == "0001"
 
 
 def test_upgrade_adds_the_table_and_the_column(alembic_cfg: Config, schema: str) -> None:
-    command.upgrade(alembic_cfg, "head")
+    command.upgrade(alembic_cfg, "0002")
 
     assert _columns(schema, "sanitize_log") == LOG_COLUMNS
     assert _columns(schema, "files")["original_sanitized"] is True
