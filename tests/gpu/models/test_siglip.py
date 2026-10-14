@@ -26,6 +26,8 @@ DIM = 1152
 # fp16 embeddings from the same input, run twice or in a different batch shape.
 EMBED_ATOL = 2e-3
 SCORE_ATOL = 2e-3
+# Smallest cosine gap for which the prompt ordering is compared (see the ordering check).
+ORDER_GAP = 1e-3
 SEED = 20261012
 
 PROMPTS = [
@@ -106,7 +108,12 @@ def test_modes_range_and_sigmoid_against_cosine(siglip_backend: SiglipBackend, i
     expected = np.array([[sigmoid(scale * float(c) + bias) for c in row] for row in cos])
     assert np.allclose(sig, expected, atol=1e-5)
     # The sigmoid is monotonic in the cosine, so it never reorders prompts within an image.
-    assert (np.argsort(sig, axis=1, kind="stable") == np.argsort(cos, axis=1, kind="stable")).all()
+    # Only rows with a strict gap between neighbouring cosines are compared: a near-tie may
+    # round either way in float32 (MOD-002.2 carried finding b).
+    gaps = np.diff(np.sort(cos, axis=1), axis=1).min(axis=1)
+    strict = gaps > ORDER_GAP
+    assert strict.any()
+    assert (np.argsort(sig, axis=1)[strict] == np.argsort(cos, axis=1)[strict]).all()
 
 
 def test_max_over_prompts_is_the_best_single_prompt(siglip_backend: SiglipBackend, images) -> None:
