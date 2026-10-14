@@ -35,7 +35,7 @@ Every error is fixed text; label values and ledger values are repr=False.
 import sys
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
@@ -275,9 +275,130 @@ def _detail(measures: Measures) -> tuple[str, ...]:
     return tuple(rows)
 
 
-def main() -> int:
-    print(f"gate 3 NOT IMPLEMENTED (TST-008.3.3): {CRITERION}", file=sys.stderr)
-    return 1
+# --- The runner (TST-008.3.3) ---------------------------------------------------------------
+# Every error below is raised after its `except` block, from fixed text: an exception from the
+# filesystem, the database or the pipeline may quote a path, a name or the DSN.
+
+
+def gate_nodes(registry: Sequence[Any]) -> tuple[Any, ...]:
+    """The ingest, sanitize and classify nodes, in that order: never a later node."""
+    picked = tuple(node for name in NODES for node in registry if node.name == name)
+    if tuple(node.name for node in picked) != NODES:
+        raise GateSetupError(
+            "the node registry must hold exactly one `ingest`, `sanitize` and `classify` node "
+            "(CLS-002.2, #99)"
+        )
+    return picked
+
+
+def check_prerequisites(dsn: str | None, images: Path) -> str:
+    """Return the DSN, or raise naming what is missing."""
+    if not dsn:
+        raise GateSetupError(
+            "DB_DSN is not set: gate 3 needs the throwaway Postgres of the `test` compose "
+            "profile. Run it with `make gate-3`."
+        )
+    if not images.is_dir() or not any(images.iterdir()):
+        raise GateSetupError(
+            "fixtures/images/ is missing or empty: gate 3 classifies the human's real "
+            "fixtures, mounted read-only into the `test` container (RUN-009). Run it with "
+            "`make gate-3`."
+        )
+    return dsn
+
+
+def relative_name(path: str, images: Path) -> str | None:
+    """A ledger path as the labels name it: relative to the images folder, in memory only."""
+    try:
+        return PurePosixPath(path).relative_to(PurePosixPath(images.as_posix())).as_posix()
+    except ValueError:
+        return None
+
+
+def to_outcomes(rows: Sequence[Sequence[Any]], images: Path) -> list[Outcome]:
+    """Ledger rows `(source_path, duplicate_paths, status, format, topic, branch)`."""
+    outcomes: list[Outcome] = []
+    for path, duplicates, status, fmt, topic, branch in rows:
+        names = [relative_name(p, images) for p in (path, *(duplicates or ()))]
+        if None in names:
+            raise GateRunError("a ledger path is outside the images folder (source_root mismatch)")
+        outcomes.append(Outcome(tuple(n for n in names if n), status, fmt, topic, branch))
+    return outcomes
+
+
+def load_config(source: Path, results: str, dsn: str) -> Any:
+    """config.yaml with the gate's roots and schema (as gate 2)."""
+    import yaml
+
+    from classifier.config import Config, check_roots
+
+    data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    data["paths"] = {"source_root": str(source), "results_root": results}
+    data["db"] = {"dsn": dsn}
+    config = Config.model_validate(data)
+    check_roots(config)  # R-FOP-9
+    return config
+
+
+def read_vocabularies(dsn: str) -> tuple[frozenset[str], frozenset[str]]:
+    """Format and topic names from the gate's own migrated schema: the committed configuration."""
+    import psycopg
+
+    with psycopg.connect(dsn) as conn:
+        rows = conn.execute("select axis, name from categories").fetchall()
+    formats = frozenset(name for axis, name in rows if axis == "format")
+    topics = frozenset(name for axis, name in rows if axis == "topic")
+    return formats, topics
+
+
+def run_pipeline(dsn: str, images: Path, labels_path: Path, nodes: Sequence[Any]) -> Measures:
+    """Ingest -> sanitize -> classify into a fresh schema and a removed temp results tree
+    (TST-005.D6), then tally the labels against the ledger (TST-008.D4)."""
+    import tempfile
+
+    import psycopg
+
+    from classifier.graph.run import run
+    from tests.integration.schema_support import migrated_schema
+
+    with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
+        formats, topics = read_vocabularies(schema)
+        labels = fixture_labels.load_labels(labels_path, formats=formats, topics=topics)
+        run(load_config(images, results, schema), dry_run=True, nodes=tuple(nodes))
+        with psycopg.connect(schema) as conn:
+            rows = conn.execute(
+                "select source_path, duplicate_paths, status::text, format, topic, branch "
+                "from files"
+            ).fetchall()
+    return evaluate(labels, to_outcomes(rows, images))
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    images: Path = IMAGES,
+    labels_path: Path = LABELS,
+    registry: Sequence[Any] | None = None,
+) -> int:
+    """`images`, `labels_path` and `registry` are test seams; `make gate-3` passes none."""
+    import os
+
+    detail = "--detail" in (sys.argv[1:] if argv is None else argv)
+    try:
+        dsn = check_prerequisites(os.environ.get("DB_DSN"), images)
+        if registry is None:
+            from classifier.graph import nodes as graph_nodes
+
+            registry = graph_nodes.REGISTRY
+        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry))
+    except (GateSetupError, GateRunError, fixture_labels.LabelsError) as exc:  # fixed text
+        print(f"gate 3 FAIL: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # the type only: a message can carry a value, a path or the DSN
+        print(f"gate 3 FAIL: run errored ({type(exc).__name__})", file=sys.stderr)
+        return 1
+    verdict = judge(measures, detail)
+    print("\n".join((*verdict.lines, *verdict.detail)))
+    return 0 if verdict.passed else 1
 
 
 if __name__ == "__main__":
