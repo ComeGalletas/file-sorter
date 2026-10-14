@@ -122,8 +122,18 @@ references or host paths here. Use hashes.
 
 ## DB-003 — Tasks
 
-- [ ] DB-003.1 — Migration `0003`: `categories` and `category_prompts` seeded from DESIGN §4.3, and `files.image_vec`, with the models · #87 · acceptance: `tests/db/ledger/test_categories_migration.py`
-  - [x] DB-003.1.1 — Schema: `categories`, `category_prompts`, `files.image_vec`, the models and their tests (the 0002 tests made head-agnostic; `Category`/`CategoryPrompt` reprs hide names, folders and prompts) · commit: see Results
-  - [x] DB-003.1.2 — The seed: DESIGN §4.3's six formats, twelve topics and `unsorted`, verbatim, with a test against its own copy of the table
+- [x] DB-003.1 — Migration `0003`: `categories` and `category_prompts` seeded from DESIGN §4.3, and `files.image_vec`, with the models · #87 · acceptance: `tests/db/ledger/test_categories_migration.py`
+  - [x] DB-003.1.1 — Schema: `categories`, `category_prompts`, `files.image_vec`, the models and their tests (the 0002 tests made head-agnostic; `Category`/`CategoryPrompt` reprs hide names, folders and prompts) · `9c93f41`
+  - [x] DB-003.1.2 — The seed: DESIGN §4.3's six formats, twelve topics and `unsorted`, verbatim, with a test against its own copy of the table · `9412503`
 
 ## DB-003 — Results
+
+### DB-003.1 (#87)
+
+- **Tests:** default tiers (`make test`: unit, db, integration) 1134 passed; `make lint` clean. The acceptance test is `tests/db/ledger/test_categories_migration.py` (db tier). No `gpu` or eval run: no model, prompt or threshold code changed.
+- **Alembic:** one head, `0003`, revising `0002`; `origin/main` has no other `0003`.
+- **Reading call (for the lead):** DESIGN §4.3's screenshots row ends "a snippet of a webpage, chat or app". The seed keeps it as one prompt, because splitting it at the comma would leave "chat or app". If the human meant two prompts, a `balance` task changes it (CLS-003.D1).
+- **Existing tests touched:** `test_sanitize_log_migration.py` no longer pins the head to `0002`, and `tests/unit/db/test_models.py` lists `image_vec`.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. The gap is that the downgrade test covers `0003` to `0002` only, not a populated `image_vec`; a downgrade drops the column, so I judged that low risk.
+- **Reviewer and Privacy auditor:** pending (lead).
