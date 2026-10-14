@@ -193,6 +193,15 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Completion status:** DONE.
 - **Reviewer / Privacy auditor:** pending.
 
+### CLS-002.2 (#99, pipeline desk)
+
+- **Tests:** the acceptance test `tests/integration/test_classify_node.py` passes (7 tests, replayed vision output). New unit tests (`test_classify_types.py`, `test_classify_working_copy.py`: 24) and db tests (`tests/db/graph/test_classify_node.py`: 13, a numeric vision double). The default tiers pass in full (1719 passed, 38 deselected). `make lint` is clean. The gpu recorder (`tests/gpu/graph/test_record_classify.py`) ran once on the real models with `--record-vision` and wrote 56 recordings under `tests/recordings/graph/`; they pass the TST-008.D9 lint. No `eval/` run: no prompt, threshold or model is touched.
+- **Behavior:** `classifier/graph/classify.py` selects `sanitized` rows, opens each `<results_root>/.work/<source_hash>.<ext>` (the name comes from `working_copy_name`, which `make_working_copy` also uses; `O_NOFOLLOW`, `O_NONBLOCK`, `fstat` regular-file check; first frame as RGB), encodes the prompts once, embeds and gates in chunks of `siglip.BATCH_SIZE`, and writes branch, gate score, format, topic, top-5 lists, review fields and `image_vec`, leaving the row at `classified` (D12). An unreadable copy goes to `error` through `mark_error` with the registered reason `classify_working_copy_unreadable`. Rules, prompts, the work folder (`check_work_dir`, read-only) and `nsfw.mode` are checked before any row changes; a model that cannot load raises the backend's fixed text naming `make models`.
+- **Side effects:** `NodeContext.vision` and `run(vision=...)` are the seam; `RunResult.classify` is the accessor. The M2 integration tests now pass `nodes=` (ingest and sanitize) so they keep testing M2, and `test_dry_run_cli.py` pins the CLI to the same nodes until CLI-005.1 (#100) moves the dry run to M3.
+- **Self-rating:** 9/10, proud: yes. Gaps: (1) `classifier dry-run` still prints M2 counts and does not build the real SigLIP backend: that is CLI-005.1 (#100); (2) the acceptance run uses flat synthetic pictures, so it proves the wiring and the pure rules, not classification quality (that is CLS-003); (3) writes are per row inside `run`'s node transaction, so a database error rolls the whole node back rather than one row.
+- **Completion status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
+
 ---
 
 ## FOP-002 — Requirement (DESIGN.md M3, 2026-10-12)
