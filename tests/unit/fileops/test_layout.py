@@ -160,6 +160,38 @@ def test_bad_no_topic_and_nsfw_root_are_refused(bad):
         )
 
 
+PLANTED = "Qzyx<planted>Vlorp"  # an invalid segment that must never reach an error
+
+
+def _raised(**kwargs) -> LayoutError:
+    with pytest.raises(LayoutError) as caught:
+        _folder(**kwargs)
+    return caught.value
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"topic_path": (PLANTED,)},
+        {"format_folder": PLANTED},
+        {"branch": PLANTED},
+        {"folders": _folders(layout=PLANTED)},
+    ],
+)
+def test_errors_are_fixed_text_and_unchained(kwargs):
+    error = _raised(**kwargs)
+    assert "Qzyx" not in repr(error) + str(error) + repr(error.args)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
+def test_unpaired_surrogate_is_refused_without_quoting_it():
+    error = _raised(topic_path=("Qzyx\ud800Vlorp",))
+    assert "Qzyx" not in repr(error) + str(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+
+
 def test_bad_nsfw_root_is_ignored_on_the_safe_branch():
     assert result_folder(
         branch="safe",
