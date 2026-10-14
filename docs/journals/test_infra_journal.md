@@ -464,6 +464,11 @@ references or host paths here. Use hashes.
   - [x] TST-008.2.1 — parser, typed rows, fixed-text errors (a14ebe5)
   - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (11048a4)
 - [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
+  - [x] TST-008.3.1 — pure measures: `Outcome`, `Tally`, `evaluate` (exact integer ratios, calibration-only left out, coverage and error checks); unit tests (commit with .3.2)
+  - [x] TST-008.3.2 — `judge`: the TST-008.D6 public form and `--detail` text; boundary tests (89.99 → `89%` FAIL, 90.0 → `90%` PASS) (commit with .3.1)
+  - [ ] TST-008.3.3 — runner: categories vocabularies from the throwaway schema, ingest → sanitize → classify, outcomes, `main`/`--detail` (waits for #99, #100)
+  - [ ] TST-008.3.4 — `tests/integration/test_gate_3_script.py` on synthetic images, labels and replayed vision
+  - [ ] TST-008.3.5 — Results; the G1 run after #102 and the lead's go
 
 ## TST-008 — Results
 
