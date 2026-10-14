@@ -320,9 +320,25 @@ Decisions:
 ## SAN-003 — Tasks
 
 - [ ] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
-- [ ] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
+- [x] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`
-  - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it
+  - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it · `e74c94f`
 - [ ] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
 
 ## SAN-003 — Results
+
+### SAN-003.2 (worker: pipeline)
+
+- **Status:** DONE. SAN-003.2.1 landed in `ea14d3d`, SAN-003.2.2 in `e74c94f` (issue #93).
+- **Triage:** medium, solo, unit tier plus the node's integration tier. Plan approved on the issue.
+- **Changes:**
+  - One idempotent helper, `cap_image_library_output()` (`classifier/fileops/image_output.py`), holds the `PIL` and `pillow_heif` loggers at INFO and ignores warnings attributed to those modules (SAN-003.D4). It replaces the two inline `PIL` caps in `thumbs.py` and `ingest_files.py`.
+  - `MetadataUnavailableError` carries `sanitize_metadata_unavailable` (SAN-003.D1) for a working copy or exiftool that can't be read, run or finished in time. A foreign-tag read-back, unparseable output and a non-zero exit keep `sanitize_metadata_residual`. The split is in the `MetadataStripError` docstring. The node maps the subclass first, and `REASONS` is now 8.
+- **Tests:**
+  - **Acceptance:** `tests/unit/sanitize/test_exif.py`, 14 new tests, all synthetic. Planted coinage names are checked in `str`, `repr`, `args`, the formatted traceback and `caplog`, and `__cause__` and `__context__` are both None.
+  - `tests/unit/fileops/test_image_output.py`, 17 new tests: a synthetic HEIC and PNG with planted tag values under root DEBUG; the library loggers and warnings are silent; our own loggers and warnings still show; two controls without the cap show the leak; the helper adds one filter however often it is called; a bomb past twice the limit still raises.
+  - `tests/integration/test_sanitize_node.py`: the new reason's node mapping, and `REASONS` at 8.
+  - **Mutation checks, each reverted:** helper body disabled: the cap tests and five node tests failed.
+  - **Lint:** `make lint` clean. **Default tiers:** 1252 passed (unit, db, integration).
+- **Self-rating:** 9/10, proud: yes. Gap: pillow-heif 1.8 has no Python logger of its own, so the `pillow_heif` cap is proven on records the test emits itself, not on a record the library emits. It holds if a later version adds one.
+- **Review:** pending.
