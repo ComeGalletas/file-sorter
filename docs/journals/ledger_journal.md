@@ -123,5 +123,7 @@ references or host paths here. Use hashes.
 ## DB-003 — Tasks
 
 - [ ] DB-003.1 — Migration `0003`: `categories` and `category_prompts` seeded from DESIGN §4.3, and `files.image_vec`, with the models · #87 · acceptance: `tests/db/ledger/test_categories_migration.py`
+  - [x] DB-003.1.1 — Schema: `categories`, `category_prompts`, `files.image_vec`, the models and their tests (the 0002 tests made head-agnostic; `Category`/`CategoryPrompt` reprs hide names, folders and prompts) · commit: see Results
+  - [ ] DB-003.1.2 — The seed: DESIGN §4.3's six formats, twelve topics and `unsorted`, verbatim, with a test against its own copy of the table
 
 ## DB-003 — Results
