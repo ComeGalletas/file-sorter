@@ -29,9 +29,9 @@ class NodeContext:
     failing fake. The app leaves it None and talks to the compose `ollama` service.
     """
 
-    source_root: Path
+    source_root: Path = field(repr=False)  # SAN-003.1: roots are host-derived paths
     dry_run: bool
-    results_root: Path
+    results_root: Path = field(repr=False)
     config: Config = field(repr=False)
     ollama_transport: httpx.BaseTransport | None = field(default=None, repr=False)
 
