@@ -183,7 +183,10 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
   - [x] MOD-002.2.2 — `SiglipBackend.nsfw_scores` wired to it (lazy), stub test replaced, SigLIP `local_files_only` pin (carried finding a) (`f255a84`)
   - [x] MOD-002.2.3 — `tests/gpu/models/test_nsfw.py`, the acceptance; tie-safe ordering check in `test_siglip.py` (carried finding b) (`c074f43`)
   - ~~MOD-002.2.4~~ moved to MOD-002.3 (lead's approval on #89): replay recordings wait for TST-008.1 (#96)
-- [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · issue: lead to open
+- [ ] MOD-002.3 — replay recordings for `classifier/models/` under `tests/recordings/models/` (TST-008.D3 format, kind `param` per TST-008.D7), once #96 is on `main` · #119 · acceptance: `tests/devtools/test_vision_recordings.py`
+  - [x] MOD-002.3.1 — `tests/unit/models/vision_inputs.py` (synthetic inputs, no font), `tests/gpu/models/test_record_vision.py`, 16 recordings made with `--record-vision`; re-run against them within atol 1e-3
+  - [ ] MOD-002.3.2 — replay-backed unit tests (scoring, backend contract, NSFW)
+  - [ ] MOD-002.3.3 — journal Results
 
 ## MOD-002 — Results
 
