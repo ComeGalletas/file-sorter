@@ -265,3 +265,162 @@ def test_a_looping_chain_does_not_hang_the_pick():
     b = rule("zhyndel", id=841, parent_id=840)
     # validate_rules refuses this; the pick still terminates, and judges `a` on its own
     assert pick({"qorvex": 0.9, "zhyndel": 0.1}, [a, b]) == "qorvex"
+
+
+# ---- choose (R-CLS-3, 3a, 3b, 6; CLS-002.D2, D3, D5)
+
+FMT = [rule("qorvex"), rule("zhyndel"), rule("snaxel")]
+TOP = [rule("vrelk", "topic"), rule("ploon", "topic"), rule("zhyndel", "topic")]
+ALL = FMT + TOP + [rule("unsorted")]
+
+
+def decide(fmt, topic, rules=None, branch="safe", config=None):
+    return rules_mod.choose(fmt, topic, rules or ALL, branch, config or cfg())
+
+
+def test_format_and_topic_both_chosen():
+    got = decide({"qorvex": 0.9, "zhyndel": 0.1}, {"vrelk": 0.8, "ploon": 0.2})
+    assert (got.format, got.topic) == ("qorvex", "vrelk")
+    assert got.needs_review is False and got.review_reason is None
+
+
+def test_no_format_winner_is_unsorted_and_a_review_case():
+    got = decide({"qorvex": 0.3, "zhyndel": 0.2}, {"vrelk": 0.8, "ploon": 0.2})
+    assert got.format == "unsorted"
+    assert got.needs_review is True and got.review_reason == "unsorted"
+    assert got.topic == "vrelk"  # the best topic is still decided and recorded
+    assert got.topic_top[0] == {"category": "vrelk", "score": 0.8}
+
+
+def test_format_margin_failure_is_unsorted():
+    got = decide({"qorvex": 0.80, "zhyndel": 0.78}, {"vrelk": 0.8})
+    assert (got.format, got.needs_review) == ("unsorted", True)
+
+
+def test_no_topic_winner_is_not_a_review_case():
+    got = decide({"qorvex": 0.9}, {"vrelk": 0.3, "ploon": 0.2})
+    assert (got.format, got.topic) == ("qorvex", None)
+    assert got.needs_review is False and got.review_reason is None
+    got = decide({"qorvex": 0.9}, {"vrelk": 0.80, "ploon": 0.78})  # topic margin fails
+    assert got.topic is None and got.needs_review is False
+
+
+def test_topic_axis_is_scored_with_its_own_config():
+    config = cfg(topic_default=0.2, topic_margin=0.5)
+    assert decide({"qorvex": 0.9}, {"vrelk": 0.6, "ploon": 0.2}, config=config).topic is None
+    config = cfg(topic_default=0.7)
+    assert decide({"qorvex": 0.9}, {"vrelk": 0.6, "ploon": 0.2}, config=config).topic is None
+
+
+def test_twin_of_the_format_is_removed_from_the_topic_candidates():
+    # zhyndel is both a format and a topic; the topic twin leads but is skipped
+    topic = {"zhyndel": 0.95, "vrelk": 0.70, "ploon": 0.2}
+    got = decide({"zhyndel": 0.9, "qorvex": 0.1}, topic)
+    assert (got.format, got.topic) == ("zhyndel", "vrelk")
+    assert got.topic_top[0]["category"] == "zhyndel"  # the top 5 stays unfiltered (D5)
+
+
+def test_twin_removal_takes_the_margin_against_the_next_remaining_topic():
+    # without the twin, vrelk (0.70) vs ploon (0.68) fails the margin: no topic
+    topic = {"zhyndel": 0.95, "vrelk": 0.70, "ploon": 0.68}
+    got = decide({"zhyndel": 0.9, "qorvex": 0.1}, topic)
+    assert (got.format, got.topic) == ("zhyndel", None)
+
+
+def test_a_twin_that_is_not_the_format_is_a_normal_competitor():
+    topic = {"zhyndel": 0.95, "vrelk": 0.70, "ploon": 0.2}
+    got = decide({"qorvex": 0.9, "zhyndel": 0.1}, topic)
+    assert got.topic == "zhyndel"
+
+
+def test_twin_is_not_removed_when_the_format_is_unsorted():
+    topic = {"zhyndel": 0.95, "vrelk": 0.5, "ploon": 0.2}
+    got = decide({"qorvex": 0.3, "zhyndel": 0.2}, topic)
+    assert (got.format, got.topic) == ("unsorted", "zhyndel")
+
+
+def test_format_winner_excluded_by_the_branch_goes_to_unsorted_not_the_runner_up():
+    rules = [rule("qorvex", branch="safe"), rule("zhyndel")] + TOP
+    fmt = {"qorvex": 0.9, "zhyndel": 0.5}
+    adult = decide(fmt, {"vrelk": 0.8}, rules, branch="nsfw")
+    assert (adult.format, adult.needs_review, adult.review_reason) == ("unsorted", True, "unsorted")
+    assert decide(fmt, {"vrelk": 0.8}, rules, branch="safe").format == "qorvex"
+    rules = [rule("qorvex", branch="nsfw"), rule("zhyndel")] + TOP
+    assert decide(fmt, {"vrelk": 0.8}, rules, branch="safe").format == "unsorted"
+    assert decide(fmt, {"vrelk": 0.8}, rules, branch="nsfw").format == "qorvex"
+
+
+def test_topic_winner_excluded_by_the_branch_is_no_topic_not_the_runner_up():
+    rules = FMT + [rule("vrelk", "topic", branch="safe"), rule("ploon", "topic")]
+    topic = {"vrelk": 0.9, "ploon": 0.5}
+    adult = decide({"qorvex": 0.9}, topic, rules, branch="nsfw")
+    assert (adult.format, adult.topic, adult.needs_review) == ("qorvex", None, False)
+    assert decide({"qorvex": 0.9}, topic, rules, branch="safe").topic == "vrelk"
+    rules = FMT + [rule("vrelk", "topic", branch="nsfw"), rule("ploon", "topic")]
+    assert decide({"qorvex": 0.9}, topic, rules, branch="safe").topic is None
+    assert decide({"qorvex": 0.9}, topic, rules, branch="nsfw").topic == "vrelk"
+
+
+@pytest.mark.parametrize("branch", ["safe", "nsfw"])
+def test_per_axis_branch_combinations(branch):
+    other = "nsfw" if branch == "safe" else "safe"
+    for fmt_branch in ("any", branch, other):
+        for topic_branch in ("any", branch, other):
+            rules = [
+                rule("qorvex", branch=fmt_branch),
+                rule("zhyndel"),
+                rule("vrelk", "topic", branch=topic_branch),
+                rule("ploon", "topic"),
+            ]
+            fmt = {"qorvex": 0.9, "zhyndel": 0.1}
+            got = decide(fmt, {"vrelk": 0.9, "ploon": 0.1}, rules, branch)
+            assert got.format == ("qorvex" if fmt_branch in ("any", branch) else "unsorted")
+            assert got.topic == ("vrelk" if topic_branch in ("any", branch) else None)
+            assert got.needs_review == (fmt_branch == other)
+
+
+def test_unsorted_is_always_eligible_whatever_its_row_says():
+    rules = [rule("unsorted", branch="safe"), rule("qorvex", branch="safe")]
+    assert decide({"qorvex": 0.9}, {}, rules, branch="nsfw").format == "unsorted"
+
+
+def test_choose_rejects_an_unknown_branch():
+    with pytest.raises(ClassifyRulesError):
+        decide({"qorvex": 0.9}, {}, branch="adult")
+
+
+def test_choose_backstops_the_null_default():
+    with pytest.raises(ClassifyRulesError, match=r"classify\.format\.default_min_score"):
+        decide({"qorvex": 0.9}, {}, config=cfg(fmt_default=None))
+    with pytest.raises(ClassifyRulesError, match=r"classify\.topic\.default_min_score"):
+        decide({"qorvex": 0.9}, {}, config=cfg(topic_default=None))
+    # every rule has its own min_score: a null default is fine
+    rules = [rule("qorvex", min_score=0.5), rule("vrelk", "topic", min_score=0.5)]
+    got = decide({"qorvex": 0.9}, {"vrelk": 0.9}, rules, config=cfg(None, None))
+    assert got.topic == "vrelk"
+
+
+def test_stored_scores_are_the_top_five_in_four_decimals():
+    names = [f"cat{i}" for i in range(7)]
+    rules = [rule(n) for n in names] + [rule("vrelk", "topic")]
+    fmt = {n: 0.1 + i * 0.1 + 0.00004 for i, n in enumerate(names)}
+    got = decide(fmt, {"vrelk": 0.51234}, rules)
+    assert [t["category"] for t in got.format_top] == names[::-1][:5]
+    assert got.format_top[0]["score"] == 0.7
+    assert got.topic_top == [{"category": "vrelk", "score": 0.5123}]
+
+
+def test_empty_scores_give_unsorted_and_no_topic():
+    got = decide({}, {})
+    assert (got.format, got.topic, got.needs_review) == ("unsorted", None, True)
+    assert got.format_top == [] and got.topic_top == []
+
+
+def test_choose_is_deterministic_under_ties():
+    rules = [rule("qorvex"), rule("zhyndel"), rule("vrelk", "topic"), rule("ploon", "topic")]
+    first = decide({"qorvex": 0.9, "zhyndel": 0.9}, {"vrelk": 0.9, "ploon": 0.9}, rules)
+    again = decide(
+        {"zhyndel": 0.9, "qorvex": 0.9}, {"ploon": 0.9, "vrelk": 0.9}, list(reversed(rules))
+    )
+    assert first.format_top == again.format_top and first.topic_top == again.topic_top
+    assert first.format == again.format == "unsorted"

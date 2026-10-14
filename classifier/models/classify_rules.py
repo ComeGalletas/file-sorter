@@ -221,3 +221,61 @@ def top_scores(ranked: Sequence[tuple[CategoryRule, float]]) -> list[dict[str, o
         {"category": rule.name, "score": round(score, SCORE_DECIMALS)}
         for rule, score in ranked[:TOP_N]
     ]
+
+
+def _eligible(rule: CategoryRule, branch: str) -> bool:
+    """R-CLS-6: `any` fits every image; `safe` and `nsfw` only their own branch."""
+    return rule.branch == "any" or rule.branch == branch
+
+
+def choose(
+    format_scores: Mapping[str, float],
+    topic_scores: Mapping[str, float],
+    rules: Sequence[CategoryRule],
+    branch: str,
+    classify_config: ClassifyConfig,
+) -> Choice:
+    """Decide one image's format and topic from its two axes' scores.
+
+    - Format (R-CLS-3): required. No winner, or a winner the image's `branch` excludes
+      (R-CLS-6, CLS-002.D2), gives `unsorted` with `needs_review` and `review_reason = unsorted`.
+    - Topic (R-CLS-3a): optional. No winner, or an ineligible winner, gives `None`; that is not
+      a review case (CLS-001.D7). It is decided even when the format is `unsorted`.
+    - Twin (R-CLS-3b, CLS-002.D3): the topic named like the chosen format is dropped from the
+      topic candidates first. When the format is `unsorted`, nothing is dropped.
+    - An ineligible winner never falls through to the runner-up.
+    - `format_top` / `topic_top` are each axis's top 5 over its scored categories, before the
+      twin is dropped (CLS-002.D5).
+
+    A null `min_score` on a null axis default raises here too, as a backstop to the node's
+    up-front `validate_rules` (CLS-002.D4).
+    """
+    if branch not in ("safe", "nsfw"):
+        raise ClassifyRulesError(_ERR_BRANCH)
+    for axis in AXES:
+        _needs_default(rules, axis, classify_config)
+    by_id = {rule.id: rule for rule in rules}
+    format_rules = [rule for rule in rules if rule.axis == "format"]
+    topic_rules = [rule for rule in rules if rule.axis == "topic"]
+
+    format_ranked = _rank(format_scores, format_rules)
+    format_winner = _pick_axis(format_ranked, classify_config.format, "format", by_id)
+    if format_winner is not None and not _eligible(format_winner, branch):
+        format_winner = None
+    chosen_format = format_winner.name if format_winner is not None else UNSORTED
+
+    topic_ranked = _rank(topic_scores, topic_rules)
+    topic_candidates = _rank(topic_scores, topic_rules, exclude=chosen_format)
+    topic_winner = _pick_axis(topic_candidates, classify_config.topic, "topic", by_id)
+    if topic_winner is not None and not _eligible(topic_winner, branch):
+        topic_winner = None
+
+    unsorted = format_winner is None
+    return Choice(
+        format=chosen_format,
+        topic=topic_winner.name if topic_winner is not None else None,
+        needs_review=unsorted,
+        review_reason=UNSORTED if unsorted else None,
+        format_top=top_scores(format_ranked),
+        topic_top=top_scores(topic_ranked),
+    )
