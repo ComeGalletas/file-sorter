@@ -111,7 +111,7 @@ worker_bash_ok() {
     # open at the end (a heredoc body with an apostrophe, say) make the reading unsure, so
     # the command is refused then too: this branch only runs when a brace expression is there.
     local bare
-    bare="$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' -v bs='\' 'BEGIN { RS = "\001" } {
+    bare="$(printf '%s' "$cmd" | awk -v sq="'" -v dq='"' -v bs='\\' 'BEGIN { RS = "\001" } {
       s = $0; out = ""; q = ""; n = length(s)
       for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
@@ -160,9 +160,10 @@ worker_bash_ok() {
           print "pull"; exit
         }
       }
+      print "ok"   # RUN-015.D1: only an explicit "ok" allows; empty output (awk failed) refuses
     }')"
   case "$verdict" in
-    "") return 0 ;;
+    ok) return 0 ;;
     indirect) why="a command built with \$(...), backticks, a variable or eval may not merge, pull, tag or push to main on a worker desk; write it out literally (RUN-008.D6)" ;;
     ghmerge) why="workers never merge a PR; the lead merges (CLAUDE.md section 1.6)" ;;
     alias) why="no git aliases on a worker desk (RUN-008.D4)" ;;
