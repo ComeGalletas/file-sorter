@@ -133,8 +133,8 @@ class Measures:
 @dataclass(frozen=True)
 class Verdict:
     passed: bool
-    lines: tuple[str, ...]
-    detail: tuple[str, ...] = ()
+    lines: tuple[str, ...] = field(repr=False)
+    detail: tuple[str, ...] = field(default=(), repr=False)  # TST-008.3.7: label names, counts
 
 
 def _index(outcomes: Sequence[Outcome]) -> tuple[dict[str, Outcome], bool]:

@@ -470,6 +470,7 @@ references or host paths here. Use hashes.
   - [x] TST-008.3.4 — `tests/integration/test_gate_3_script.py` on synthetic images and labels, real ingest and sanitize nodes, a classify stand-in until #99 (swap in the real node over replayed vision then; follow-up .3.6)
   - [x] TST-008.3.6 — the integration test runs the real classify node over replayed vision (the classify scenario's four synthetic pictures, an NSFW-score double), the stand-in is gone
   - [x] TST-008.3.5 — Results written; the real G1 run (`make gate-3`) is a separate step after #102 and the lead's go
+  - [x] TST-008.3.7 — privacy round 1: `repr=False` on `Verdict.lines` and `Verdict.detail`, and a planted-secret test on `judge(m, detail=True)`
 
 ## TST-008 — Results
 
@@ -483,7 +484,7 @@ references or host paths here. Use hashes.
 - **Privacy:** default output is the public form only (no counts, denominators, splits, names or values; no digit on the adult and `suggestive-negative` lines); `--detail` is console-only and marked; every field holding label or ledger values is `repr=False` with a planted-secret test; errors are fixed text and an unexpected error prints its type only.
 - **Not yet run:** the real `make gate-3` on the real fixtures is the G1 step, after CLS-003.2 (#102) merges and the lead's go. Its default output goes into the plan's Results as printed.
 - **Status:** DONE_WITH_CONCERNS. Concern (low): the gate has not run on the real fixtures or real models yet, by design; follow-up is the G1 run. **Self-rating:** 8/10, proud: yes. Gaps against the acceptance test: the integration labels are derived from the node's first pass, so the wiring is proved but not the agreement itself (the unit tests prove that on plain numbers); the real-model run is G1.
-- **Reviewer / Privacy auditor:** pending.
+- **Privacy round 1 (PR #126):** FAIL on one point, `Verdict.lines` and `Verdict.detail` lacked `repr=False` (TST-008.3.7, fixed with a planted-secret test on `judge(m, detail=True)`). Reviewer: APPROVE.
 
 ### TST-008.2 — Results (#95)
 

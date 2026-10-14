@@ -273,3 +273,20 @@ def test_repr_and_str_hold_no_planted_value() -> None:
         assert PLANTED not in repr(obj) and PLANTED not in str(obj)
     assert repr(m.format) == "Tally()"
     assert not any(PLANTED in line for line in gate_3.judge(m).lines)
+
+
+def test_a_detailed_verdict_hides_its_label_names_from_repr_and_str() -> None:
+    """TST-008.3.7: `detail` holds per-category names and counts; a repr must not show them."""
+    planted_topic = PLANTED + "-topic"
+    lset = gate_3.fixture_labels.parse_labels(
+        HEADER + f"x.png,{PLANTED},{planted_topic},no,,,\n",
+        formats={PLANTED},
+        topics={planted_topic},
+    )
+    outs = [gate_3.Outcome(("x.png",), "classified", PLANTED, planted_topic, "safe")]
+    m = gate_3.evaluate(lset, outs)
+    verdict = gate_3.judge(m, detail=True)
+    assert any(PLANTED in line for line in verdict.detail)  # the detail really holds the names
+    for text in (repr(verdict), str(verdict), repr(m), str(m)):
+        assert PLANTED not in text and planted_topic not in text
+    assert repr(verdict) == "Verdict(passed=False)"
