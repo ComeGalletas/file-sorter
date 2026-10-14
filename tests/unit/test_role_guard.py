@@ -476,3 +476,30 @@ def test_worker_guard_still_refuses_inside_a_long_heredoc(sandbox: dict[str, Pat
     body = "".join(f"line {i}\n" for i in range(2000))
     command = f"cat > plan.md <<'EOF'\n{body}EOF\ngit merge office/other-desk"
     assert guard(sandbox, "wt", bash(command)) == 2
+
+
+# ---- RUN-015.D1: an empty verdict (awk failed) refuses ----
+
+
+def test_worker_guard_refuses_when_its_judge_fails(
+    sandbox: dict[str, Path], tmp_path: Path
+) -> None:
+    # An awk that prints nothing and fails, ahead of the real one on PATH.
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    (fake / "awk").write_text("#!/usr/bin/env bash\nexit 2\n")
+    (fake / "awk").chmod(0o755)
+    env = {
+        **os.environ,
+        "AGENT_OFFICE_WORKER_ID": "w1",
+        "PATH": f"{fake}{os.pathsep}{os.environ['PATH']}",
+    }
+    result = subprocess.run(
+        ["bash", str(sandbox["guard"])],
+        cwd=sandbox["wt"],
+        env=env,
+        input=json.dumps(bash("git status")),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2

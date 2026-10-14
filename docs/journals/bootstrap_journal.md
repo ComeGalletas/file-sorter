@@ -832,3 +832,27 @@ and then (PR #43 review round 2):
 - **Tests:** the default tiers, 1119 passed; `make lint` clean. Every existing guard case passes unchanged, so the rules are intact.
 - **Regression check:** against `main`'s guard, the new speed test times out after 30 s even in the Linux test container. With this change it passes.
 - **Self-rating:** 9/10, proud: yes. Gap: a `PreToolUse` hook has no timeout, so a guard bug can freeze a desk instead of failing. A timeout would let the command through, the wrong way to fail for a guard, so it's left out on purpose.
+
+---
+
+## RUN-015 — Requirement (lead, from PR #107's review, 2026-10-14)
+
+- **Objective:** close PR #107's two minor findings.
+- **Details:** (1) if the single `awk` judge failed, its output was empty and the command was allowed, against RUN-014.D1 ("an unknown verdict is refused"); (2) #107 changed the quote scanner's `-v bs` from `'\'` to `''` by accident. That's the same on gawk, but implementation-defined on other awks.
+- **Constraint:** human-side (RUN-002.D16).
+
+## RUN-015 — Confirmed reading
+
+- **RUN-015.D1:** **only an explicit `ok` allows.** The judge prints `ok` at the end of a clean pass. An empty or unknown result, such as `awk` failing or missing, refuses with a fixed message. (human-side fix of RUN-014.D1, 2026-10-14)
+- **RUN-015.D2:** `-v bs='\'` is restored, as before #107.
+
+## RUN-015 — Tasks
+
+- [x] RUN-015.1 — The judge's explicit `ok` and the refusing default (D1); the `bs` quoting restored (D2); a test with a failing `awk` on `PATH`
+
+## RUN-015 — Results
+
+- **Status:** DONE.
+- **Triage:** small. A fail-closed fix in the guard, with its test.
+- **Tests:** the default tiers, 1120 passed; `make lint` clean.
+- **Regression check:** against `main`'s guard, the new failing-`awk` test fails, because `main` allowed the command.
