@@ -29,6 +29,7 @@ import psycopg
 from classifier.config import Config
 from classifier.fileops.copy_move import WorkingCopy, make_working_copy
 from classifier.fileops.thumbs import make_thumbnail
+from classifier.graph.errors import mark_error, register_reasons
 from classifier.models.ollama import OllamaClient
 from classifier.sanitize.entity import EntityUnavailableError, check_backend, entity_detector
 from classifier.sanitize.exif import (
@@ -73,7 +74,9 @@ REASONS = (
     THUMBNAIL_FAILED,
     LEDGER_REJECTED,
 )
+register_reasons(REASONS)  # SAN-003.D2: mark_error stores only fixed reasons
 
+_QUEUED_STATUS = "queued"
 _QUEUED = """
 select source_hash, short_hash, source_path, ext
   from files
@@ -90,12 +93,6 @@ values (%s, %s, %s, %s, %s)
 _SANITIZED = """
 update files
    set status = 'sanitized', original_sanitized = %s, error = null, updated_at = now()
- where source_hash = %s and status = 'queued'
-"""
-# PIPE-001.D2: the node overwrites its own column on failure too.
-_ERROR = """
-update files
-   set status = 'error', error = %s, original_sanitized = null, updated_at = now()
  where source_hash = %s and status = 'queued'
 """
 
@@ -262,9 +259,8 @@ def _sanitize_one(
         stripped[:] = strip_metadata(tmp, rules)
 
     def working_copy() -> WorkingCopy:
+        # ING-001.D6: a link since ingest is refused by the open itself (SAN-003.1.2)
         original = Path(row.source_path)
-        if original.is_symlink():  # ING-001.D6: replaced by a link since ingest; never followed
-            raise OSError("the source file is a symbolic link")
         return make_working_copy(original, folders.work, row.source_hash, row.ext, transform)
 
     copy = _attempt(
@@ -349,7 +345,7 @@ def _batch(
         if failed is None:
             sanitized += 1
             continue
-        conn.execute(_ERROR, (failed.reason, row.source_hash))
+        mark_error(conn, row.source_hash, failed.reason, from_statuses=(_QUEUED_STATUS,))
         reasons[failed.reason] += 1
         log.warning("sanitize: %s error %s (%s)", row.short_hash, failed.reason, failed.kind)
     result = SanitizeResult(

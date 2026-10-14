@@ -10,6 +10,7 @@ import errno
 import hashlib
 import os
 import re
+import stat
 from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO, NamedTuple
@@ -17,6 +18,19 @@ from typing import BinaryIO, NamedTuple
 _CHUNK = 1024 * 1024
 _SOURCE_HASH = re.compile(r"[0-9a-f]{64}")
 _EXT = re.compile(r"[A-Za-z0-9]{1,16}")  # bare: no dot, no separator, so names stay in .work/
+
+
+SOURCE_REFUSED = "the source file could not be opened as a regular file"  # fixed: never a path
+
+
+TEMP_FAILED = "the temp file could not be opened for writing"  # fixed: never a path
+
+
+class SourceRefusedError(OSError):
+    """The original is missing, unreadable, a link or not a regular file (SAN-003.1.2).
+
+    Fixed text only, raised unchained: an OS error's message carries the path.
+    """
 
 
 class WorkingCopy(NamedTuple):
@@ -32,16 +46,69 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _close_quietly(fd: int) -> None:
+    try:
+        os.close(fd)
+    except OSError:  # SAN-003.1.5: its message may hold a path; the caller raises fixed text
+        pass
+
+
+def _remove_quietly(path: Path) -> None:
+    """Remove our own temp file; a failure is dropped so its path never escapes."""
+    try:
+        path.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+    except OSError:  # SAN-003.1.5
+        pass
+
+
+def _open_source(source: Path) -> BinaryIO:
+    """Open an original for reading, refusing links and non-regular files (SAN-003.1.2).
+
+    `O_NONBLOCK` keeps a FIFO from blocking the open. `O_NOFOLLOW` makes the kernel refuse a
+    link at the last component, so there is no gap between a check and the open; `fstat` on
+    the open fd then refuses a device, a pipe or a folder before any read. Any failure
+    becomes `SourceRefusedError`, raised outside the
+    handler so it carries no `__cause__` or `__context__`.
+    """
+    fd = -1
+    handle = None
+    try:
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            handle = os.fdopen(fd, "rb")
+    except (OSError, ValueError):  # ValueError: a NUL or a lone surrogate in the path
+        pass
+    if handle is None:
+        if fd >= 0:
+            _close_quietly(fd)  # opened but refused, or fdopen failed: nothing owns it
+        raise SourceRefusedError(SOURCE_REFUSED)
+    return handle
+
+
 def _new_temp(tmp: Path) -> BinaryIO:
     """Open `tmp` as a fresh file of our own, never through a link (SAN-001.D16).
 
     A leftover at that name (a crashed run's temp, or a planted symlink) is unlinked
     first, which removes the link itself and never its target. `O_EXCL | O_NOFOLLOW` then
-    refuses anything that appears there meanwhile, so no write is ever redirected.
+    refuses anything that appears there meanwhile, so no write is ever redirected. Any
+    failure (the unlink, the open, the `fdopen`) closes what was opened and raises
+    `OSError(TEMP_FAILED)`: fixed text, unchained, never the temp's path (SAN-003.1.5).
     """
-    tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    return os.fdopen(os.open(tmp, flags, 0o644), "wb")
+    fd = -1
+    handle = None
+    try:
+        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o644)
+        handle = os.fdopen(fd, "wb")
+    except Exception:  # SAN-003.1.3: nothing owns the fd yet, so it is closed here
+        pass
+    if handle is None:
+        if fd >= 0:  # we created the temp, so it is ours to remove
+            _close_quietly(fd)
+            _remove_quietly(tmp)
+        raise OSError(TEMP_FAILED)  # fixed text, unchained
+    return handle
 
 
 def make_working_copy(
@@ -67,7 +134,7 @@ def make_working_copy(
     final = work_dir / f"{source_hash}.{ext}"
     tmp = work_dir / f".{source_hash}.{ext}.tmp"  # FOP-001.D1; a crashed run's leftover is ours
     try:
-        with source.open("rb") as src, _new_temp(tmp) as dst:
+        with _open_source(source) as src, _new_temp(tmp) as dst:
             while chunk := src.read(_CHUNK):
                 dst.write(chunk)
             dst.flush()
@@ -76,7 +143,7 @@ def make_working_copy(
         copy_sha256 = _sha256(tmp)
         os.replace(tmp, final)  # R-FOP-6: replaces only a stale working copy of this hash
     except BaseException:
-        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
+        _remove_quietly(tmp)
         raise
     return WorkingCopy(final, copy_sha256)
 
@@ -117,4 +184,4 @@ def write_new(dest: Path, data: bytes) -> bool:
             os.rename(tmp, dest)
         return True
     finally:
-        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
+        _remove_quietly(tmp)
