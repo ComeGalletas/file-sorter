@@ -324,8 +324,8 @@ Decisions:
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`
   - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it · `e74c94f`
 - [ ] SAN-003.3 — Item 7: the CLI's `.work/thumbs` `mkdir`, rules `read_text` and CSV open map `OSError` to fixed text, exit 2 · #94 · acceptance: `tests/unit/cli/test_dry_run_config_errors.py`
-  - [x] SAN-003.3.1 — `load_rules`: a `read_text` `OSError` becomes `SanitizeConfigError`, fixed text with no path, unchained; the CLI maps it to exit 2
-  - [ ] SAN-003.3.2 — `prepare_folders`: `resolve` and `mkdir` `OSError` (and the symlink-loop `RuntimeError`) become `WorkDirError`
+  - [x] SAN-003.3.1 — `load_rules`: a `read_text` `OSError` becomes `SanitizeConfigError`, fixed text with no path, unchained; the CLI maps it to exit 2 · `637a800`
+  - [x] SAN-003.3.2 — `prepare_folders`: `resolve` and `mkdir` `OSError` (and the symlink-loop `RuntimeError`) become `WorkDirError`
   - [ ] SAN-003.3.3 — `write_csv`: `mkdir` and `open` `OSError` become `ReportWriteError`, mapped by the CLI to exit 2
 
 ## SAN-003 — Results

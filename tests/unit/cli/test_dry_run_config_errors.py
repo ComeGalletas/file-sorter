@@ -7,6 +7,7 @@ import yaml
 from typer.testing import CliRunner
 
 from classifier.cli import app
+from classifier.graph.sanitize import WorkDirError, prepare_folders
 from classifier.sanitize.rules import SanitizeConfigError, load_rules
 
 REAL_CONFIG = Path(__file__).resolve().parents[3] / "config.yaml"
@@ -134,6 +135,64 @@ def test_rules_read_oserror_is_unchained(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(Path, "read_text", read_text)
     with pytest.raises(SanitizeConfigError) as caught:
         load_rules(tmp_path / RULES_FILE)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert SECRET_DIR not in str(caught.value)
+    assert "zhyndel" not in str(caught.value)
+
+
+def _prepare(cfg, dry_run):
+    prepare_folders(Path(cfg.paths.source_root), Path(cfg.paths.results_root))
+
+
+def test_thumbs_mkdir_oserror_exits_2_with_fixed_text(tmp_path: Path, monkeypatch) -> None:
+    config = _config_file(tmp_path)
+    real = Path.mkdir
+
+    def mkdir(self, *args, **kwargs):
+        if self.name == "thumbs":
+            raise _oserror()
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    result = _invoke_with(config, monkeypatch, _prepare)
+    _assert_fixed_exit(result, "error: results_root/.work/thumbs could not be created")
+
+
+@pytest.mark.parametrize("failure", [_oserror(), RuntimeError(f"Symlink loop from {SECRET_DIR}")])
+def test_resolve_failure_exits_2_with_fixed_text(tmp_path: Path, monkeypatch, failure) -> None:
+    config = _config_file(tmp_path)
+
+    def resolve(self, *args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    result = _invoke_with(config, monkeypatch, _prepare)
+    _assert_fixed_exit(result, "error: results_root or source_root could not be resolved")
+
+
+@pytest.mark.parametrize("target", ["source", "results", "thumbs"])
+def test_prepare_folders_errors_are_unchained(tmp_path: Path, monkeypatch, target: str) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "res").mkdir()
+    real_resolve, real_mkdir = Path.resolve, Path.mkdir
+
+    def resolve(self, *args, **kwargs):
+        if (target == "source" and self.name == "src") or (
+            target == "results" and self.name == "res"
+        ):
+            raise _oserror()
+        return real_resolve(self, *args, **kwargs)
+
+    def mkdir(self, *args, **kwargs):
+        if target == "thumbs" and self.name == "thumbs":
+            raise _oserror()
+        return real_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    monkeypatch.setattr(Path, "mkdir", mkdir)
+    with pytest.raises(WorkDirError) as caught:
+        prepare_folders(tmp_path / "src", tmp_path / "res")
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
     assert SECRET_DIR not in str(caught.value)
