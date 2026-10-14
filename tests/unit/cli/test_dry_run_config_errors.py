@@ -7,6 +7,7 @@ import yaml
 from typer.testing import CliRunner
 
 from classifier.cli import app
+from classifier.sanitize.rules import SanitizeConfigError, load_rules
 
 REAL_CONFIG = Path(__file__).resolve().parents[3] / "config.yaml"
 PLANTED = "PLANTED-SECRET-cfg002"
@@ -62,3 +63,78 @@ def test_dsn_in_the_file_exits_2_without_the_dsn(tmp_path: Path, env_dsn: str | 
 
 def test_this_module_is_tiered_unit(request) -> None:
     assert request.node.get_closest_marker("unit") is not None
+
+
+# SAN-003.3: filesystem OSErrors end in fixed text and exit 2, never a traceback.
+SECRET_DIR = "/qorvex-zhyndel-san0033"
+RULES_FILE = "sanitize-qorvex.yaml"
+
+
+def _oserror(code: int = 13) -> OSError:
+    return OSError(code, "denied", f"{SECRET_DIR}/zhyndel.yaml")
+
+
+def _assert_fixed_exit(result, expected: str) -> None:
+    assert result.exit_code == 2, result.output
+    assert expected in result.stderr
+    for stream in (result.stdout, result.stderr, result.output):
+        assert SECRET_DIR not in stream
+        assert "zhyndel" not in stream
+        assert "Traceback" not in stream
+    assert isinstance(result.exception, SystemExit)
+    link = result.exception  # typer's own Exit(2) may sit in the chain; nothing else may
+    while link is not None:
+        assert not isinstance(link, OSError)
+        assert SECRET_DIR not in str(link)
+        link = link.__cause__ or link.__context__
+
+
+def _config_file(tmp_path: Path) -> Path:
+    data = _data()
+    data["sanitizer"]["rules_file"] = str(tmp_path / RULES_FILE)
+    data["paths"]["source_root"] = str(tmp_path / "src")
+    data["paths"]["results_root"] = str(tmp_path / "res")
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "res").mkdir()
+    (tmp_path / RULES_FILE).write_text("rules: []\n", encoding="utf-8")
+    return config
+
+
+def _invoke_with(config: Path, monkeypatch, fake_run):
+    monkeypatch.setattr("classifier.cli.run", fake_run)
+    return CliRunner().invoke(
+        app, ["dry-run", "--config", str(config)], env={"DB_DSN": "postgresql://u:p@db/x"}
+    )
+
+
+def test_rules_read_oserror_exits_2_with_fixed_text(tmp_path: Path, monkeypatch) -> None:
+    config = _config_file(tmp_path)
+    real = Path.read_text
+
+    def read_text(self, *args, **kwargs):
+        if self.name == RULES_FILE:
+            raise _oserror()
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    result = _invoke_with(
+        config, monkeypatch, lambda cfg, dry_run: load_rules(cfg.sanitizer.rules_file)
+    )
+    _assert_fixed_exit(result, "error: rules file can't be read (sanitizer.rules_file)")
+
+
+def test_rules_read_oserror_is_unchained(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / RULES_FILE).write_text("rules: []\n", encoding="utf-8")
+
+    def read_text(self, *args, **kwargs):
+        raise _oserror()
+
+    monkeypatch.setattr(Path, "read_text", read_text)
+    with pytest.raises(SanitizeConfigError) as caught:
+        load_rules(tmp_path / RULES_FILE)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert SECRET_DIR not in str(caught.value)
+    assert "zhyndel" not in str(caught.value)
