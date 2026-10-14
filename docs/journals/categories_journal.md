@@ -260,13 +260,24 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - `classifier/cli/__init__.py` is a Typer app with `version` and `dry-run`.
 - **CLI-004.D1** — **`remove` deletes the category and its prompts** (lead, 2026-10-12). Files keep their text value (DB-003.D1), and folders and files are never touched (R-CLS-7). A category with children can't be removed.
+- **CLI-004.D3** — **The CLI validates structure with the axis defaults filled in** (worker, proposed, 2026-10-14). While `classify.*.default_min_score` is null (pre-calibration, CLS-003) and the seed's `min_score` is null, `validate_rules` rejects any change. The CLI therefore substitutes 0.0 for a null axis default when it checks names, parents and branches. The classify node's own pre-flight still refuses a null default at run time.
 - **CLI-004.D2** — **Edits apply to the next classify** (lead, 2026-10-12). Rows already classified aren't changed: `reclassify` is M7's (R-FOP-7).
 
 ## CLI-004 — Tasks
 
-- [ ] CLI-004.1 — `classifier categories list|add|edit|remove` · #97 · acceptance: `tests/db/cli/test_categories_cli.py`
+- [x] CLI-004.1 — `classifier categories list|add|edit|remove` · #97 · acceptance: `tests/db/cli/test_categories_cli.py`
+  - [x] CLI-004.1.1 — expose `validate_folder_segment` in `fileops/layout.py` (the CLI reuses it)
+  - [x] CLI-004.1.2 — `categories list`
+  - [x] CLI-004.1.3 — `categories add`
+  - [x] CLI-004.1.4 — `categories edit` and `remove`
 
 ## CLI-004 — Results
+
+- **Tests (CLI-004.1):** acceptance `tests/db/cli/test_categories_cli.py`, 43 passed (db tier, throwaway schema per module, rows cleaned in a teardown that also runs on failure); `tests/unit/fileops/test_layout.py` 115 passed; `make test` 1511 passed, 37 deselected; `make lint` clean. No gpu tier or eval (no model, prompt or threshold touched).
+- **Decision for the lead:** CLI-004.D3 (above) is proposed, not confirmed.
+- **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) `edit` cannot change the parent or the name, which the issue doesn't ask for; (2) D3 waits for the lead's confirmation.
+- **Completion status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 

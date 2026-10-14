@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import pytest
 
 from classifier.config import FoldersConfig
-from classifier.fileops.layout import LayoutError, result_folder
+from classifier.fileops.layout import LayoutError, result_folder, validate_folder_segment
 
 NSFW_ROOT = "Zorblax"
 NO_TOPIC = "Plinth"
@@ -201,3 +201,18 @@ def test_bad_nsfw_root_is_ignored_on_the_safe_branch():
         folders=_folders(),
         nsfw_root="..",
     ) == PurePosixPath("Qorvex/Zhyndel")
+
+
+@pytest.mark.parametrize("name", ["Qorvex", "Zhyndel Vo", "a.b"])
+def test_validate_folder_segment_returns_a_safe_name(name: str) -> None:
+    assert validate_folder_segment(name) == name
+
+
+@pytest.mark.parametrize(
+    "name", ["", ".", "..", "a/b", "a\b", "a:b", "nul", "Con.txt", "x.", "x ", "a\ud800b", "a\x00"]
+)
+def test_validate_folder_segment_refuses_a_bad_name_with_fixed_text(name: str) -> None:
+    with pytest.raises(LayoutError) as caught:
+        validate_folder_segment(name)
+    assert str(caught.value) == "invalid folder name"
+    assert caught.value.__cause__ is None

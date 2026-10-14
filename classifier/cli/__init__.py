@@ -9,6 +9,7 @@ import typer
 
 from classifier import __version__
 from classifier.cli import dry_run_report
+from classifier.cli.categories import categories_app
 from classifier.config import ConfigError, load_config
 from classifier.graph.run import run
 from classifier.graph.sanitize import WorkDirError
@@ -16,6 +17,7 @@ from classifier.models.ollama import OllamaError
 from classifier.sanitize.rules import SanitizeConfigError
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="file-sorter image classifier.")
+app.add_typer(categories_app, name="categories")
 
 
 def _print_version(value: bool) -> None:
