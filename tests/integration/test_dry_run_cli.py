@@ -16,9 +16,11 @@ from click.testing import Result
 from PIL import Image
 from typer.testing import CliRunner
 
+from classifier import cli
 from classifier.cli import app
 from classifier.cli.dry_run_report import COLUMNS
 from classifier.graph import sanitize as node
+from classifier.graph.nodes import REGISTRY
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
@@ -28,6 +30,14 @@ RULES = {
 }
 
 pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
+
+
+@pytest.fixture(autouse=True)
+def _m2_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These are M2 tests: ingest and sanitize only. CLI-005.1 moves the CLI to M3."""
+    real = cli.run
+    m2 = tuple(n for n in REGISTRY if n.name in ("ingest", "sanitize"))
+    monkeypatch.setattr(cli, "run", lambda config, **kw: real(config, nodes=m2, **kw))
 
 
 def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Path]:

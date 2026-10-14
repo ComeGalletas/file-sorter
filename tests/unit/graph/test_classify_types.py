@@ -58,3 +58,11 @@ def test_run_result_classify_rejects_a_foreign_count() -> None:
     result = RunResult("r", True, MappingProxyType({"classify": IngestResult()}))
     with pytest.raises(TypeError, match="ClassifyResult"):
         _ = result.classify
+
+
+def test_prompt_texts_never_reach_a_repr() -> None:  # privacy checklist 4
+    from classifier.graph.classify import _Prompts
+
+    secret = "Qorvex-Zhyndel-secret"
+    shown = repr(_Prompts([secret], [secret]))
+    assert secret not in shown

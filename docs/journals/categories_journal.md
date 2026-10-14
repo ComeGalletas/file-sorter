@@ -178,7 +178,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-002.2 — The `classify` node: working copy → vision backend → rules → ledger, with the `NodeContext` vision seam · #99 · acceptance: `tests/integration/test_classify_node.py`
   - [x] CLS-002.2.1 — Settings check (`nsfw.mode`), `NodeContext.vision`, `ClassifyResult`, `RunResult.classify`
   - [x] CLS-002.2.2 — Working-copy opener (`O_NOFOLLOW` + `fstat`) on the name shared with sanitize
-  - [ ] CLS-002.2.3 — The node: select, score, `choose`, write, `mark_error`; registered after `sanitize`
+  - [x] CLS-002.2.3 — The node: select, score, `choose`, write, `mark_error`; registered after `sanitize`
   - [ ] CLS-002.2.4 — Recordings under `tests/recordings/graph/` and the acceptance test
 
 ## CLS-002 — Results

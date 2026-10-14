@@ -13,6 +13,7 @@ import httpx
 import psycopg
 
 from classifier.config import Config
+from classifier.graph.classify import classify
 from classifier.graph.ingest import ingest
 from classifier.graph.sanitize import sanitize
 from classifier.models.vision import VisionBackend
@@ -50,7 +51,11 @@ def _ingest(conn: psycopg.Connection, ctx: NodeContext) -> object:
     return ingest(conn, ctx.source_root)
 
 
-REGISTRY: tuple[Node, ...] = (Node("ingest", _ingest), Node("sanitize", sanitize))
+REGISTRY: tuple[Node, ...] = (
+    Node("ingest", _ingest),
+    Node("sanitize", sanitize),
+    Node("classify", classify),  # CLS-002.2
+)
 
 
 def plan(nodes: tuple[Node, ...], dry_run: bool) -> tuple[Node, ...]:
