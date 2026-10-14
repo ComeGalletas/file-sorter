@@ -266,7 +266,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - [ ] CLI-004.1 — `classifier categories list|add|edit|remove` · #97 · acceptance: `tests/db/cli/test_categories_cli.py`
   - [x] CLI-004.1.1 — expose `validate_folder_segment` in `fileops/layout.py` (the CLI reuses it)
-  - [ ] CLI-004.1.2 — `categories list`
+  - [x] CLI-004.1.2 — `categories list`
   - [ ] CLI-004.1.3 — `categories add`
   - [ ] CLI-004.1.4 — `categories edit` and `remove`
 
