@@ -453,7 +453,7 @@ references or host paths here. Use hashes.
 ## TST-008 — Tasks
 
 - [ ] TST-008.1 — Vision replay: the TST-008.D3 recording format, a replay `VisionBackend`, a `gpu` recorder, the lint extended · #96 · acceptance: `tests/devtools/test_vision_recordings.py`
-- [ ] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
+- [ ] TST-008.2 — (.1 landed: header, cells, adult, rows, errors, repr) `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
 - [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
 
 ## TST-008 — Results
