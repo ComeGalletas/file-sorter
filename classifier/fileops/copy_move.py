@@ -46,6 +46,21 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _close_quietly(fd: int) -> None:
+    try:
+        os.close(fd)
+    except OSError:  # SAN-003.1.5: its message may hold a path; the caller raises fixed text
+        pass
+
+
+def _remove_quietly(path: Path) -> None:
+    """Remove our own temp file; a failure is dropped so its path never escapes."""
+    try:
+        path.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+    except OSError:  # SAN-003.1.5
+        pass
+
+
 def _open_source(source: Path) -> BinaryIO:
     """Open an original for reading, refusing links and non-regular files (SAN-003.1.2).
 
@@ -65,7 +80,7 @@ def _open_source(source: Path) -> BinaryIO:
         pass
     if handle is None:
         if fd >= 0:
-            os.close(fd)  # opened but refused, or fdopen failed: nothing owns it
+            _close_quietly(fd)  # opened but refused, or fdopen failed: nothing owns it
         raise SourceRefusedError(SOURCE_REFUSED)
     return handle
 
@@ -75,19 +90,23 @@ def _new_temp(tmp: Path) -> BinaryIO:
 
     A leftover at that name (a crashed run's temp, or a planted symlink) is unlinked
     first, which removes the link itself and never its target. `O_EXCL | O_NOFOLLOW` then
-    refuses anything that appears there meanwhile, so no write is ever redirected.
+    refuses anything that appears there meanwhile, so no write is ever redirected. Any
+    failure (the unlink, the open, the `fdopen`) closes what was opened and raises
+    `OSError(TEMP_FAILED)`: fixed text, unchained, never the temp's path (SAN-003.1.5).
     """
-    tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
-    fd = os.open(tmp, flags, 0o644)
+    fd = -1
     handle = None
     try:
+        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        fd = os.open(tmp, flags, 0o644)
         handle = os.fdopen(fd, "wb")
     except Exception:  # SAN-003.1.3: nothing owns the fd yet, so it is closed here
         pass
     if handle is None:
-        os.close(fd)
-        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp name
+        if fd >= 0:  # we created the temp, so it is ours to remove
+            _close_quietly(fd)
+            _remove_quietly(tmp)
         raise OSError(TEMP_FAILED)  # fixed text, unchained
     return handle
 
@@ -124,7 +143,7 @@ def make_working_copy(
         copy_sha256 = _sha256(tmp)
         os.replace(tmp, final)  # R-FOP-6: replaces only a stale working copy of this hash
     except BaseException:
-        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
+        _remove_quietly(tmp)
         raise
     return WorkingCopy(final, copy_sha256)
 
@@ -165,4 +184,4 @@ def write_new(dest: Path, data: bytes) -> bool:
             os.rename(tmp, dest)
         return True
     finally:
-        tmp.unlink(missing_ok=True)  # R-FOP-6: our own temp file
+        _remove_quietly(tmp)

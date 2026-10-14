@@ -324,6 +324,7 @@ Decisions:
   - [x] SAN-003.1.2 — originals opened `O_NOFOLLOW` + `S_ISREG`, fixed-text unchained errors · `5aeff71`
   - [x] SAN-003.1.3 — `_new_temp` guards `os.fdopen` · `144ce6e`
   - [x] SAN-003.1.4 — `graph/errors.py` `mark_error` clears `sanitize_log`; every past-`queued` error write routed through it · `8749294`
+  - [x] SAN-003.1.5 — review round: `_new_temp` wraps the temp unlink and open to `TEMP_FAILED`; the closes and cleanup unlinks are guarded
 - [x] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`
   - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it · `e74c94f`
@@ -365,6 +366,7 @@ Decisions:
   - `tests/db/graph/test_mark_error.py`, 9 tests (status handling, no-op repeats, unregistered reasons refused with `__cause__`/`__context__` None, every sanitize reason accepted). `tests/unit/fileops/test_working_copy.py`: the refusal cases and the fd-guard cases (fd `EBADF`, no temp). `tests/unit/graph/test_nodes.py`: the planted-root repr test.
   - **Mutation checks, each reverted:** no `O_NOFOLLOW`: 1 failed. No `os.close` in the fdopen guard: 2 failed. No log clear: 3 failed.
   - **Lint:** `make lint` clean. **Default tiers:** 1378 passed (unit, db, integration).
+- **Round 2 (SAN-003.1.5, review):** `_new_temp` wraps its unlink and `os.open` to `TEMP_FAILED`, unchained; `_open_source`'s refusal close and the cleanup unlinks drop an `OSError` instead of letting its path escape. 4 new unit tests (EEXIST, EACCES, unlink, close); mutation (unguarded close): 1 failed. 209 passed in unit/fileops, unit/graph and the sanitize node.
 - **Self-rating:** 9/10, proud: yes. Gap: `mark_error` always nulls `original_sanitized` (matching the node's earlier update); CLS-002.2 may want to keep it for a classify error and should say so on its issue. `O_NOFOLLOW` guards only the last path component; parent links stay with the existing `resolve` checks.
 - **Review:** pending.
 
