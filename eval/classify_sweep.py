@@ -481,7 +481,12 @@ def calibrate(
         best = _best_effort_nsfw(items, base_nsfw_near(items))
         applied, config = materialize(rules, base, zero, zero)
         shown = measure(items, applied, config, best)
-        failed = replace(shown, adult_ok=False)
+        # CLS-003.1.8: the verdict is on the criterion, not on the best-effort threshold: some
+        # threshold keeps every suggestive-negative gate row below every adult gate row.
+        sn_scores = [i.nsfw for i in gate_items(items) if i.suggestive_negative]
+        adult_scores = [i.nsfw for i in gate_items(items) if i.adult]
+        separable = not sn_scores or not adult_scores or max(sn_scores) < min(adult_scores)
+        failed = replace(shown, adult_ok=False, suggestive_ok=separable)
         return Calibration(False, best, zero, zero, failed, failed, None, None)
 
     # Pass 1: format, per fold, with and without overrides.

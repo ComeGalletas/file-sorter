@@ -201,3 +201,41 @@ def test_reprs_hold_no_scores_or_names():
     for obj in (scores, prompts):
         text = repr(obj) + str(obj)
         assert secret not in text and "0.7123" not in text and "0.4411" not in text
+
+
+# --- CLS-003.1.8 -------------------------------------------------------------------------
+
+
+def test_verify_copies_accepts_regular_sanitized_files_under_work(tmp_path):
+    copies = make_copies(tmp_path)
+    assert ev.verify_copies(copies, tmp_path, set(copies))
+
+
+def test_verify_copies_refuses_a_link_a_stranger_a_wrong_folder_and_a_non_image(tmp_path):
+    copies = make_copies(tmp_path)
+    digests = set(copies)
+    first = next(iter(copies))
+    assert not ev.verify_copies(copies, tmp_path, digests - {first})  # not sanitized in the ledger
+    link = tmp_path / "link.png"
+    link.symlink_to(copies[first])
+    assert not ev.verify_copies(dict(copies, **{first: link}), tmp_path, digests)
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    moved = make_copies(other, 1)
+    assert not ev.verify_copies(dict(copies, **moved), tmp_path, digests | set(moved))
+    junk = tmp_path / ("ff" * 32 + ".png")
+    junk.write_bytes(b"not an image")
+    assert not ev.verify_copies({"ff" * 32: junk}, tmp_path, {"ff" * 32})
+    assert not ev.verify_copies(copies, tmp_path / "missing", digests)
+
+
+def test_checks_runinfo_and_diagnostic_reprs_hold_nothing_planted():
+    import classify_sweep as sweep
+
+    checks = ev.Checks(nsfw_label=False, nsfw_input=True, coverage=False)
+    info = ev.RunInfo(checks, 0.7123)
+    diagnostic = sweep.NsfwDiagnostic(0.4411, 777, 888)
+    for obj in (checks, info, diagnostic):
+        text = repr(obj) + str(obj)
+        for planted in ("0.7123", "0.4411", "777", "888", "False", "True"):
+            assert planted not in text

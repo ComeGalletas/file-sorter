@@ -296,3 +296,19 @@ def test_the_grid_reaches_scores_far_below_the_linear_steps():
     assert 0 < fit.default_min_score <= 0.002
     applied, cfg = sweep.materialize(rules(), base_config(), fit, AxisFit(0.5, 0.0))
     assert sweep.measure(items, applied, cfg, 0.6).format_correct == 30
+
+
+def test_infeasible_nsfw_judges_suggestive_negative_on_the_criterion_not_a_threshold():
+    def sn(score):
+        return Item({}, {}, score, None, None, False, True, False)
+
+    # An adult row (0.4) scores below a safe row (0.9): infeasible. The suggestive-negative row
+    # (0.2) sits below every adult row, so some threshold keeps it safe.
+    separable = [nsfw_item(0.9, False), nsfw_item(0.4, True), sn(0.2)]
+    result = sweep.calibrate([*make_items(10), *separable], rules(), base_config())
+    assert not result.feasible and not result.fitted.adult_ok
+    assert result.fitted.suggestive_ok
+    # A suggestive-negative row above an adult row cannot be kept safe by any threshold.
+    mixed = [nsfw_item(0.9, False), nsfw_item(0.4, True), sn(0.6)]
+    result = sweep.calibrate([*make_items(10), *mixed], rules(), base_config())
+    assert not result.feasible and not result.fitted.suggestive_ok

@@ -268,15 +268,41 @@ UNRECOGNIZED_LIMIT = 10
 class Checks:
     """The CLS-003.1.5 bug checks: three yes/no facts, public (ok or FAIL only)."""
 
-    nsfw_label: bool  # the scorer reads the id2label entry named `nsfw`, not its complement
-    nsfw_input: bool  # the gate scores the sanitized working copy, decoded, first frame, RGB
-    coverage: bool  # every labelled row joined to exactly one ledger row
+    nsfw_label: bool = field(
+        repr=False
+    )  # the scorer reads the id2label entry named `nsfw`, not its complement
+    nsfw_input: bool = field(
+        repr=False
+    )  # the gate scores the sanitized working copy, decoded, first frame, RGB
+    coverage: bool = field(repr=False)  # every labelled row joined to exactly one ledger row
 
 
 @dataclass(frozen=True)
 class RunInfo:
     checks: Checks = field(repr=False)
     nsfw_threshold: float = field(repr=False)  # the config.yaml value: an input, not a change
+
+
+def verify_copies(copies: Mapping[str, Path], work: Path, sanitized: set[str]) -> bool:
+    """CLS-003.1.8: every scored copy is a real input of the sanitize node.
+
+    Each one is a regular file (a link is refused), sits directly in the resolved `.work`, has a
+    ledger row whose status is `sanitized`, and decodes to RGB through `open_rgb`, the one
+    opener that feeds the models.
+    """
+    try:
+        root = work.resolve(strict=True)
+        for digest, path in copies.items():
+            if digest not in sanitized or not stat.S_ISREG(path.lstat().st_mode):
+                return False
+            if path.resolve(strict=True).parent != root:
+                return False
+            with open_rgb(path, digest[:8]) as image:
+                if image.mode != "RGB":
+                    return False
+    except (OSError, EvalError):
+        return False
+    return True
 
 
 def nsfw_label_ok(model_id: str) -> bool:
@@ -420,7 +446,7 @@ def collect(
         # to RGB); match_labels raised unless every label joined and every image was labelled.
         checks = Checks(
             nsfw_label=label_check(backend.nsfw_id),
-            nsfw_input=all(path.parent == work for path in copies.values()),
+            nsfw_input=verify_copies(copies, work, {d for d, _, _ in kept}),
             coverage=True,
         )
         info = RunInfo(checks, float(config.nsfw.threshold))
