@@ -42,13 +42,15 @@ update files
    and not (%(path)s = any(duplicate_paths))
 """
 
+# SAN-003.D2: a new row, so it has no sanitize_log rows and is not "past queued".
 _INSERT = """
 insert into files (source_hash, short_hash, source_path, source_mtime, ext, status, animated, error)
 values (%(hash)s, %(short)s, %(path)s, %(mtime)s, %(ext)s, %(status)s, %(animated)s, %(reason)s)
 on conflict (source_hash) do nothing
 """
 
-# R-ING-2: a row in `error` is retried: back to the start with the fresh facts.
+# R-ING-2: a row in `error` is retried: back to the start with the fresh facts. SAN-003.D2:
+# it only rewrites a row that is already `error`, whose log mark_error cleared when it got there.
 _RETRY = """
 update files
    set status = %(status)s, source_path = %(path)s, source_mtime = %(mtime)s, ext = %(ext)s,

@@ -23,9 +23,10 @@ from PIL import Image, UnidentifiedImageError
 from classifier.config import Config
 from classifier.fileops.copy_move import WorkingCopy
 from classifier.graph import sanitize as node
+from classifier.graph.errors import mark_error
 from classifier.graph.nodes import REGISTRY, NodeContext
 from classifier.graph.run import run
-from classifier.graph.sanitize import REASONS, SanitizeResult, WorkDirError
+from classifier.graph.sanitize import REASONS, THUMBNAIL_FAILED, SanitizeResult, WorkDirError
 from classifier.models.ollama import OllamaError
 from classifier.sanitize.exif import (
     MetadataStripError,
@@ -662,3 +663,23 @@ class TestEntity:
 def test_every_reason_is_a_fixed_label() -> None:
     assert len(set(REASONS)) == len(REASONS) == 8  # SAN-001.D17
     assert all(reason.startswith("sanitize_") and reason.isascii() for reason in REASONS)
+
+
+def test_a_sanitized_row_sent_to_error_leaves_no_log_and_a_retry_does_not_double_it(
+    source: Path, config: Config, schema_dsn: str
+) -> None:
+    # SAN-003.D2: classify (CLS-002.2) will send `sanitized` rows to `error` through this helper.
+    images = _populate(source)
+    target = _hash(images["named"])
+    run(config, dry_run=True)
+    first = _log(schema_dsn, target)
+    assert first  # the named file has redactions
+
+    with psycopg.connect(schema_dsn) as conn:
+        assert mark_error(conn, target, THUMBNAIL_FAILED, from_statuses=("sanitized",))
+    assert _files(schema_dsn)[target] == ("error", THUMBNAIL_FAILED, None)
+    assert _log(schema_dsn, target) == []
+
+    retried = run(config, dry_run=True)  # R-ING-2: error rows go back to the start
+    assert retried.sanitize.sanitized == 1
+    assert [row[2:] for row in _log(schema_dsn, target)] == [row[2:] for row in first]

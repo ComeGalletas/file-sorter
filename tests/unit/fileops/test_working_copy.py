@@ -8,7 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from classifier.fileops.copy_move import WorkingCopy, make_working_copy, write_new
+from classifier.fileops.copy_move import (
+    SOURCE_REFUSED,
+    TEMP_FAILED,
+    SourceRefusedError,
+    WorkingCopy,
+    make_working_copy,
+    write_new,
+)
 
 SOURCE_BYTES = b"synthetic-source-bytes" * 100
 HASH = hashlib.sha256(SOURCE_BYTES).hexdigest()
@@ -111,9 +118,76 @@ class TestMakeWorkingCopy:
         assert source.read_bytes() == SOURCE_BYTES
 
     def test_missing_source_leaves_no_temp(self, tmp_path: Path, work_dir: Path) -> None:
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(SourceRefusedError):
             make_working_copy(tmp_path / "missing.bin", work_dir, HASH, "jpg", _no_op)
         assert list(work_dir.iterdir()) == []
+
+    def _refused(self, source: Path, work_dir: Path) -> SourceRefusedError:
+        # SAN-003.1.2: raised from fixed text, unchained, nothing written
+        with pytest.raises(SourceRefusedError) as raised:
+            make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == SOURCE_REFUSED
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+        assert list(work_dir.iterdir()) == []
+        return raised.value
+
+    @pytest.mark.parametrize("dangling", [False, True])
+    def test_a_symlinked_original_is_refused_with_no_read(
+        self, tmp_path: Path, work_dir: Path, dangling: bool
+    ) -> None:
+        target = tmp_path / "qorvex-target.bin"
+        if not dangling:
+            target.write_bytes(b"qorvex-secret-bytes")
+        link = tmp_path / "zhyndel-link.bin"
+        link.symlink_to(target)
+        error = self._refused(link, work_dir)
+        assert "qorvex" not in repr(error) and "zhyndel" not in repr(error)
+        if not dangling:
+            assert target.read_bytes() == b"qorvex-secret-bytes"
+
+    def test_a_folder_is_refused(self, tmp_path: Path, work_dir: Path) -> None:
+        folder = tmp_path / "qorvex-folder"
+        folder.mkdir()
+        self._refused(folder, work_dir)
+
+    def test_a_fifo_is_refused_without_blocking(self, tmp_path: Path, work_dir: Path) -> None:
+        fifo = tmp_path / "qorvex.fifo"
+        os.mkfifo(fifo)
+        self._refused(fifo, work_dir)
+
+    def test_a_lone_surrogate_path_is_refused_with_fixed_text(
+        self, tmp_path: Path, work_dir: Path
+    ) -> None:
+        error = self._refused(tmp_path / f"zhyndel-{chr(0xD800)}.bin", work_dir)
+        assert "ud800" not in repr(error).lower()
+
+    def test_a_nul_in_the_path_is_refused_with_fixed_text(
+        self, tmp_path: Path, work_dir: Path
+    ) -> None:
+        self._refused(tmp_path / f"zhyndel{chr(0)}.bin", work_dir)
+
+    def test_fstat_failure_closes_the_fd(
+        self, source: Path, work_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        opened: list[int] = []
+        real_open = os.open
+
+        def spy_open(*args: object, **kwargs: object) -> int:
+            fd = real_open(*args, **kwargs)  # type: ignore[arg-type]
+            opened.append(fd)
+            return fd
+
+        def failing_fstat(fd: int) -> object:
+            raise OSError(5, "qorvex-planted-path")
+
+        monkeypatch.setattr(os, "open", spy_open)
+        monkeypatch.setattr(os, "fstat", failing_fstat)
+        self._refused(source, work_dir)
+        monkeypatch.undo()
+        with pytest.raises(OSError) as closed:
+            os.fstat(opened[0])
+        assert closed.value.errno == errno.EBADF
 
     def test_stale_temp_from_a_crashed_run_is_replaced(self, source: Path, work_dir: Path) -> None:
         work_dir.mkdir()
@@ -149,12 +223,15 @@ class TestMakeWorkingCopy:
         real_open = os.open
 
         def racing_open(path: object, flags: int, mode: int = 0o777) -> int:
-            Path(str(path)).symlink_to(victim)
+            if str(path).endswith(".tmp"):  # only the temp open races; the source open is real
+                Path(str(path)).symlink_to(victim)
             return real_open(path, flags, mode)
 
         monkeypatch.setattr(os, "open", racing_open)
-        with pytest.raises(FileExistsError):
+        with pytest.raises(OSError) as raised:  # EEXIST from O_EXCL, surfaced as fixed text
             make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == TEMP_FAILED
+        assert raised.value.__cause__ is None and raised.value.__context__ is None
         assert victim.read_bytes() == b"victim"
         assert _names(work_dir) == []
 
@@ -306,3 +383,109 @@ class TestWriteNew:
             write_new(dest, b"thumb-bytes")
         assert raised.value.errno == errno.EIO
         assert _names(dest.parent) == []
+
+
+class TestTempFdGuard:
+    """SAN-003.1.3: a failing `os.fdopen` can't leak the fd or leave the temp behind."""
+
+    @pytest.fixture
+    def failing_fdopen(self, monkeypatch: pytest.MonkeyPatch) -> list[int]:
+        opened: list[int] = []
+        real_open = os.open
+
+        def spy_open(*args: object, **kwargs: object) -> int:
+            fd = real_open(*args, **kwargs)  # type: ignore[arg-type]
+            if str(args[0]).endswith(".tmp"):
+                opened.append(fd)
+            return fd
+
+        real_fdopen = os.fdopen
+
+        def failing(fd: int, *args: object, **kwargs: object) -> object:
+            if fd in opened:  # only the temp's fd fails; the source open is real
+                raise OSError(24, "qorvex-planted-path")
+            return real_fdopen(fd, *args, **kwargs)
+
+        monkeypatch.setattr(os, "open", spy_open)
+        monkeypatch.setattr(os, "fdopen", failing)
+        return opened
+
+    def _assert_closed(self, fd: int) -> None:
+        with pytest.raises(OSError) as closed:
+            os.fstat(fd)
+        assert closed.value.errno == errno.EBADF
+
+    def test_make_working_copy_closes_the_fd_and_leaves_no_temp(
+        self, source: Path, work_dir: Path, failing_fdopen: list[int]
+    ) -> None:
+        with pytest.raises(OSError) as raised:
+            make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == TEMP_FAILED
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+        self._assert_closed(failing_fdopen[0])
+        assert list(work_dir.iterdir()) == []
+
+    def test_write_new_closes_the_fd_and_leaves_no_temp(
+        self, work_dir: Path, failing_fdopen: list[int]
+    ) -> None:
+        work_dir.mkdir()
+        dest = work_dir / f"{HASH}.webp"
+        with pytest.raises(OSError) as raised:
+            write_new(dest, b"x")
+        assert str(raised.value) == TEMP_FAILED
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+        self._assert_closed(failing_fdopen[0])
+        assert list(work_dir.iterdir()) == []
+
+    @pytest.mark.parametrize("code", [errno.EEXIST, errno.EACCES])
+    def test_a_failing_temp_open_is_fixed_text(
+        self, source: Path, work_dir: Path, monkeypatch: pytest.MonkeyPatch, code: int
+    ) -> None:
+        # SAN-003.1.5: the OSError of the temp open carries the path; it must not escape
+        real_open = os.open
+
+        def failing_open(path: object, *args: object, **kwargs: object) -> int:
+            if str(path).endswith(".tmp"):
+                raise OSError(code, "qorvex-planted", str(path))
+            return real_open(path, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(os, "open", failing_open)
+        with pytest.raises(OSError) as raised:
+            make_working_copy(source, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == TEMP_FAILED and raised.value.filename is None
+        assert raised.value.__cause__ is None and raised.value.__context__ is None
+        assert list(work_dir.iterdir()) == []
+
+    def test_a_failing_pre_open_unlink_is_fixed_text(
+        self, work_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        work_dir.mkdir()
+        dest = work_dir / f"{HASH}.webp"
+
+        def failing_unlink(self: Path, missing_ok: bool = False) -> None:
+            raise PermissionError(errno.EACCES, "qorvex-planted", str(self))
+
+        monkeypatch.setattr(Path, "unlink", failing_unlink)
+        with pytest.raises(OSError) as raised:
+            write_new(dest, b"x")
+        assert str(raised.value) == TEMP_FAILED and raised.value.filename is None
+        assert raised.value.__cause__ is None and raised.value.__context__ is None
+
+    def test_a_failing_close_in_the_source_refusal_is_still_the_fixed_refusal(
+        self, tmp_path: Path, work_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        folder = tmp_path / "qorvex-folder"
+        folder.mkdir()  # opens fine, then fstat refuses it, so the refusal branch closes the fd
+        real_close = os.close
+
+        def failing_close(fd: int) -> None:
+            real_close(fd)
+            raise OSError(errno.EIO, "qorvex-planted", str(folder))
+
+        monkeypatch.setattr(os, "close", failing_close)
+        with pytest.raises(SourceRefusedError) as raised:
+            make_working_copy(folder, work_dir, HASH, "jpg", _no_op)
+        assert str(raised.value) == SOURCE_REFUSED
+        assert raised.value.__cause__ is None and raised.value.__context__ is None

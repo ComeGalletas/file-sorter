@@ -33,3 +33,20 @@ def test_dry_run_drops_only_fileops() -> None:
 def test_unknown_node_is_refused() -> None:
     with pytest.raises(ValueError, match="mystery"):
         plan((_stub("mystery"),), dry_run=False)
+
+
+def test_node_context_repr_hides_the_roots() -> None:
+    # SAN-003.1.1: planted synthetic roots must not show in repr or str.
+    from pathlib import Path
+
+    from classifier.graph.nodes import NodeContext
+
+    ctx = NodeContext(
+        source_root=Path("/qorvex-src"),
+        dry_run=True,
+        results_root=Path("/zhyndel-res"),
+        config=None,  # type: ignore[arg-type]
+    )
+    for text in (repr(ctx), str(ctx)):
+        assert "qorvex" not in text
+        assert "zhyndel" not in text

@@ -319,7 +319,12 @@ Decisions:
 
 ## SAN-003 — Tasks
 
-- [ ] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
+- [x] SAN-003.1 — Items 1, 2, 5, 6: `NodeContext` root `repr=False`; originals opened `O_NOFOLLOW`; `os.fdopen` guarded; the `error` helper clears `sanitize_log` (SAN-003.D2) · #92 · acceptance: `tests/integration/test_sanitize_node.py`
+  - [x] SAN-003.1.1 — `NodeContext.source_root` and `results_root` `repr=False`, planted-root test · `124de57`
+  - [x] SAN-003.1.2 — originals opened `O_NOFOLLOW` + `S_ISREG`, fixed-text unchained errors · `5aeff71`
+  - [x] SAN-003.1.3 — `_new_temp` guards `os.fdopen` · `144ce6e`
+  - [x] SAN-003.1.4 — `graph/errors.py` `mark_error` clears `sanitize_log`; every past-`queued` error write routed through it · `8749294`
+  - [x] SAN-003.1.5 — review round: `_new_temp` wraps the temp unlink and open to `TEMP_FAILED`; the closes and cleanup unlinks are guarded
 - [x] SAN-003.2 — Items 3, 4: cap `pillow_heif`'s logger and route Pillow's warnings (planted-secret HEIC test under DEBUG); the `sanitize_metadata_unavailable` reason (SAN-003.D1) · #93 · acceptance: `tests/unit/sanitize/test_exif.py`
   - [x] SAN-003.2.1 — `cap_image_library_output()` (`classifier/fileops/image_output.py`): `PIL` and `pillow_heif` loggers at INFO, library warnings ignored by `module=` (SAN-003.D4); idempotent · `ea14d3d`
   - [x] SAN-003.2.2 — `MetadataUnavailableError` with `sanitize_metadata_unavailable` (SAN-003.D1); the node maps it · `e74c94f`
@@ -344,6 +349,25 @@ Decisions:
   - **Mutation checks, each reverted:** helper body disabled: the cap tests and five node tests failed.
   - **Lint:** `make lint` clean. **Default tiers:** 1252 passed (unit, db, integration).
 - **Self-rating:** 9/10, proud: yes. Gap: pillow-heif 1.8 has no Python logger of its own, so the `pillow_heif` cap is proven on records the test emits itself, not on a record the library emits. It holds if a later version adds one.
+- **Review:** pending.
+
+### SAN-003.1 (worker: pipeline)
+
+- **Status:** DONE. Landed in `124de57`, `5aeff71`, `144ce6e`, `8749294` (issue #92).
+- **Triage:** medium, solo. Plan approved on the issue.
+- **Changes:**
+  - `NodeContext.source_root` and `results_root` are `repr=False`.
+  - `make_working_copy` opens the original `O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK`, then `fstat` + `S_ISREG`. A link, FIFO, folder, missing file, NUL or lone surrogate gives `SourceRefusedError` with fixed text, unchained. The node's `is_symlink` pre-check is gone.
+  - `_new_temp` closes the fd and removes the temp if `os.fdopen` fails, then raises fixed text, unchained.
+  - `classifier/graph/errors.py`: `mark_error(conn, hash, reason, from_statuses=)` moves the row to `error` and clears its `sanitize_log` in one savepoint. `reason` must be registered by a node (`register_reasons`), so the check follows the union of the nodes' reason sets (sanitize registers `REASONS`, 8 entries including `sanitize_metadata_unavailable`); CLS-002.2 registers its own.
+- **Error writes found in `classifier/graph/` (SAN-003.D2):** the sanitize node's `_ERROR` update, now `mark_error`. Ingest's `_INSERT` (a new row) and `_RETRY` (rewrites a row already in `error`) can't touch a row past `queued`, so they stay, with a comment.
+- **Tests:**
+  - **Acceptance:** `tests/integration/test_sanitize_node.py`, 1 new test: a `sanitized` row sent to `error` leaves no log rows, and the retry doesn't double them.
+  - `tests/db/graph/test_mark_error.py`, 9 tests (status handling, no-op repeats, unregistered reasons refused with `__cause__`/`__context__` None, every sanitize reason accepted). `tests/unit/fileops/test_working_copy.py`: the refusal cases and the fd-guard cases (fd `EBADF`, no temp). `tests/unit/graph/test_nodes.py`: the planted-root repr test.
+  - **Mutation checks, each reverted:** no `O_NOFOLLOW`: 1 failed. No `os.close` in the fdopen guard: 2 failed. No log clear: 3 failed.
+  - **Lint:** `make lint` clean. **Default tiers:** 1378 passed (unit, db, integration).
+- **Round 2 (SAN-003.1.5, review):** `_new_temp` wraps its unlink and `os.open` to `TEMP_FAILED`, unchained; `_open_source`'s refusal close and the cleanup unlinks drop an `OSError` instead of letting its path escape. 4 new unit tests (EEXIST, EACCES, unlink, close); mutation (unguarded close): 1 failed. 209 passed in unit/fileops, unit/graph and the sanitize node.
+- **Self-rating:** 9/10, proud: yes. Gap: `mark_error` always nulls `original_sanitized` (matching the node's earlier update); CLS-002.2 may want to keep it for a classify error and should say so on its issue. `O_NOFOLLOW` guards only the last path component; parent links stay with the existing `resolve` checks.
 - **Review:** pending.
 
 ### SAN-003.3 (worker: pipeline)
