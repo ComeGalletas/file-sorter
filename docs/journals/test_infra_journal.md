@@ -474,3 +474,12 @@ references or host paths here. Use hashes.
   - Line numbers count physical lines with the header as line 1; a multi-line quoted cell reports its record's first line.
 - **Non-regular files:** refused by `lstat` + `S_ISREG`, tested with a directory (a symlink is not regular under `lstat`, so the same branch covers it). A path with a NUL is fixed text too (TST-008.2.3).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is exercised on the real labels only in TST-008.3, which is by design.
+
+### TST-008.1 — Results (#96)
+
+- **Built:** `tests/recordings/vision.py` (key, image digest, float32 codec, request and text rules, loader), `tests/recordings/vision_backend.py` (`ReplayVisionBackend`, `RecordingVisionBackend`), the `vision_backend` fixture and `--record-vision` in `tests/conftest.py`, the lint dispatch in `tests/recordings/replay.py`, a README section.
+- **Rulings applied:** TST-008.D7 (`param` kind for `logit_scale` and `logit_bias`), recorder tolerance `atol=1e-3`, a text rule that accepts every DESIGN §4.3 seed prompt (a test holds a copy of them).
+- **Conformance:** both backends are `isinstance` of the real `VisionBackend` (MOD-002.D1), and the replay drives `score_images`.
+- **Tests:** acceptance `tests/devtools/test_vision_recordings.py` (unit). `make test`: 1442 passed, 31 deselected. `make lint` clean. No `gpu` run: the recorder is tested on a fake backend, and the real recording belongs to MOD-002.D6.
+- **Privacy:** the text inputs and arrays are `repr=False` (planted-secret repr test); every error is fixed text, unchained; every filesystem call is wrapped; the lint refuses links, path-like text, non-hash image inputs and extra keys. This task commits no recordings.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gaps: the lint cannot prove a text input is synthetic, so it refuses path-like shapes and the review checks the rest; the fixture's `upstream` wiring is exercised against a stub, not the ML desk's real gpu fixture.
