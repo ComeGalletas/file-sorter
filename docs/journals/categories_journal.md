@@ -226,8 +226,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] FOP-002.1.3 — privacy tests (fixed, unchained errors) and Results · commit: this one
 - [ ] FOP-002.2 — `sync_folders` and `classifier categories sync-folders`, with case-insensitive collision checks · #98 · acceptance: `tests/db/fileops/test_sync_folders.py`
   - [x] FOP-002.2.1 — `fileops/folders.py`: the pure planner (D3), the case-insensitive collision check (D4) and the safe `mkdir` walk, with their tests (planned subtask 2.2 merged in: one module) · commit: 5e8b27b
-  - [x] FOP-002.2.3 — `classifier categories sync-folders` and its command tests · commit: HASH2
-  - [ ] FOP-002.2.4 — Results and PR
+  - [x] FOP-002.2.3 — `classifier categories sync-folders` and its command tests · commit: 9453a74
+  - [x] FOP-002.2.4 — Results and PR · commit: this one
 
 ## FOP-002 — Results
 
@@ -236,6 +236,15 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Tests:** `tests/unit/fileops/test_layout.py` passes (acceptance). The default tiers pass in full (`unit + db + integration`: 1219 passed, 24 deselected). `make lint` is clean. No `gpu` or `eval/` run: no model or prompt is touched.
 - **Behavior:** `result_folder()` returns `[Adult/]<Topic|General>/<Format>[/Animated]` or `[Adult/]Unsorted` as a relative `PurePosixPath`. It does no file system access (R-CLS-5, R-ING-9, FOP-002.D1, D2). Every segment (topic path, `no_topic`, format, `Unsorted`, the `nsfw` root) is validated, and errors are fixed text with no cause or context.
 - **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) no caller yet, because CLI-005.1 and M7 wire it in, so the integration is untested here; (2) case-insensitive collisions are left to FOP-002.2 (FOP-002.D4).
+- **Completion status:** DONE.
+- **Reviewer / Privacy auditor:** pending.
+
+### FOP-002.2 (#98, pipeline desk)
+
+- **Tests:** `tests/db/fileops/test_sync_folders.py` passes (acceptance, tier `db`: 20 tests, 17 on `sync_folders` and the planner, 3 on the command). Default tiers: 1751 passed, 37 deselected. `make lint` is clean. No `gpu` or `eval/` run: no model or prompt is touched.
+- **Behavior:** `sync_folders` creates the FOP-002.D3 tree under the resolved `results_root`: `General/<Format>/` and `Unsorted/` (and the same under `nsfw.root`), `<Topic>/<Format>/` only for `filed` rows, `.work/` and `reports/`; never `Animated/`. The plan is checked first (D4): planned siblings that differ only in case (`casefold`, stricter than NTFS), a topic folder that equals a reserved or config folder, or an entry on disk that differs only in case refuses the run; the error names category names or config keys and nothing is created. Links and non-directories are refused; `OSError` becomes fixed unchained text. `nsfw.mode: separate` fails fast naming `nsfw.mode` (lead's answer on #98). The command always creates (`folders.auto_create` only governs M7's `sort`) and echoes only the count of new folders.
+- **Deviation:** planned subtasks 2.1 and 2.2 landed as one commit (one module), and the command's tests shipped with the module's.
+- **Self-rating:** 9/10, proud: yes. Gaps: (1) a race between the check and `mkdir` is not guarded (single-user tool); (2) the `separate` text is defined here until the classify node (CLS-002.2) lands, so the two should be unified then.
 - **Completion status:** DONE.
 - **Reviewer / Privacy auditor:** pending.
 
