@@ -194,7 +194,7 @@ references or host paths here. Use hashes.
 
 - [ ] CLI-005.1 — `dry-run` reports classify: console counts and the CSV's classify columns · #100 · acceptance: `tests/integration/test_dry_run_cli.py`
   - [x] CLI-005.1.1 — the report module: `LedgerRow` as a frozen dataclass with `repr=False`, the classify columns, `folder_resolver` (FOP-002.1's `result_folder`), `surrogateescape` CSV; `topic_chain` made public in `fileops/folders.py`
-  - [ ] CLI-005.1.2 — the console counts and the M3 dry run in the CLI; the console contract pinned in a test
+  - [x] CLI-005.1.2 — the console counts and the M3 dry run in the CLI; the console contract pinned in a test
   - [ ] CLI-005.1.3 — Results
 
 ## CLI-005 — Results
