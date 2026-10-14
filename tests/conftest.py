@@ -9,15 +9,25 @@ TST-005.1: the `ollama_transport` fixture gives a test the transport for `Ollama
 Outside `gpu` it always replays recordings from tests/recordings/<package>/ and never reaches
 Ollama. In `gpu` it is the real transport, or record mode with `pytest -m gpu --record-ollama`.
 See tests/recordings/README.md.
+
+TST-008.1: the `vision_backend` fixture does the same for the `VisionBackend` seam (MOD-002.D1):
+outside `gpu` it replays recordings, in `gpu` it is the real backend the test passes in, or
+record mode with `pytest -m gpu --record-vision`.
 """
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 
 from tests.recordings.replay import RecordingTransport, ReplayTransport
+from tests.recordings.vision_backend import (
+    NO_UPSTREAM,
+    RecordingVisionBackend,
+    ReplayVisionBackend,
+)
 
 TESTS = Path(__file__).resolve().parent
 TIER_BY_DIR = {
@@ -28,6 +38,8 @@ TIER_BY_DIR = {
     "gate": "gate",
 }
 RECORD_OPTION = "--record-ollama"
+RECORD_VISION_OPTION = "--record-vision"
+RECORD_OPTIONS = (RECORD_OPTION, RECORD_VISION_OPTION)
 CALL_FAILED = pytest.StashKey[bool]()
 
 
@@ -43,6 +55,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="gpu tier only: write new Ollama recordings under tests/recordings/ (TST-005.1)",
     )
+    parser.addoption(
+        RECORD_VISION_OPTION,
+        action="store_true",
+        default=False,
+        help="gpu tier only: write new vision recordings under tests/recordings/ (TST-008.1)",
+    )
 
 
 # tryfirst: the markers must exist before pytest's own `-m` deselection runs.
@@ -54,13 +72,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 def pytest_collection_finish(session: pytest.Session) -> None:
     """Record mode runs only on a selection that is all `gpu` (after `-m` deselection)."""
-    if not session.config.getoption(RECORD_OPTION):
+    chosen = [name for name in RECORD_OPTIONS if session.config.getoption(name)]
+    if not chosen:
         return
     others = [item.nodeid for item in session.items if tier_of(Path(item.fspath)) != "gpu"]
     if others:
         raise pytest.UsageError(
-            f"{RECORD_OPTION} is for the gpu tier only, but the selection includes "
-            f"{len(others)} other test(s), e.g. {others[0]}; run pytest -m gpu {RECORD_OPTION}"
+            f"{chosen[0]} is for the gpu tier only, but the selection includes "
+            f"{len(others)} other test(s), e.g. {others[0]}; run pytest -m gpu {chosen[0]}"
         )
 
 
@@ -100,5 +119,41 @@ def ollama_transport(
     if failures and not request.node.stash.get(CALL_FAILED, False):
         pytest.fail(
             f"Ollama recording failure caught by the code under test: {failures[0]}",
+            pytrace=False,
+        )
+
+
+@pytest.fixture
+def vision_backend(
+    request: pytest.FixtureRequest,
+) -> Iterator[Callable[..., Any]]:
+    """A factory: `vision_backend("models", classifier_id, nsfw_id, upstream=None)` (TST-008.1).
+
+    Outside `gpu` it replays. In `gpu` the test passes the real backend as `upstream`, which is
+    returned as it is, or wrapped by the recorder under `--record-vision`.
+    """
+    gpu = tier_of(Path(request.node.fspath)) == "gpu"
+    record = gpu and request.config.getoption(RECORD_VISION_OPTION)
+    made: list[ReplayVisionBackend | RecordingVisionBackend] = []
+
+    def make(package: str, classifier_id: str = "", nsfw_id: str = "", upstream: Any = None) -> Any:
+        if not gpu:
+            backend: ReplayVisionBackend | RecordingVisionBackend = ReplayVisionBackend(
+                package, request.node.nodeid, classifier_id, nsfw_id
+            )
+        elif upstream is None:
+            pytest.fail(NO_UPSTREAM, pytrace=False)
+        elif record:
+            backend = RecordingVisionBackend(package, upstream, request.node.nodeid)
+        else:
+            return upstream
+        made.append(backend)
+        return backend
+
+    yield make
+    failures = [failure for backend in made for failure in backend.failures]
+    if failures and not request.node.stash.get(CALL_FAILED, False):
+        pytest.fail(
+            f"Vision recording failure caught by the code under test: {failures[0]}",
             pytrace=False,
         )

@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from classifier.models.vision import VisionBackend, score_images
 from tests.recordings.replay import RecordingError, lint_recordings, recording_key
 from tests.recordings.vision import (
     check_request,
@@ -25,6 +26,11 @@ from tests.recordings.vision import (
     image_digest,
     load_vision_recording,
     vision_key,
+)
+from tests.recordings.vision_backend import (
+    TOLERANCE,
+    RecordingVisionBackend,
+    ReplayVisionBackend,
 )
 
 MODEL = "synthetic/vision-model"
@@ -459,3 +465,376 @@ def test_lint_wraps_a_failing_filesystem_call(
 
 def test_the_committed_tree_lints_clean() -> None:
     assert lint_recordings() == []
+
+
+# --- replay and record (TST-008.1.3) ---
+
+TEST_ID = "tests/unit/pkg/test_x.py::test_y"
+CLASSIFIER = "synthetic/classifier"
+NSFW = "synthetic/nsfw"
+
+
+class FakeUpstream:
+    """A stand-in for the real backend: deterministic vectors, a call counter, no model."""
+
+    classifier_id = CLASSIFIER
+    nsfw_id = NSFW
+    logit_scale = 117.5
+    logit_bias = -16.25
+
+    def __init__(self, shift: float = 0.0) -> None:
+        self.shift = shift
+        self.calls = 0
+
+    def embed_images(self, images: Any) -> np.ndarray:
+        self.calls += 1
+        return np.array([[i.getpixel((0, 0))[0] / 255, 0.5 + self.shift] for i in images])
+
+    def embed_texts(self, texts: Any) -> np.ndarray:
+        self.calls += 1
+        return np.array([[len(t) / 100, 0.25 + self.shift] for t in texts])
+
+    def nsfw_scores(self, images: Any) -> np.ndarray:
+        self.calls += 1
+        return np.array([0.125 + self.shift for _ in images])
+
+
+def record_all(root: Path, upstream: FakeUpstream | None = None) -> RecordingVisionBackend:
+    recorder = RecordingVisionBackend("pkg", upstream or FakeUpstream(), TEST_ID, root=root)
+    recorder.embed_images([block(), block((10, 20, 30))])
+    recorder.embed_texts(["a photo of a cat", "an anime character"])
+    recorder.nsfw_scores([block()])
+    recorder.logit_scale  # noqa: B018 - reading it records it
+    recorder.logit_bias  # noqa: B018
+    return recorder
+
+
+def replayer(root: Path) -> ReplayVisionBackend:
+    return ReplayVisionBackend("pkg", TEST_ID, CLASSIFIER, NSFW, root=root)
+
+
+def test_replay_serves_exactly_what_the_recorder_wrote(tmp_path: Path) -> None:
+    upstream = FakeUpstream()
+    record_all(tmp_path, upstream)
+    replay = replayer(tmp_path)
+    images = [block(), block((10, 20, 30))]
+    assert (
+        replay.embed_images(images).tobytes()
+        == upstream.embed_images(images).astype(np.float32).tobytes()
+    )
+    texts = ["a photo of a cat", "an anime character"]
+    expected = upstream.embed_texts(texts).astype(np.float32)
+    assert replay.embed_texts(texts).tolist() == expected.tolist()
+    assert replay.nsfw_scores([block()]).tolist() == [0.125]
+    assert (replay.logit_scale, replay.logit_bias) == (117.5, -16.25)
+    assert (replay.classifier_id, replay.nsfw_id) == (CLASSIFIER, NSFW)
+    assert replay.failures == []
+    assert lint_recordings(tmp_path) == []
+
+
+def test_replay_returns_float32_arrays_of_the_right_shape(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    replay = replayer(tmp_path)
+    assert replay.embed_images([block(), block((10, 20, 30))]).shape == (2, 2)
+    assert replay.embed_images([block()]).dtype == np.float32
+    assert replay.nsfw_scores([block()]).shape == (1,)
+    assert replay.embed_texts([]).shape == (0, 0)
+
+
+def test_a_miss_names_the_key_kind_and_test_and_nothing_else(tmp_path: Path) -> None:
+    replay = replayer(tmp_path)
+    text = f"{SECRET} prompt"
+    with pytest.raises(RecordingError) as caught:
+        replay.embed_texts([text])
+    key = vision_key(CLASSIFIER, "text", text)
+    message = str(caught.value)
+    assert f"pkg/{key}.json" in message and "kind text" in message
+    assert TEST_ID in message and "--record-vision" in message
+    assert_private(caught.value)
+    assert replay.failures == [message]
+
+
+def test_each_miss_kind_is_a_tracked_failure(tmp_path: Path) -> None:
+    replay = replayer(tmp_path)
+    calls = [
+        lambda: replay.embed_images([block()]),
+        lambda: replay.nsfw_scores([block()]),
+        lambda: replay.logit_scale,
+        lambda: replay.logit_bias,
+    ]
+    for call in calls:
+        with pytest.raises(RecordingError):
+            call()
+    assert len(replay.failures) == 4
+
+
+def test_a_miss_escapes_except_exception(tmp_path: Path) -> None:
+    replay = replayer(tmp_path)
+    escaped = False
+    try:
+        try:
+            replay.embed_images([block()])
+        except Exception:  # a fail-closed caller
+            pytest.fail("RecordingError was caught by except Exception")
+    except RecordingError:
+        escaped = True
+    assert escaped and not issubclass(RecordingError, Exception)
+
+
+def test_the_model_id_is_part_of_the_key(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    other = ReplayVisionBackend("pkg", TEST_ID, "synthetic/other", NSFW, root=tmp_path)
+    with pytest.raises(RecordingError):
+        other.embed_texts(["a photo of a cat"])
+    assert other.nsfw_scores([block()]).tolist() == [0.125]
+
+
+def test_a_tampered_recording_fails_privately(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    path = tmp_path / "pkg" / f"{vision_key(CLASSIFIER, 'text', 'a photo of a cat')}.json"
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    stored["request"]["input"] = "a photo of a dog"
+    path.write_text(json.dumps(stored), encoding="utf-8")
+    with pytest.raises(RecordingError, match="not named by the key") as caught:
+        replayer(tmp_path).embed_texts(["a photo of a cat"])
+    assert_private(caught.value)
+
+
+def test_replay_refuses_a_path_like_text_without_looking_it_up(tmp_path: Path) -> None:
+    replay = replayer(tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        replay.embed_texts([f"folder/{SECRET}.png"])
+    assert "looks like a path" in str(caught.value)
+    assert_private(caught.value)
+
+
+def test_a_broken_image_fails_with_fixed_text(tmp_path: Path) -> None:
+    class Broken:
+        mode = "RGB"
+        size = (1, 1)
+
+        def seek(self, frame: int) -> None:
+            raise OSError(f"cannot read /host/{SECRET}.png")
+
+    with pytest.raises(RecordingError) as caught:
+        replayer(tmp_path).embed_images([Broken()])  # type: ignore[list-item]
+    assert_private(caught.value)
+
+
+def test_backends_hide_inputs_in_repr(tmp_path: Path) -> None:
+    replay, recorder = (
+        replayer(tmp_path),
+        RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path),
+    )
+    with pytest.raises(RecordingError):
+        replay.embed_texts([f"{SECRET} prompt"])
+    for backend in (replay, recorder):
+        assert SECRET not in repr(backend) and SECRET not in str(backend)
+    recorder.embed_texts([f"{SECRET} prompt"])
+    assert SECRET not in repr(recorder)
+
+
+def test_record_keeps_an_existing_recording_within_the_tolerance(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    before = {p.name: p.read_bytes() for p in (tmp_path / "pkg").iterdir()}
+    close = FakeUpstream(shift=TOLERANCE / 2)
+    record_all(tmp_path, close)
+    assert {p.name: p.read_bytes() for p in (tmp_path / "pkg").iterdir()} == before
+
+
+def test_record_refuses_a_different_answer_and_names_the_key(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    before = {p.name: p.read_bytes() for p in (tmp_path / "pkg").iterdir()}
+    upstream = FakeUpstream(shift=TOLERANCE * 10)
+    far = RecordingVisionBackend("pkg", upstream, TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError, match="different answer") as caught:
+        far.embed_texts(["a photo of a cat"])
+    assert vision_key(CLASSIFIER, "text", "a photo of a cat") in str(caught.value)
+    assert TEST_ID in str(caught.value) and len(far.failures) == 1
+    assert_private(caught.value)
+    assert {p.name: p.read_bytes() for p in (tmp_path / "pkg").iterdir()} == before
+
+
+def test_record_refuses_inputs_the_lint_would_refuse(tmp_path: Path) -> None:
+    recorder = RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        recorder.embed_texts([f"C:/Users/{SECRET}.png"])
+    assert_private(caught.value)
+    assert not (tmp_path / "pkg").exists()
+
+
+@pytest.mark.parametrize("bad", ["rows", "scores"])
+def test_record_refuses_an_upstream_answer_of_the_wrong_size(bad: str, tmp_path: Path) -> None:
+    class Wrong(FakeUpstream):
+        def embed_texts(self, texts: Any) -> np.ndarray:
+            return np.zeros((len(texts) + 1, 2))
+
+        def nsfw_scores(self, images: Any) -> np.ndarray:
+            return np.zeros((len(images), 2))
+
+    recorder = RecordingVisionBackend("pkg", Wrong(), TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        recorder.embed_texts(["alpha"]) if bad == "rows" else recorder.nsfw_scores([block()])
+    assert_private(caught.value)
+    assert not (tmp_path / "pkg").exists()
+
+
+@pytest.mark.parametrize("method", ["is_file", "mkdir", "write_bytes", "read_bytes"])
+def test_record_reports_a_failing_filesystem_call_by_key(
+    method: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if method == "read_bytes":
+        record_all(tmp_path)  # an existing file is what gets read
+    recorder = RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path)
+
+    def denied(self: Path, *args: Any, **kwargs: Any) -> Any:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, method, denied)
+    with pytest.raises(RecordingError) as caught:
+        recorder.embed_texts(["a photo of a cat"])
+    assert str(tmp_path) not in str(caught.value) and tmp_path.name not in str(caught.value)
+    assert_private(caught.value)
+    assert len(recorder.failures) == 1
+
+
+def test_replay_reports_a_failing_stat_by_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record_all(tmp_path)
+
+    def denied(self: Path, *args: Any, **kwargs: Any) -> Any:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "is_file", denied)
+    with pytest.raises(RecordingError) as caught:
+        replayer(tmp_path).nsfw_scores([block()])
+    assert str(tmp_path) not in str(caught.value) and tmp_path.name not in str(caught.value)
+    assert_private(caught.value)
+
+
+# --- conformance to the real protocol (MOD-002.D1) ---
+
+
+def test_both_backends_satisfy_the_real_vision_backend_protocol(tmp_path: Path) -> None:
+    assert isinstance(replayer(tmp_path), VisionBackend)
+    recorder = RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path)
+    assert isinstance(recorder, VisionBackend)
+
+
+def test_the_replay_drives_the_real_scoring_path(tmp_path: Path) -> None:
+    record_all(tmp_path)
+    scores = score_images(
+        replayer(tmp_path),
+        [block(), block((10, 20, 30))],
+        ["a photo of a cat", "an anime character"],
+        ["animals", "anime"],
+        mode="sigmoid",
+    )
+    assert len(scores) == 2 and set(scores[0]) == {"animals", "anime"}
+    assert all(0.0 <= v <= 1.0 for row in scores for v in row.values())
+
+
+# --- the shared fixture (tests/conftest.py), run in a synthetic tree with pytester ---
+
+pytest_plugins = ["pytester"]
+
+REPO_TESTS = Path(__file__).resolve().parents[1]
+INNER_SECRET = "zz-inner-" + "secret-qx"  # never written whole into the inner sources
+INNER_UNIT = """
+from PIL import Image
+from tests.recordings.vision_backend import ReplayVisionBackend
+
+TEXT = "zz-inner-" + "secret-qx"
+
+
+def test_replays(vision_backend):
+    assert isinstance(vision_backend("models", "c", "n"), ReplayVisionBackend)
+
+
+def test_miss(vision_backend):
+    vision_backend("models", "c", "n").embed_texts([TEXT])
+
+
+def test_swallowed(vision_backend):
+    try:
+        vision_backend("models", "c", "n").embed_images([Image.new("RGB", (2, 2))])
+    except BaseException:
+        pass
+"""
+INNER_GPU = """
+import pytest
+from tests.recordings.vision_backend import RecordingVisionBackend
+
+
+class Upstream:
+    classifier_id = "c"
+    nsfw_id = "n"
+
+
+def test_upstream(vision_backend, pytestconfig):
+    backend = vision_backend("models", upstream=Upstream())
+    if pytestconfig.getoption("--record-vision"):
+        assert isinstance(backend, RecordingVisionBackend)
+    else:
+        assert type(backend) is Upstream
+
+
+def test_needs_upstream(vision_backend):
+    with pytest.raises(BaseException):
+        vision_backend("models")
+"""
+
+
+@pytest.fixture
+def inner(pytester: pytest.Pytester) -> pytest.Pytester:
+    """A copy of the real conftest and helpers, with one unit and one gpu module."""
+    tests = pytester.path / "tests"
+    (tests / "recordings").mkdir(parents=True)
+    (tests / "unit").mkdir()
+    (tests / "gpu").mkdir()
+    for rel in (
+        "conftest.py",
+        "recordings/replay.py",
+        "recordings/vision.py",
+        "recordings/vision_backend.py",
+    ):
+        (tests / rel).write_text((REPO_TESTS / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    (tests / "unit" / "test_inner_unit.py").write_text(INNER_UNIT, encoding="utf-8")
+    (tests / "gpu" / "test_inner_gpu.py").write_text(INNER_GPU, encoding="utf-8")
+    return pytester
+
+
+def run_inner(inner: pytest.Pytester, *args: str) -> pytest.RunResult:
+    return inner.runpytest_subprocess(
+        "--import-mode=importlib", "-p", "no:cacheprovider", "--tb=short", "-rA", *args
+    )
+
+
+def test_fixture_replays_outside_gpu_and_fails_each_miss_once(inner: pytest.Pytester) -> None:
+    result = run_inner(inner, "-m", "not gpu")
+    # test_swallowed: its call passes, and its teardown reports the miss as an error.
+    result.assert_outcomes(passed=2, failed=1, errors=1)
+    output = result.stdout.str() + result.stderr.str()
+    key = vision_key("c", "text", INNER_SECRET)
+    assert f"no recording models/{key}.json" in output
+    assert "tests/unit/test_inner_unit.py::test_miss" in output
+    assert "Vision recording failure caught by the code under test" in output
+    assert "tests/unit/test_inner_unit.py::test_swallowed" in output
+    assert INNER_SECRET not in output
+
+
+def test_fixture_gives_back_the_real_backend_in_gpu(inner: pytest.Pytester) -> None:
+    run_inner(inner, "-m", "gpu").assert_outcomes(passed=2)
+
+
+def test_fixture_records_in_gpu_with_the_option(inner: pytest.Pytester) -> None:
+    run_inner(inner, "-m", "gpu", "--record-vision").assert_outcomes(passed=2)
+
+
+def test_vision_record_option_is_refused_when_other_tiers_are_selected(
+    inner: pytest.Pytester,
+) -> None:
+    result = run_inner(inner, "--record-vision")
+    assert result.ret == pytest.ExitCode.USAGE_ERROR
+    result.stderr.fnmatch_lines(["*--record-vision is for the gpu tier only*"])

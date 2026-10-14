@@ -412,7 +412,12 @@ def inner(pytester: pytest.Pytester) -> pytest.Pytester:
     (tests / "recordings").mkdir(parents=True)
     (tests / "unit").mkdir()
     (tests / "gpu").mkdir()
-    for rel in ("conftest.py", "recordings/replay.py"):
+    for rel in (
+        "conftest.py",
+        "recordings/replay.py",
+        "recordings/vision.py",
+        "recordings/vision_backend.py",
+    ):
         (tests / rel).write_text((REPO_TESTS / rel).read_text(encoding="utf-8"), encoding="utf-8")
     (tests / "unit" / "test_inner_unit.py").write_text(INNER_UNIT, encoding="utf-8")
     (tests / "gpu" / "test_inner_gpu.py").write_text(INNER_GPU, encoding="utf-8")
