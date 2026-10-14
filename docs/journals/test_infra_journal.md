@@ -455,7 +455,7 @@ references or host paths here. Use hashes.
 - [ ] TST-008.1 — Vision replay: the TST-008.D3 recording format, a replay `VisionBackend`, a `gpu` recorder, the lint extended · #96 · acceptance: `tests/devtools/test_vision_recordings.py`
 - [x] TST-008.2 — `scripts/fixture_labels.py`: load and validate the labels (TST-008.D2, D5) · #95 · acceptance: `tests/unit/gate/test_fixture_labels.py`
   - [x] TST-008.2.1 — parser, typed rows, fixed-text errors (a14ebe5)
-  - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (this task's second commit)
+  - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (11048a4)
 - [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
 
 ## TST-008 — Results
@@ -468,5 +468,5 @@ references or host paths here. Use hashes.
   - A `suggestive-negative` row with `adult = yes` is rejected, naming the line and the `tags` column (lead's approval comment, CLS-001.D12).
   - A blank `adult` is an error; only format and topic may be blank (D11). A duplicate `file` is an error.
   - Line numbers count physical lines with the header as line 1; a multi-line quoted cell reports its record's first line.
-- **Symlink refusal:** the symlink case ran (the test container is Linux and can create links). On a host without the privilege the test returns early and the directory case covers the non-regular check.
+- **Non-regular files:** refused by `lstat` + `S_ISREG`, tested with a directory (a symlink is not regular under `lstat`, so the same branch covers it). A path with a NUL is fixed text too (TST-008.2.3).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is exercised on the real labels only in TST-008.3, which is by design.

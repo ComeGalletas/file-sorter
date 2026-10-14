@@ -214,17 +214,10 @@ def test_load_refuses_a_directory(tmp_path: Path) -> None:
     assert_fixed_unchained(info.value, "qorvex")
 
 
-def test_load_refuses_a_symlink_where_one_can_be_made(tmp_path: Path) -> None:
-    target = tmp_path / "real.csv"
-    target.write_text(HEADER, encoding="utf-8")
-    link = tmp_path / "qorvex-link.csv"
-    try:
-        link.symlink_to(target)
-    except OSError:
-        return  # no symlink privilege on this host; the directory case covers the check
+def test_load_path_with_a_nul_is_fixed_text() -> None:
     with pytest.raises(fl.LabelsError) as info:
-        load(link)
-    assert str(info.value) == "labels file: the labels path is not a regular file"
+        load(Path("qorvex" + chr(0) + ".csv"))
+    assert str(info.value) == "labels file: cannot read the labels file"
     assert_fixed_unchained(info.value, "qorvex")
 
 

@@ -144,7 +144,7 @@ def load_labels(path: Path, *, formats: Collection[str], topics: Collection[str]
             problem = _NOT_REGULAR
         else:
             data = path.read_bytes()
-    except OSError:
+    except (OSError, ValueError):  # ValueError: a NUL in the path
         problem = _UNREADABLE
     if problem:
         raise LabelsError(f"labels file: {problem}")
