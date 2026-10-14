@@ -31,7 +31,11 @@ from classifier.fileops.copy_move import WorkingCopy, make_working_copy
 from classifier.fileops.thumbs import make_thumbnail
 from classifier.models.ollama import OllamaClient
 from classifier.sanitize.entity import EntityUnavailableError, check_backend, entity_detector
-from classifier.sanitize.exif import MetadataStripError, strip_metadata
+from classifier.sanitize.exif import (
+    MetadataStripError,
+    MetadataUnavailableError,
+    strip_metadata,
+)
 from classifier.sanitize.rules import (
     EntityFn,
     EntityRule,
@@ -53,6 +57,7 @@ THUMBS_DIR = "thumbs"  # ING-002.D1: .work/thumbs/<source_hash>.webp
 # SAN-001.D17: the fixed reasons a file's `files.error` can hold after this node.
 ENTITY_UNAVAILABLE = EntityUnavailableError.reason  # D2: "sanitize_entity_unavailable"
 METADATA_RESIDUAL = MetadataStripError.reason  # D2: "sanitize_metadata_residual"
+METADATA_UNAVAILABLE = MetadataUnavailableError.reason  # SAN-003.D1
 NAME_FAILED = "sanitize_name_failed"
 WORKING_COPY_FAILED = "sanitize_working_copy_failed"
 PATH_ESCAPE = "sanitize_path_escape"
@@ -61,6 +66,7 @@ LEDGER_REJECTED = "sanitize_ledger_rejected"
 REASONS = (
     ENTITY_UNAVAILABLE,
     METADATA_RESIDUAL,
+    METADATA_UNAVAILABLE,
     NAME_FAILED,
     WORKING_COPY_FAILED,
     PATH_ESCAPE,
@@ -241,7 +247,14 @@ def _sanitize_one(
             raise OSError("the source file is a symbolic link")
         return make_working_copy(original, folders.work, row.source_hash, row.ext, transform)
 
-    copy = _attempt(WORKING_COPY_FAILED, working_copy, {MetadataStripError: METADATA_RESIDUAL})
+    copy = _attempt(
+        WORKING_COPY_FAILED,
+        working_copy,
+        {
+            MetadataUnavailableError: METADATA_UNAVAILABLE,  # listed first: the subclass
+            MetadataStripError: METADATA_RESIDUAL,
+        },
+    )
     _published(copy.path, folders.work, f"{row.source_hash}.{row.ext}", folders)
 
     thumb = _attempt(
