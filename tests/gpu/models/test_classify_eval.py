@@ -112,6 +112,7 @@ def test_the_harness_runs_end_to_end_and_prints_the_public_form(siglip_backend, 
     assert re.search(r"^format agreement: (PASS|FAIL) \d+% \(gate >= 90%\)$", out, re.M)
     assert re.search(r"^topic agreement: (PASS|FAIL) \d+% \(gate >= 85%\)$", out, re.M)
     assert re.search(r"^unrecognized format: (PASS|FAIL) \d+% \(gate < 10%\)$", out, re.M)
+    assert "bug checks: nsfw label ok, nsfw input ok, coverage ok" in out
     assert "adult flagged and the rest safe: ok" in out
     assert "suggestive-negative safe: ok" in out
     assert re.search(r"^held-out \(5-fold, seed 20261014\): ", out, re.M)
@@ -119,6 +120,7 @@ def test_the_harness_runs_end_to_end_and_prints_the_public_form(siglip_backend, 
     assert re.search(r"^  nsfw\.threshold: [0-9.e-]+$", out, re.M)
     assert re.search(r"^  classify\.format\.default_min_score: [0-9.]+$", out, re.M)
     assert "DETAIL" not in out and not re.search(r"\d+\.\d+%", out)
+    assert "console only" not in out and "adult rows below" not in out  # CLS-003.1.6
 
     # No file name, path or label leaks into the output.
     assert not any(name in out for name in names)
@@ -141,6 +143,7 @@ def test_detail_stays_behind_the_flag(siglip_backend, workspace, capsys):
     out = capsys.readouterr().out
     assert "DETAIL (box console only: never paste, commit or post)" in out
     assert re.search(r"fitted: format \d+\.\d%", out)
+    assert re.search(r"NSFW \(console only\): best achievable threshold [0-9.]+; adult rows", out)
 
 
 def test_a_missing_label_fails_with_fixed_text(siglip_backend, workspace, capsys):
@@ -152,3 +155,29 @@ def test_a_missing_label_fails_with_fixed_text(siglip_backend, workspace, capsys
     err = capsys.readouterr().err
     assert err.strip() == "classify_eval FAIL: the labels and the images do not match exactly"
     assert not any(name in err for name in names)
+
+
+def test_the_nsfw_scorer_picks_the_class_named_nsfw_in_the_real_models_config(nsfw_model_id):
+    """CLS-003.1.5 check 1: the id2label entry named `nsfw`, not its complement."""
+    from transformers import AutoConfig
+
+    from classifier.models.nsfw import NSFW_LABEL, nsfw_class_index
+
+    labels = AutoConfig.from_pretrained(nsfw_model_id, local_files_only=True).id2label
+    index = nsfw_class_index(labels)
+    assert index is not None
+    assert str(labels[index]).strip().lower() == NSFW_LABEL
+    assert sum(str(v).strip().lower() == NSFW_LABEL for v in labels.values()) == 1
+    assert ev.nsfw_label_ok(nsfw_model_id)
+
+
+def test_holding_the_threshold_sweeps_format_and_topic_only(siglip_backend, workspace, capsys):
+    """CLS-003.1.6: nsfw.threshold stays at its config value and is not proposed."""
+    images, labels, cache, *_ = workspace
+    args = ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
+    assert ev.main([*args, "--hold-nsfw-threshold"], backend=siglip_backend) == 0
+    out = capsys.readouterr().out
+    assert "nsfw.threshold held at its config.yaml value, not swept" in out
+    assert "  nsfw.threshold: held, not proposed" in out
+    assert re.search(r"^  classify\.topic\.margin: [0-9.]+$", out, re.M)
+    assert "console only" not in out

@@ -282,3 +282,17 @@ def test_holding_the_threshold_skips_the_nsfw_sweep_and_still_fits_the_categorie
     assert held.feasible and held.nsfw_held and held.nsfw_threshold == 0.7
     assert not held.fitted.adult_ok  # measured at the held value: the two extra rows miss
     assert held.fitted.format_total > 0
+
+
+def test_the_grid_reaches_scores_far_below_the_linear_steps():
+    """SigLIP sigmoid scores can sit around 1e-3; a 0.02 floor would leave every row unsorted."""
+    rng = random.Random(5)
+    items = []
+    for i in range(30):
+        fmt = FORMATS[i % 3]
+        small = {n: (rng.uniform(0.002, 0.004) if n == fmt else 1e-5) for n in FORMATS}
+        items.append(Item(small, {}, 0.1, fmt, None, False, False, False))
+    fit = sweep.sweep_axis(items, rules(), base_config(), 0.6, "format")
+    assert 0 < fit.default_min_score <= 0.002
+    applied, cfg = sweep.materialize(rules(), base_config(), fit, AxisFit(0.5, 0.0))
+    assert sweep.measure(items, applied, cfg, 0.6).format_correct == 30

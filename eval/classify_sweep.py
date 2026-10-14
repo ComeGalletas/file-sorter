@@ -26,6 +26,8 @@ FINE_SPAN = 4  # fine steps either side of the coarse pick
 SLACK_POINTS = 1.0  # CLS-003.1: how much agreement the sweep gives up for a safer threshold
 UNRECOGNIZED_LIMIT_PCT = 10.0  # CLS-001.D5
 MARGIN_MAX = 0.30
+FLOOR = 1e-4  # SigLIP sigmoid scores can be far below the linear grid: a geometric tail covers them
+RATIO = 1.6
 _DUMMY = AxisConfig(default_min_score=0.5, margin=0.0)  # an axis the sweep does not look at
 
 
@@ -246,7 +248,33 @@ def nsfw_diagnostic(items: Sequence[Item]) -> NsfwDiagnostic:
 
 def _frange(start: float, stop: float, step: float) -> list[float]:
     count = int(round((stop - start) / step)) + 1
-    return [round(start + i * step, 4) for i in range(max(count, 1))]
+    return [round(start + i * step, 6) for i in range(max(count, 1))]
+
+
+def _tail() -> list[float]:
+    """Geometric values from FLOOR up to the first linear step."""
+    out, value = [], FLOOR
+    while value < COARSE_STEP:
+        out.append(round(value, 6))
+        value *= RATIO
+    return out
+
+
+def _min_levels(top: float) -> list[float]:
+    """Candidate `min_score` values: the linear grid plus the geometric tail below it."""
+    return sorted({*_tail(), *_frange(COARSE_STEP, top, COARSE_STEP)})
+
+
+def _margin_levels() -> list[float]:
+    return sorted({0.0, *_tail(), *_frange(COARSE_STEP, MARGIN_MAX, COARSE_STEP)})
+
+
+def _around(centre: float, floor: float) -> list[float]:
+    """Fine values around `centre`: FINE_STEP, or a tenth of the centre when that is smaller."""
+    step = min(FINE_STEP, max(centre * 0.1, 1e-5))
+    return sorted(
+        {round(max(centre + k * step, floor), 6) for k in range(-FINE_SPAN, FINE_SPAN + 1)}
+    )
 
 
 def _axis_max(items: Sequence[Item], axis: str) -> float:
@@ -324,19 +352,14 @@ def sweep_axis(
         margins = sorted(g for m, g in pool if m == highest)
         return (highest, margins[(len(margins) - 1) // 2])  # the lower median margin
 
-    coarse = [
-        (m, g)
-        for m in _frange(COARSE_STEP, top, COARSE_STEP)
-        for g in _frange(0.0, MARGIN_MAX, COARSE_STEP)
-    ]
+    coarse = [(m, g) for m in _min_levels(top) for g in _margin_levels()]
     scored = {c: key(*c) for c in coarse}
     centre = pick(scored)
-    span = FINE_SPAN * FINE_STEP
-    for m in _frange(max(centre[0] - span, FINE_STEP), centre[0] + span, FINE_STEP):
-        for g in _frange(max(centre[1] - span, 0.0), centre[1] + span, FINE_STEP):
+    for m in _around(centre[0], FLOOR):
+        for g in _around(centre[1], 0.0):
             scored.setdefault((m, g), key(m, g))
     minimum, margin = pick(scored)
-    return AxisFit(round(minimum, 4), round(margin, 4))
+    return AxisFit(round(minimum, 6), round(margin, 6))
 
 
 # --- Per-category overrides -----------------------------------------------------------------
@@ -377,7 +400,7 @@ def fit_overrides(
     names = sorted(r.name for r in rules if r.axis == axis and r.name != UNSORTED)
     where = _top_three(rows, axis, set(names))
     top = min(_axis_max(rows, axis) + COARSE_STEP, 1.0 if base.score == "sigmoid" else 2.0)
-    grid = _frange(COARSE_STEP, top, COARSE_STEP)
+    grid = _min_levels(top)
     current = dict(fit.overrides)
 
     def correct(subset: list[Item], overrides: Mapping[str, float]) -> int:

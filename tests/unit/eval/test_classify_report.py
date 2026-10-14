@@ -184,14 +184,16 @@ def test_main_prints_the_report_and_passes_the_flags(monkeypatch, capsys, tmp_pa
     monkeypatch.setenv("DB_DSN", "postgresql://x/y")
     seen = {}
 
-    def fake(dsn, images, labels, cache, detail, slack, backend=None):
-        seen.update(cache=cache, detail=detail, slack=slack)
+    def fake(dsn, images, labels, cache, detail, slack, backend=None, hold=False):
+        seen.update(cache=cache, detail=detail, slack=slack, hold=hold)
         return ["line one", "line two"]
 
     monkeypatch.setattr(ev, "run_eval", fake)
-    assert ev.main(["--detail", "--slack-points", "2", "--cache-dir", str(tmp_path)]) == 0
+    args = ["--detail", "--slack-points", "2", "--hold-nsfw-threshold"]
+    args += ["--cache-dir", str(tmp_path)]
+    assert ev.main(args) == 0
     assert capsys.readouterr().out == "line one\nline two\n"
-    assert seen == {"cache": tmp_path, "detail": True, "slack": 2.0}
+    assert seen == {"cache": tmp_path, "detail": True, "slack": 2.0, "hold": True}
     ev.main(["--no-cache"])
     assert seen["cache"] is None
 
@@ -209,3 +211,67 @@ def test_a_sweep_error_is_reported_as_fixed_text(monkeypatch, capsys):
 
 def test_defaults_point_inside_the_repo():
     assert str(ev.REPO) in str(ev.IMAGES) and str(ev.REPO) in str(ev.LABELS)
+
+
+# --- CLS-003.1.5 / 1.6 ----------------------------------------------------------------------
+
+
+def test_the_bug_checks_print_ok_or_fail_and_nothing_else():
+    ok = ev.Checks(True, True, True)
+    bad = ev.Checks(False, True, True)
+    assert ev.render(calibration(), 1.0, None, ok)[1] == (
+        "bug checks: nsfw label ok, nsfw input ok, coverage ok"
+    )
+    assert ev.render(calibration(), 1.0, None, bad)[1] == (
+        "bug checks: nsfw label FAIL, nsfw input ok, coverage ok"
+    )
+    assert "bug checks" not in "\n".join(ev.render(calibration(), 1.0))
+
+
+def test_a_held_threshold_is_said_and_never_proposed():
+    text = "\n".join(ev.render(calibration(nsfw_held=True, fitted=_adult_fail()), 1.0))
+    assert "nsfw.threshold held at its config.yaml value, not swept" in text
+    assert "adult flagged and the rest safe: FAIL" in text
+    assert "nsfw.threshold: held, not proposed" in text
+    assert "nsfw.threshold: 0.52" not in text
+    assert "classify.format.default_min_score: 0.31" in text
+
+
+def _adult_fail() -> Metrics:
+    return Metrics(
+        format_correct=725,
+        format_total=ROWS,
+        topic_correct=600,
+        topic_total=700,
+        unsorted=31,
+        rows=ROWS,
+        adult_ok=False,
+    )
+
+
+def test_the_nsfw_block_is_console_only():
+    from classify_sweep import Item
+
+    items = [
+        Item({}, {}, 0.9, None, None, True, False, False),
+        Item({}, {}, 0.3, None, None, True, False, False),
+        Item({}, {}, 0.1, None, None, False, False, False),
+        Item({}, {}, 0.2, None, None, False, False, False),
+        Item({}, {}, 0.5, None, None, False, False, True),  # a safe row scored high
+    ]
+    block = "\n".join(ev.nsfw_block(items))
+    assert "NSFW (console only)" in block and "adult rows below it" in block
+    assert "safe rows above it" in block
+    public = "\n".join(ev.render(calibration(), 1.0, None, ev.Checks(True, True, True)))
+    assert "console only" not in public and "adult rows below" not in public
+    assert "best achievable" not in public
+    detailed = "\n".join(ev.render(calibration(), 1.0, ev.nsfw_block(items)))
+    assert "adult rows below it" in detailed
+
+
+def test_the_infeasible_report_shows_the_nsfw_block_only_with_detail():
+    zero = AxisFit(0.0, 0.0)
+    fitted = Metrics(rows=3, adult_ok=False)
+    result = Calibration(False, 0.5, zero, zero, fitted, fitted, None, None)
+    assert "console only" not in "\n".join(ev.render(result, 1.0))
+    assert "console only" in "\n".join(ev.render(result, 1.0, ["  NSFW (console only): x"]))

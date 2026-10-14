@@ -264,6 +264,37 @@ TOPIC_GATE = 85
 UNRECOGNIZED_LIMIT = 10
 
 
+@dataclass(frozen=True)
+class Checks:
+    """The CLS-003.1.5 bug checks: three yes/no facts, public (ok or FAIL only)."""
+
+    nsfw_label: bool  # the scorer reads the id2label entry named `nsfw`, not its complement
+    nsfw_input: bool  # the gate scores the sanitized working copy, decoded, first frame, RGB
+    coverage: bool  # every labelled row joined to exactly one ledger row
+
+
+@dataclass(frozen=True)
+class RunInfo:
+    checks: Checks = field(repr=False)
+    nsfw_threshold: float = field(repr=False)  # the config.yaml value: an input, not a change
+
+
+def nsfw_label_ok(model_id: str) -> bool:
+    """Whether the model's own config has exactly one `nsfw` label, and the scorer picks it."""
+    from transformers import AutoConfig
+
+    from classifier.models.nsfw import NSFW_LABEL, nsfw_class_index
+
+    ok = False
+    try:
+        labels = AutoConfig.from_pretrained(model_id, local_files_only=True).id2label
+        index = nsfw_class_index(labels)
+        ok = index is not None and str(labels[index]).strip().lower() == NSFW_LABEL
+    except Exception:  # fixed verdict only: a library message can carry a path
+        ok = False
+    return ok
+
+
 def load_config(source: Path, results: str, dsn: str):
     """config.yaml with the harness's roots and schema (as gate 2 does)."""
     import yaml
@@ -341,8 +372,9 @@ def collect(
     backend: VisionBackend,
     cache_folder: Path | None,
     nodes=None,
+    label_check=nsfw_label_ok,
 ):
-    """Ingest, sanitize and score `images`; return (rules, classify config, items).
+    """Ingest, sanitize and score `images`; return (rules, classify config, items, info).
 
     The schema and the results tree are removed when this returns (CLS-003.1: throwaway).
     """
@@ -384,7 +416,15 @@ def collect(
         work = Path(results) / ".work"
         copies = {d: find_copy(work, d) for d, _, _ in kept}
         scores = score_copies(backend, copies, prompts, base.score, cache_folder)
-    return rules, base, build_items(paired, scores)
+        # CLS-003.1.5: scoring read only `.work/<hash>.<ext>` (open_rgb decodes the first frame
+        # to RGB); match_labels raised unless every label joined and every image was labelled.
+        checks = Checks(
+            nsfw_label=label_check(backend.nsfw_id),
+            nsfw_input=all(path.parent == work for path in copies.values()),
+            coverage=True,
+        )
+        info = RunInfo(checks, float(config.nsfw.threshold))
+    return rules, base, build_items(paired, scores), info
 
 
 # --- The report -----------------------------------------------------------------------------
@@ -412,18 +452,34 @@ def _survive(value: bool | None) -> str:
     return "ok" if value else "dropped (held-out agreement fell)"
 
 
-def render(result, slack_points: float, detail: Sequence[str] | None = None) -> list[str]:
+def _check_line(checks: Checks) -> str:
+    return (
+        f"bug checks: nsfw label {_ok(checks.nsfw_label)}, "
+        f"nsfw input {_ok(checks.nsfw_input)}, coverage {_ok(checks.coverage)}"
+    )
+
+
+def render(
+    result,
+    slack_points: float,
+    detail: Sequence[str] | None = None,
+    checks: Checks | None = None,
+) -> list[str]:
     """The public form (TST-008.D6), plus `detail` lines when given (console only)."""
     import classify_sweep as sweep
 
     fit, held = result.fitted, result.held_out
     lines = [f"classify calibration (CLS-003.1; slack {slack_points:g} points)"]
+    if checks is not None:
+        lines.append(_check_line(checks))
     if not result.feasible:
         lines += [
             f"adult flagged and the rest safe: {_ok(fit.adult_ok)}",
             f"suggestive-negative safe: {_ok(fit.suggestive_ok)}",
             "no nsfw.threshold satisfies every labelled NSFW row: nothing else was swept",
         ]
+        if detail is not None:
+            lines += ["", *detail]
         return lines
     f_ok = fit.format_correct * 100 >= FORMAT_GATE * fit.format_total
     t_ok = fit.topic_correct * 100 >= TOPIC_GATE * fit.topic_total
@@ -448,12 +504,21 @@ def render(result, slack_points: float, detail: Sequence[str] | None = None) -> 
         "overrides vs the held-out check: "
         f"format {_survive(result.format_overrides_survive)}, "
         f"topic {_survive(result.topic_overrides_survive)}",
+        *(
+            ["nsfw.threshold held at its config.yaml value, not swept (--hold-nsfw-threshold)"]
+            if result.nsfw_held
+            else []
+        ),
         "proposed values (not applied; the human approves them first):",
         f"  classify.format.default_min_score: {result.format.default_min_score:g}",
         f"  classify.format.margin: {result.format.margin:g}",
         f"  classify.topic.default_min_score: {result.topic.default_min_score:g}",
         f"  classify.topic.margin: {result.topic.margin:g}",
-        f"  nsfw.threshold: {result.nsfw_threshold:g}",
+        *(
+            ["  nsfw.threshold: held, not proposed"]
+            if result.nsfw_held
+            else [f"  nsfw.threshold: {result.nsfw_threshold:g}"]
+        ),
     ]
     pairs = [("format", n, v) for n, v in result.format.overrides] + [
         ("topic", n, v) for n, v in result.topic.overrides
@@ -474,6 +539,18 @@ def render(result, slack_points: float, detail: Sequence[str] | None = None) -> 
             *detail,
         ]
     return lines
+
+
+def nsfw_block(items) -> list[str]:
+    """CLS-003.1.6: how far from separable the NSFW rows are. Box console only."""
+    import classify_sweep as sweep
+
+    d = sweep.nsfw_diagnostic(items)
+    return [
+        "  NSFW (console only): best achievable threshold "
+        f"{d.threshold:.4f}; adult rows below it {d.adult_below}; safe rows above it "
+        f"{d.safe_above}"
+    ]
 
 
 def detail_lines(items, rules, base, result) -> list[str]:
@@ -500,6 +577,7 @@ def run_eval(
     detail: bool,
     slack_points: float,
     backend: VisionBackend | None = None,
+    hold_nsfw: bool = False,
 ) -> list[str]:
     import classify_sweep as sweep
 
@@ -509,10 +587,20 @@ def run_eval(
     if backend is None:
         models = load_app_config().models
         backend = SiglipBackend(models.classifier, models.nsfw)
-    rules, base, items = collect(dsn, images, labels_path, backend, cache_folder)
-    result = sweep.calibrate(items, rules, base, slack_points=slack_points)
-    extra = detail_lines(items, rules, base, result) if detail and result.feasible else None
-    return render(result, slack_points, extra if detail else None)
+    rules, base, items, info = collect(dsn, images, labels_path, backend, cache_folder)
+    result = sweep.calibrate(
+        items,
+        rules,
+        base,
+        slack_points=slack_points,
+        hold_nsfw=info.nsfw_threshold if hold_nsfw else None,
+    )
+    extra = None
+    if detail:
+        extra = nsfw_block(items) + (
+            detail_lines(items, rules, base, result) if result.feasible else []
+        )
+    return render(result, slack_points, extra, info.checks)
 
 
 def main(argv: Sequence[str] | None = None, backend: VisionBackend | None = None) -> int:
@@ -527,6 +615,11 @@ def main(argv: Sequence[str] | None = None, backend: VisionBackend | None = None
     parser.add_argument("--no-cache", action="store_true")
     parser.add_argument("--slack-points", type=float, default=sweep.SLACK_POINTS)
     parser.add_argument("--detail", action="store_true", help="box console only; never paste")
+    parser.add_argument(
+        "--hold-nsfw-threshold",
+        action="store_true",
+        help="sweep format/topic with nsfw.threshold held at its config.yaml value",
+    )
     args = parser.parse_args(argv)
     dsn = os.environ.get("DB_DSN")
     if not dsn:
@@ -543,6 +636,7 @@ def main(argv: Sequence[str] | None = None, backend: VisionBackend | None = None
             args.detail,
             args.slack_points,
             backend,
+            args.hold_nsfw_threshold,
         )
     except (EvalError, sweep.SweepError) as exc:  # fixed text by construction
         print(f"classify_eval FAIL: {exc}", file=sys.stderr)
