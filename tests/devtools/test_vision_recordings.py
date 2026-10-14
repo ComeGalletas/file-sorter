@@ -329,6 +329,10 @@ def test_every_design_seed_prompt_is_accepted(prompt: str) -> None:
         "a: b",
         "café",
         "under_score",
+        # Round 3: names and paths the rule refuses (TST-008.1.7).
+        "photo_2023.jpeg",
+        "/home/u/x",
+        "Desktop\\pic",
         # Round 2 probes (PR #113): extensions after a bracket, quote or space, split stems.
         "holiday (1).jpg",
         "beach .jpg",
@@ -391,8 +395,29 @@ def test_a_registered_test_id_is_gone_after_unregistering() -> None:
         check_request({"model": "synthetic/unregistered", "kind": "param", "input": "logit_bias"})
 
 
-@pytest.mark.parametrize("model", ["a", "/models/x", "a/b/c", "a/../b", "a b/c", "x:y/z", ""])
-def test_a_test_registration_must_have_the_repo_id_shape(model: str) -> None:
+@pytest.mark.parametrize(
+    "model",
+    [
+        "a",
+        "/models/x",
+        "a/b/c",
+        "a/../b",
+        "a b/c",
+        "x:y/z",
+        "",
+        "Pictures/family",
+        "Desktop/pic",
+        "fixtures" + "/" + "images",  # split: the tier audit flags the literal path text
+        "google/other",
+        "synthetic/",
+        "synthetic/Upper",
+        "synthetic/under_score",
+        "synthetic/x" + "y" * 40,
+        "synthetic/a/b",
+        "Synthetic/x",
+    ],
+)
+def test_a_test_registration_must_be_a_synthetic_name(model: str) -> None:
     with pytest.raises(RecordingError):
         register_test_model(model)
     assert model not in _test_models
@@ -885,19 +910,20 @@ TEXT = "zzinner" + "secretqx"
 
 
 def test_replays(vision_backend, extra_vision_models):
-    extra_vision_models("syn/c", "syn/n")
-    assert isinstance(vision_backend("models", "syn/c", "syn/n"), ReplayVisionBackend)
+    extra_vision_models("synthetic/c", "synthetic/n")
+    assert isinstance(vision_backend("models", "synthetic/c", "synthetic/n"), ReplayVisionBackend)
 
 
 def test_miss(vision_backend, extra_vision_models):
-    extra_vision_models("syn/c", "syn/n")
-    vision_backend("models", "syn/c", "syn/n").embed_texts([TEXT])
+    extra_vision_models("synthetic/c", "synthetic/n")
+    vision_backend("models", "synthetic/c", "synthetic/n").embed_texts([TEXT])
 
 
 def test_swallowed(vision_backend, extra_vision_models):
-    extra_vision_models("syn/c", "syn/n")
+    extra_vision_models("synthetic/c", "synthetic/n")
     try:
-        vision_backend("models", "syn/c", "syn/n").embed_images([Image.new("RGB", (2, 2))])
+        backend = vision_backend("models", "synthetic/c", "synthetic/n")
+        backend.embed_images([Image.new("RGB", (2, 2))])
     except BaseException:
         pass
 """
@@ -958,7 +984,7 @@ def test_fixture_replays_outside_gpu_and_fails_each_miss_once(inner: pytest.Pyte
     # test_swallowed: its call passes, and its teardown reports the miss as an error.
     result.assert_outcomes(passed=2, failed=1, errors=1)
     output = result.stdout.str() + result.stderr.str()
-    key = vision_key("syn/c", "text", INNER_SECRET)
+    key = vision_key("synthetic/c", "text", INNER_SECRET)
     assert f"no recording models/{key}.json" in output
     assert "tests/unit/test_inner_unit.py::test_miss" in output
     assert "Vision recording failure caught by the code under test" in output

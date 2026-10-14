@@ -53,10 +53,10 @@ TEXT_RULE = (
     "apostrophes, no leading or trailing space, and no word with 3 or more digits"
 )
 # TST-008.D9: a model id must be one of the ids in config.yaml's models section that the vision
-# backend uses (models.classifier and models.nsfw). The shape regex is only a sanity check on a
-# test registration; it never decides what the lint accepts.
+# backend uses (models.classifier and models.nsfw). A test may register extra ids, but only with
+# the fixed owner "synthetic" (TST-008.1.7); no other shape is ever accepted.
 CONFIG_FILE = Path(__file__).resolve().parents[2] / "config.yaml"
-MODEL_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}/[A-Za-z0-9][A-Za-z0-9._-]{0,95}")
+TEST_MODEL_RE = re.compile(r"synthetic/[a-z0-9-]{1,40}")
 _test_models: set[str] = set()
 
 
@@ -193,8 +193,8 @@ def config_models() -> frozenset[str]:
 
 def register_test_model(model: str) -> None:
     """Allow one extra synthetic id for a test; pair with `unregister_test_model` (fixture)."""
-    if not isinstance(model, str) or not MODEL_ID_RE.fullmatch(model) or ".." in model:
-        raise _fixed("a test model id must have the shape owner/name")
+    if not isinstance(model, str) or not TEST_MODEL_RE.fullmatch(model):
+        raise _fixed("a test model id must be synthetic/ followed by 1 to 40 of a-z, 0-9 and -")
     _test_models.add(model)
 
 
