@@ -32,7 +32,12 @@ _BAD_SEGMENT = re.compile('[\x00-\x1f<>:"/\\\\|?*\ud800-\udfff]|[. ]$')
 _DEVICE = re.compile(r"(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$", re.IGNORECASE)
 
 
-def _check(segment: object) -> str:
+def validate_folder_segment(segment: object) -> str:
+    """Return `segment` if it is one safe folder name, else raise `LayoutError` (CLI-004.1).
+
+    The one check behind `result_folder`; the categories CLI calls it too, so a folder the CLI
+    accepts is always one `result_folder` accepts.
+    """
     if (
         not isinstance(segment, str)
         or segment in ("", ".", "..")
@@ -71,4 +76,4 @@ def result_folder(
         parts.append(format_folder)
         if animated and folders.animated_subfolder:
             parts.append(ANIMATED_FOLDER)
-    return PurePosixPath(*(_check(part) for part in parts))
+    return PurePosixPath(*(validate_folder_segment(part) for part in parts))
