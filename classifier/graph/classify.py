@@ -9,6 +9,7 @@ Logs carry short hashes, counts and fixed reasons only (DOC-007.D1). Errors are 
 raised outside the `except` block so `__cause__` and `__context__` stay None.
 """
 
+import io
 import logging
 import os
 import stat
@@ -99,13 +100,15 @@ def check_settings(config: Config) -> None:
         raise ClassifyConfigError(_SEPARATE_UNSUPPORTED)
 
 
-def open_working_copy(work: Path, source_hash: str, ext: str) -> Image.Image:
-    """Decode the first frame of one working copy as RGB (R-ING-6, CLS-002.D8).
+def open_working_frames(work: Path, source_hash: str, ext: str) -> Image.Image:
+    """Read one working copy once and return it undecoded past frame 0, seekable (CLS-004.4).
 
     The name comes from `working_copy_name`, the helper sanitize publishes through. The file
     is opened with `O_NOFOLLOW` (a link is refused) and `O_NONBLOCK` (a pipe can't hang the
-    run), and must be a regular file by `fstat` on the open descriptor. Any failure raises
-    `WorkingCopyUnreadable`, unchained.
+    run), and must be a regular file by `fstat` on the open descriptor. The bytes are read
+    into memory, so the image keeps every frame after the descriptor closes and the VLM client
+    can seek them itself. Frame 0 is decoded here, so a corrupt file fails now. Any failure
+    raises `WorkingCopyUnreadable`, unchained.
     """
     image: Image.Image | None = None
     try:
@@ -119,14 +122,37 @@ def open_working_copy(work: Path, source_hash: str, ext: str) -> Image.Image:
         with handle:
             if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
                 raise OSError("not a regular file")
-            with Image.open(handle) as opened:
-                opened.seek(0)  # R-ING-6: the first frame only
-                image = opened.convert("RGB")  # loads the pixels before the file closes
+            data = handle.read()
+        image = Image.open(io.BytesIO(data))
+        image.load()  # frame 0 decodes now
     except Exception:
         image = None
     if image is None:
         raise WorkingCopyUnreadable
     return image
+
+
+def first_frame_rgb(image: Image.Image) -> Image.Image:
+    """Frame 0 of an opened working copy as RGB, for SigLIP and Falconsai (R-ING-6, CLS-002.D8).
+
+    Derived from the same in-memory image the VLM client gets, so a file is read once. Leaves
+    `image` positioned on frame 0. Any failure raises `WorkingCopyUnreadable`, unchained.
+    """
+    frame: Image.Image | None = None
+    try:
+        image.seek(0)
+        frame = image.convert("RGB")
+    except Exception:
+        frame = None
+    if frame is None:
+        raise WorkingCopyUnreadable
+    return frame
+
+
+def open_working_copy(work: Path, source_hash: str, ext: str) -> Image.Image:
+    """The first frame of one working copy as RGB (R-ING-6, CLS-002.D8)."""
+    with open_working_frames(work, source_hash, ext) as image:
+        return first_frame_rgb(image)
 
 
 _ROWS = """

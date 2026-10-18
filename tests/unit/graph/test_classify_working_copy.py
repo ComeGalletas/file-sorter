@@ -14,7 +14,9 @@ from classifier.fileops.copy_move import make_working_copy, working_copy_name
 from classifier.graph.classify import (
     WORKING_COPY_UNREADABLE,
     WorkingCopyUnreadable,
+    first_frame_rgb,
     open_working_copy,
+    open_working_frames,
 )
 
 HASH = "ab" * 32
@@ -143,3 +145,46 @@ def test_opened_image_is_independent_of_the_file(tmp_path: Path) -> None:
     image = open_working_copy(tmp_path, HASH, "png")
     path.unlink()
     assert image.getpixel((0, 0)) == (200, 30, 40)  # pixels were loaded before the close
+
+
+# --- one read, every frame (CLS-004.4) ----------------------------------------------------
+
+
+def _gif(path: Path, colors: tuple[tuple[int, int, int], ...]) -> None:
+    frames = [Image.new("RGB", (4, 4), c) for c in colors]
+    frames[0].save(path, save_all=True, append_images=frames[1:])
+
+
+def test_frames_stay_seekable_after_the_file_is_gone(tmp_path: Path) -> None:
+    path = tmp_path / working_copy_name(HASH, "gif")
+    _gif(path, ((255, 0, 0), (0, 255, 0), (0, 0, 255)))
+    image = open_working_frames(tmp_path, HASH, "gif")
+    path.unlink()  # the bytes are in memory: the descriptor is long closed
+    assert image.n_frames == 3
+    image.seek(2)
+    assert image.convert("RGB").getpixel((0, 0))[2] > 200
+
+
+def test_first_frame_rgb_comes_from_the_same_image(tmp_path: Path) -> None:
+    _gif(tmp_path / working_copy_name(HASH, "gif"), ((255, 0, 0), (0, 0, 255)))
+    image = open_working_frames(tmp_path, HASH, "gif")
+    image.seek(1)  # wherever the VLM client left it
+    frame = first_frame_rgb(image)
+    assert frame.mode == "RGB"
+    red, _green, blue = frame.getpixel((0, 0))
+    assert red > blue
+    assert image.tell() == 0
+
+
+def test_frames_opener_keeps_the_refusals_and_the_fixed_reason(tmp_path: Path) -> None:
+    target = tmp_path / "elsewhere.png"
+    _png(target)
+    (tmp_path / working_copy_name(HASH, "png")).symlink_to(target)  # a link
+    (tmp_path / working_copy_name(OTHER, "png")).write_bytes(b"not an image")
+    for source_hash in (HASH, OTHER, "ef" * 32):  # link, garbage, missing
+        with pytest.raises(WorkingCopyUnreadable) as caught:
+            open_working_frames(tmp_path, source_hash, "png")
+        assert str(caught.value) == WORKING_COPY_UNREADABLE
+        assert caught.value.__cause__ is None
+        assert caught.value.__context__ is None
+        assert str(tmp_path) not in str(caught.value) + repr(caught.value)
