@@ -456,7 +456,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ### CLS-004.1 (ML desk)
 
 - **Status:** DONE. Branch `office/nibble-06ca`.
-- **Tests:** default tiers (`unit`, `db`, `integration`) 1600 passed; ruff check and format clean. Acceptance `tests/unit/models/test_vlm_prompts.py`: 15 tests. The `gpu` tier runs at pre-push, since `prompts/` changed.
+- **Tests:** default tiers (`unit`, `db`, `integration`) 1600 passed; ruff check and format clean. Acceptance `tests/unit/models/test_vlm_prompts.py`: 18 tests. The `gpu` tier runs at pre-push, since `prompts/` changed.
 - **No `eval/` run:** nothing calls the model until CLS-004.2; CLS-004.5 measures the prompts.
 - **Loader:** `num_ctx`, `user`, `user_alt` are optional, so `sanitize_entity_v1` loads unchanged. `num_predict` did not need to be in these files. `neutralize` moved to `prompts.py` and `text_llm` re-exports it.
 - **Privacy read:** done before the files landed. The committed prompts hold generic definitions per DESIGN §4.3 and CLS-001.D9, one line per category. A structural test checks them for paths, file names, URLs and undeclared slots.
