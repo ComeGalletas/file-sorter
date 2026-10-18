@@ -495,7 +495,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`. The real run waits for CLS-004.6 and the human's local addenda (CLS-004.D16).
 - [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (hash in Results)
-  - [ ] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
+  - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [ ] CLS-004.6.3 — `prompts/local/*.example.md` placeholders
 
 ## CLS-004 — Results
