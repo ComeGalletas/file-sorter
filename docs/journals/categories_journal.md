@@ -452,7 +452,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.2.1 — `OllamaClient.generate_json` takes `images` and `system`; `OllamaUnavailable(OllamaError)` on timeout and transport errors (this commit)
   - [x] CLS-004.2.2 — prompt front matter keys `retry_temperature`, `max_side`, `jpeg_quality` (loader + files) (this commit)
   - [x] CLS-004.2.3 — `vlm_classify.py`: image encoding, `classify_image`, pair validation, retry once, `VlmUnanswered` (this commit)
-  - [ ] CLS-004.2.4 — `rate_nsfw`, `pick_frames` and the `vlm_classify` entry point
+  - [x] CLS-004.2.4 — `rate_nsfw`, `pick_frames` and the `vlm_classify` entry point (this commit)
   - [ ] CLS-004.2.5 — gpu test, Results, self-rating, PR
   - [ ] CLS-004.2.6 — recordings of the classify and NSFW requests, after #153 (TST-010.1)
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`

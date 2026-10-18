@@ -24,6 +24,9 @@ from classifier.models.vlm_classify import (
     VlmUnanswered,
     classify_image,
     encode_frame,
+    pick_frames,
+    rate_nsfw,
+    vlm_classify,
 )
 
 HOST = "http://ollama"
@@ -319,3 +322,127 @@ def test_encode_frame_honours_the_given_limits() -> None:
     small = encode_frame(picture((500, 500)), max_side=100, quality=50)
     image = Image.open(io.BytesIO(base64.b64decode(small)))
     assert image.size == (100, 100)
+
+
+# --- the NSFW-level call -------------------------------------------------------------------
+
+RED, GREEN, BLUE = (250, 0, 0), (0, 250, 0), (0, 0, 250)
+
+
+@pytest.mark.parametrize(
+    ("n_frames", "expected"),
+    [
+        (0, [0]),
+        (1, [0]),
+        (2, [0, 1]),
+        (3, [0, 1, 2]),
+        (4, [0, 2, 3]),
+        (5, [0, 2, 4]),
+        (9, [0, 4, 8]),
+    ],
+)
+def test_pick_frames(n_frames: int, expected: list[int]) -> None:
+    assert pick_frames(n_frames) == expected
+
+
+@pytest.mark.parametrize("level", list(NsfwLevel.__members__))
+def test_the_level_maps_to_the_enum(level: str) -> None:
+    client, _ = scripted(level_reply(level))
+    assert rate_nsfw(client, MODEL, picture()) is NsfwLevel[level]
+
+
+def test_nsfw_request_shape() -> None:
+    prompt = load_prompt("nsfw_level_v1")
+    client, seen = scripted(level_reply())
+    rate_nsfw(client, MODEL, picture())
+    (body,) = seen
+    assert body["prompt"] == "Rate this image."
+    assert body["system"] == prompt.render()
+    assert body["format"] == prompt.output_schema
+    assert body["options"] == prompt.options and body["options"]["temperature"] == 0
+    assert body["options"]["num_ctx"] == 4096
+    assert len(body["images"]) == 1
+
+
+def test_an_animated_image_sends_first_middle_and_last_frames() -> None:
+    image = animated([RED, (250, 250, 0), GREEN, (0, 250, 250), BLUE])
+    client, seen = scripted(level_reply("nudity"))
+    assert rate_nsfw(client, MODEL, image) is NsfwLevel.nudity
+    (body,) = seen  # one call, not one per frame
+    assert body["prompt"] == load_prompt("nsfw_level_v1").render_user(alt=True)
+    colors = [img.getpixel((16, 16)) for img in sent_images(body)]
+    for got, want in zip(colors, [RED, GREEN, BLUE], strict=True):
+        assert all(abs(g - w) < 40 for g, w in zip(got, want, strict=True))
+    assert image.tell() == 0
+
+
+def test_two_frames_use_the_multi_frame_wording() -> None:
+    client, seen = scripted(level_reply())
+    rate_nsfw(client, MODEL, animated([RED, BLUE]))
+    assert len(seen[0]["images"]) == 2
+    assert seen[0]["prompt"] != "Rate this image."
+
+
+def test_a_bad_level_is_retried_then_unanswered() -> None:
+    client, seen = scripted(level_reply("EXPLICIT"), {"observation": "x"})
+    with pytest.raises(VlmUnanswered) as excinfo:
+        rate_nsfw(client, MODEL, picture())
+    assert len(seen) == 2
+    assert seen[1]["options"]["temperature"] == 0.3
+    assert excinfo.value.__cause__ is None and excinfo.value.__context__ is None
+
+
+def test_a_bad_level_then_a_good_one_is_accepted() -> None:
+    client, _ = scripted({"observation": "x", "nsfw_level": "unknown"}, level_reply("suggestive"))
+    assert rate_nsfw(client, MODEL, picture()) is NsfwLevel.suggestive
+
+
+def test_the_nsfw_call_unavailable_propagates() -> None:
+    client, seen = scripted(httpx.ReadTimeout)
+    with pytest.raises(OllamaUnavailable):
+        rate_nsfw(client, MODEL, picture())
+    assert len(seen) == 1
+
+
+# --- the entry point -----------------------------------------------------------------------
+
+
+def test_vlm_classify_returns_the_shared_type() -> None:
+    client, seen = scripted(classify_reply("Zhyndel", "Xandoz"), level_reply("explicit"))
+    answer = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
+    assert answer == VlmAnswer(format="Zhyndel", topic="Xandoz", level=NsfwLevel.explicit)
+    assert "format" in seen[0]["format"]["properties"]
+    assert "nsfw_level" in seen[1]["format"]["properties"]
+
+
+def test_the_name_reaches_the_classify_call_only() -> None:
+    client, seen = scripted(classify_reply(), level_reply())
+    vlm_classify(client, MODEL, picture(), hint=HINT, formats=FORMATS, topics=TOPICS)
+    classify_body, nsfw_body = seen
+    assert HINT in classify_body["prompt"]
+    for part in ("Qorvexhint", "Zhyndelname"):
+        assert part not in json.dumps(nsfw_body)
+    for part in FORMATS + TOPICS:  # the categories are not sent to the level call either
+        assert part not in json.dumps(nsfw_body)
+
+
+def test_each_call_retries_on_its_own() -> None:
+    client, seen = scripted(
+        classify_reply("Elsewhere"), classify_reply(), level_reply("bad"), level_reply("safe")
+    )
+    answer = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
+    assert answer.level is NsfwLevel.safe and len(seen) == 4
+
+
+def test_a_failed_classify_never_reaches_the_level_call() -> None:
+    client, seen = scripted(httpx.Response(500), httpx.Response(500))
+    with pytest.raises(VlmUnanswered):
+        vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
+    assert len(seen) == 2
+
+
+def test_the_animated_image_is_classified_on_frame_zero_and_rated_on_three() -> None:
+    image = animated([RED, GREEN, BLUE])
+    client, seen = scripted(classify_reply(), level_reply())
+    vlm_classify(client, MODEL, image, hint=None, formats=FORMATS, topics=TOPICS)
+    assert len(seen[0]["images"]) == 1 and len(seen[1]["images"]) == 3
