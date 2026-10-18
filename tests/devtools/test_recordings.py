@@ -5,16 +5,21 @@ Unit tier: every recording here is synthetic and lives under `tmp_path`, every "
 answer that must never appear in an error.
 """
 
+import base64
 import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from PIL import Image
 
 from classifier.models.ollama import OllamaClient, OllamaError
 from tests.recordings.replay import (
+    IMAGE_REFUSED,
+    MAX_IMAGE_BYTES,
     RecordingError,
     RecordingTransport,
     ReplayTransport,
@@ -23,7 +28,9 @@ from tests.recordings.replay import (
     load_recording,
     package_dir,
     recording_key,
+    stored_request,
 )
+from tests.recordings.vision import image_digest
 
 HOST = "http://localhost"
 TEST_ID = "tests/unit/pkg/test_x.py::test_y"
@@ -488,7 +495,13 @@ def test_lint_reports_each_bad_file_privately(tmp_path: Path) -> None:
         (tmp_path / rel).write_bytes(good.read_bytes())
     misnamed = write_recording(tmp_path, body(prompt="other"), answer())
     misnamed.rename(misnamed.with_name("0" * 64 + ".json"))
-    write_recording(tmp_path, body(prompt="with images", images=["aGVsbG8="]), answer())
+    with_images = tmp_path / "pkg" / f"{recording_key(body(prompt='with images'))}.json"
+    with_images.write_text(
+        json.dumps(
+            {"request": body(prompt="with images", images=["aGVsbG8="]), "response": answer()}
+        ),
+        encoding="utf-8",
+    )
 
     problems = lint_recordings(tmp_path)
     assert len(problems) == 6
@@ -617,3 +630,244 @@ def test_record_reports_a_failing_filesystem_call_by_key(
     assert len(recorder.failures) == 1
     monkeypatch.undo()
     assert not (tmp_path / "pkg" / f"{recording_key(body())}.json").exists()
+
+
+# --- image requests (TST-009.1, TST-009.D2) ---
+
+IMAGE_PROMPT = "Name the main colour, one word"
+
+
+def picture(shade: int = 40, size: tuple[int, int] = (8, 6)) -> Image.Image:
+    """A small synthetic benign picture: a gradient, so a flipped or shifted copy differs."""
+    image = Image.new("RGB", size)
+    for x in range(size[0]):
+        for y in range(size[1]):
+            image.putpixel((x, y), (shade, x * 20, y * 30))
+    return image
+
+
+def encoded(image: Image.Image, fmt: str = "PNG", **options: Any) -> str:
+    buffer = io.BytesIO()
+    image.save(buffer, format=fmt, **options)
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def image_body(*images: str, **extra: Any) -> dict[str, Any]:
+    return body(prompt=IMAGE_PROMPT, images=list(images or [encoded(picture())]), **extra)
+
+
+def post(transport: httpx.BaseTransport, request: dict[str, Any]) -> dict[str, Any]:
+    with httpx.Client(base_url=HOST, transport=transport) as client:
+        response = client.post("/api/generate", json=request)
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_image_key_covers_the_digests_in_order() -> None:
+    first, second = picture(40), picture(90)
+    canonical = canonical_request(image_body(encoded(first), encoded(second)))
+    assert canonical["image_digests"] == [image_digest(first), image_digest(second)]
+    assert "images" not in canonical
+    assert recording_key(image_body(encoded(first), encoded(second))) != recording_key(
+        image_body(encoded(second), encoded(first))
+    )
+
+
+def test_image_key_is_pinned() -> None:
+    image = picture()
+    canonical = {
+        "model": "synthetic-model:1b",
+        "prompt": IMAGE_PROMPT,
+        "format": SCHEMA,
+        "options": OPTIONS,
+        "image_digests": [image_digest(image)],
+    }
+    text = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    assert recording_key(image_body(encoded(image))) == hashlib.sha256(text.encode()).hexdigest()
+
+
+def test_the_same_pixels_in_another_encoding_give_the_same_key() -> None:
+    image = picture()
+    keys = {
+        recording_key(image_body(encoded(image))),
+        recording_key(image_body(encoded(image, compress_level=0))),
+        recording_key(image_body(encoded(image, "BMP"))),
+    }
+    assert len(keys) == 1
+
+
+def test_different_pixels_give_a_different_key() -> None:
+    assert recording_key(image_body(encoded(picture(40)))) != recording_key(
+        image_body(encoded(picture(41)))
+    )
+
+
+def test_text_only_keys_are_unchanged_by_the_image_support() -> None:
+    assert "image_digests" not in canonical_request(body())
+    assert recording_key(body()) == recording_key(body(images_never_sent=1))
+
+
+def test_a_live_body_and_its_stored_request_have_the_same_key() -> None:
+    live = image_body(encoded(picture()), keep_alive=0, stream=False)
+    stored = stored_request(live)
+    assert "images" not in stored and len(stored["image_digests"]) == 1
+    assert recording_key(stored) == recording_key(live)
+    assert stored_request(body()) == body()
+
+
+@pytest.mark.parametrize(
+    "images",
+    [
+        "not a list",
+        [],
+        [encoded(picture())] * 9,
+        [123],
+        [None],
+        [""],
+        [SECRET],
+        ["aGVsbG8="],  # base64 of text, not an image
+        [encoded(picture())[:-6]],  # cut off
+        [encoded(picture()) + "!"],
+        [encoded(Image.new("L", (5000, 5000)))],  # beyond the pixel limit
+        ["A" * (MAX_IMAGE_BYTES * 4 // 3 + 8)],  # beyond the byte limit
+    ],
+)
+def test_a_bad_image_is_refused_with_fixed_text(images: object) -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(body(prompt=IMAGE_PROMPT, images=images))
+    assert_private(caught.value)
+    assert "aGVsbG8" not in str(caught.value)
+    assert caught.value.__context__ is None
+
+
+def test_a_bad_image_error_is_fixed_text() -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(body(prompt=IMAGE_PROMPT, images=["aGVsbG8="]))
+    assert str(caught.value) == IMAGE_REFUSED
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        f"Say a word. {SECRET}",  # a full stop and a hyphen
+        "Look at x.y",
+        "call 5551234",
+        "a  b",
+        " leading",
+        "x" * 257,
+        "",
+        "café",
+        "lone \ud800",
+        123,
+    ],
+)
+def test_the_prompt_of_an_image_request_follows_the_text_rule(prompt: object) -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(body(prompt=prompt, images=[encoded(picture())]))
+    assert_private(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_a_text_only_prompt_keeps_its_old_freedom() -> None:
+    assert recording_key(body(prompt="Any text. With: marks (and 12345)."))
+
+
+def test_a_body_with_both_images_and_digests_is_refused() -> None:
+    with pytest.raises(RecordingError):
+        recording_key(image_body(image_digests=[image_digest(picture())]))
+
+
+def test_replay_serves_an_image_request(tmp_path: Path) -> None:
+    request = image_body(encoded(picture()))
+    write_recording(tmp_path, stored_request(request), answer("alpha"))
+    reply = post(ReplayTransport("pkg", TEST_ID, root=tmp_path), request)
+    assert reply["response"] == json.dumps({"word": "alpha"})
+
+
+def test_replay_misses_another_picture_by_key(tmp_path: Path) -> None:
+    write_recording(tmp_path, stored_request(image_body(encoded(picture(40)))), answer())
+    replay = ReplayTransport("pkg", TEST_ID, root=tmp_path)
+    other = image_body(encoded(picture(41)))
+    with pytest.raises(RecordingError, match="no recording pkg/") as caught:
+        post(replay, other)
+    assert recording_key(other) in str(caught.value) and TEST_ID in str(caught.value)
+    assert_private(caught.value)
+
+
+def test_record_writes_digests_and_never_pixels(tmp_path: Path) -> None:
+    image = picture()
+    request = image_body(encoded(image))
+    recorder = RecordingTransport("pkg", upstream(answer("alpha")), TEST_ID, root=tmp_path)
+    post(recorder, request)
+
+    (path,) = (tmp_path / "pkg").iterdir()
+    assert path.stem == recording_key(request)
+    text = path.read_text(encoding="utf-8")
+    stored = json.loads(text)
+    assert stored["request"]["image_digests"] == [image_digest(image)]
+    assert "images" not in stored["request"]
+    assert request["images"][0] not in text
+    assert load_recording(path)["request"] == stored["request"]
+    assert lint_recordings(tmp_path) == []
+    assert post(ReplayTransport("pkg", TEST_ID, root=tmp_path), request)["done"] is True
+
+
+@pytest.mark.parametrize(
+    "request_body",
+    [
+        body(prompt=f"Say a word. {SECRET}", images=[encoded(picture())]),
+        body(prompt=IMAGE_PROMPT, images=["aGVsbG8="]),
+    ],
+)
+def test_record_refuses_what_the_lint_would_before_forwarding(
+    request_body: dict[str, Any], tmp_path: Path
+) -> None:
+    forwarded: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: forwarded.append(r) or httpx.Response(200, json=answer()))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        post(recorder, request_body)
+    assert forwarded == [] and not (tmp_path / "pkg").exists()
+    assert_private(caught.value)
+    assert len(recorder.failures) == 1
+
+
+def stored_image_request(**extra: Any) -> dict[str, Any]:
+    return stored_request(image_body(encoded(picture()), **extra))
+
+
+def test_lint_accepts_an_image_recording(tmp_path: Path) -> None:
+    write_recording(tmp_path, stored_image_request(think=False), answer())
+    assert lint_recordings(tmp_path) == []
+
+
+def test_lint_refuses_each_bad_image_recording_privately(tmp_path: Path) -> None:
+    good = stored_image_request()
+    digest = good["image_digests"][0]
+    cases = {
+        "pixels": ("carries images", {**good, "images": [encoded(picture())]}),
+        "stray field": ("may not have", {**good, "note": SECRET}),
+        "empty digests": ("cannot be keyed", {**good, "image_digests": []}),
+        "short digest": ("cannot be keyed", {**good, "image_digests": [digest[:-1]]}),
+        "upper digest": ("cannot be keyed", {**good, "image_digests": [digest.upper()]}),
+        "text digest": ("cannot be keyed", {**good, "image_digests": [SECRET]}),
+        "too many": ("cannot be keyed", {**good, "image_digests": [digest] * 9}),
+        "bad prompt": ("cannot be keyed", {**good, "prompt": f"Say a word. {SECRET}"}),
+    }
+    for index, (_, request) in enumerate(cases.values()):
+        path = tmp_path / "pkg" / f"{index:064x}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"request": request, "response": answer()}), encoding="utf-8")
+    problems = lint_recordings(tmp_path)
+    assert len(problems) == len(cases)
+    for index, (expected, _) in enumerate(cases.values()):
+        assert sum(f"{index:064x}.json" in p and expected in p for p in problems) == 1
+    assert all(SECRET not in p and digest not in p for p in problems)
+
+
+def test_lint_refuses_a_digest_recording_under_the_wrong_name(tmp_path: Path) -> None:
+    path = write_recording(tmp_path, stored_image_request(), answer())
+    path.rename(path.with_name("0" * 64 + ".json"))
+    (problem,) = lint_recordings(tmp_path)
+    assert "not named by the key" in problem

@@ -535,6 +535,10 @@ references or host paths here. Use hashes.
 ## TST-009 — Tasks
 
 - [ ] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
+  - [x] TST-009.1.1 — key: `image_digests` from decoded `images` (limits as module constants), prompt rule, `stored_request`
+  - [x] TST-009.1.2 — replay and record: the record writes the digest form, refuses before forwarding what the lint would refuse
+  - [x] TST-009.1.3 — lint: `images` refused, `image_digests` shape, stray fields, the key
+  - [ ] TST-009.1.4 — README and Results
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
 
 ## TST-009 — Results
