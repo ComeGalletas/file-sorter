@@ -30,6 +30,15 @@ def test_undecided_values_stay_none() -> None:
     assert config.db.dsn is None
 
 
+def test_real_config_holds_the_vlm_values() -> None:
+    config = Config.model_validate(real_data())
+    assert config.nsfw.min_level is NsfwLevel.nudity  # the human's value (CLS-004.D3)
+    assert config.nsfw.cross_check.safe_above is None  # null = cross-check off
+    assert config.nsfw.cross_check.adult_below is None
+    assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
+    assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
+
+
 def test_deletion_defaults_to_disabled() -> None:
     data = real_data()
     del data["deletion"]
