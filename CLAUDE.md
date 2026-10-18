@@ -140,8 +140,10 @@ Every task starts with a printed triage block. The worker posts it at the top of
 Size: small | medium | large — why
 Tests: which tiers / paths (§3) — why
 Agents: solo | subagents (which, on what) — why
-Branch: <branch> in <worktree path>
+Branch: <branch> in <repo-relative worktree path, e.g. .agent-office/worktrees/<desk>>
 ```
+
+The worktree path is always **repo-relative, never absolute**: an absolute path is a host path, and host paths never go in an issue, PR or commit, nor in a comment's edit history (DOC-010.D1).
 
 | Size | What it is | Tests | Self-rating |
 | --- | --- | --- | --- |
