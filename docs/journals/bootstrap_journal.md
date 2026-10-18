@@ -883,3 +883,28 @@ and then (PR #43 review round 2):
 - **Status:** DONE.
 - **Triage:** small. One Compose setting, one Makefile list entry and a readiness wait, and a pinning test.
 - **Tests:** `tests/unit/runtime/test_ollama_service.py` (3) pins the setting and the pull, and that no adult VLM is pulled before Q-1. The pre-push default tiers passed. On the box: `make test-gpu` 48 passed; `make models` passed from a stopped, removed `ollama` container after RUN-016.2 (before it, the first pull failed).
+
+---
+
+## RUN-017 — Requirement (human-side, the M3 VLM re-plan, 2026-10-18; H8)
+
+- **Objective:** keep the human's private prompt addenda local, the way `sanitize.yaml` is, and give every worktree a copy.
+- **Details:**
+  - CLS-004.6 (ML) adds the loader. It appends an optional `prompts/local/<prompt>.md` to the committed prompt's system text, and the effective prompt version carries a short hash of it.
+  - This task is the human-side part. `.gitignore` ignores `prompts/local/*.md` except the committed `*.example.md` files, and `make init` copies the addenda from the main checkout into a worktree.
+- **Constraint:** human-side (RUN-002.D16), because it touches `.gitignore` and the `make init` helper.
+- **Why:** the privacy audit of CLS-004.1 (#146) refused prompt clauses that came from the human's spike. Publishing them can't be undone, so the human's session took the reversible path, with the lead agreeing: they stay on the box. The human decides later whether any of them may be public (H8).
+
+## RUN-017 — Confirmed reading
+
+- **RUN-017.D1:** **`prompts/local/*.md` is git-ignored, except `*.example.md`.** `scripts/init_local_files.sh` copies each addendum a linked worktree lacks from the main checkout. It never overwrites one that's there, and it skips the examples. Nothing in the default tiers reads an addendum. (the human's session, 2026-10-18, under the human's standing instruction for reversible choices; the lead agreed)
+
+## RUN-017 — Tasks
+
+- [x] RUN-017.1 — `.gitignore` and the `make init` copy, plus `tests/unit/runtime/test_prompt_addenda.py`
+
+## RUN-017 — Results
+
+- **Status:** DONE.
+- **Triage:** small. One ignore rule, one block in the init helper, and a test.
+- **Tests:** `tests/unit/runtime/test_prompt_addenda.py` (4). It checks that an addendum is ignored and an example isn't, using the repo's real `.gitignore` in a sandbox repo. It checks that the copy reaches a worktree and isn't committed, that a worktree's own edit is never overwritten, and that nothing is copied when there are no addenda. All of them use synthetic stand-ins, never a real addendum.
