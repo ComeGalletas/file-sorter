@@ -449,6 +449,13 @@ references or host paths here. Use hashes.
   - **Any node `error` fails the gate** (as TST-005.D7). So does labels-to-images coverage that isn't exact, reported as `ok` or `FAIL` with no count.
   - Rows are matched to labels by file name **in memory only**.
 - **TST-008.D5** — **Loader errors** (lead, 2026-10-12). A bad header, an unknown format or topic, topic = format, an `adult` other than `yes`/`no`, or an unknown tag stops the load. The fixed text names the line number and the column, never a value.
+- **TST-008.D7** — **`logit_scale` and `logit_bias` are recorded** (lead, 2026-10-14, the #96 plan). They form a fourth kind, `param`, keyed `{model, "param", "logit_scale"|"logit_bias"}`, with shape `[]`. That way, replayed scores are what the recorded model gives.
+- **TST-008.D8** — **The image digest is length-prefixed** (lead, 2026-10-14, the #113 review; it refines D3's wording). The digest hashes the mode, the `<QQ` size and the pixels, each length-prefixed, so a concatenation can't collide.
+- **TST-008.D9** — **What a vision recording may hold** (lead, 2026-10-14, after #113's privacy rounds):
+  - **Model ids:** only the ids in the committed `config.yaml`'s `models` section that the vision backend uses. A test-only id must be `synthetic/<[a-z0-9-]{1,40}>`.
+  - **Text inputs:** ASCII letters, digits, single spaces, `,` and `'` only, with at least one letter. No `.` at all, no word with 3 or more digits, and at most 256 characters.
+  - **Not provable:** the lint cannot prove a phrase is synthetic. The privacy review of each committed recording covers that.
+- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; reported confirmed by the human through their watch session, to be confirmed in the lead session). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
 
 ## TST-008 — Tasks
 
@@ -486,3 +493,29 @@ references or host paths here. Use hashes.
 - **Tests:** acceptance `tests/devtools/test_vision_recordings.py` (unit). `make test`: 1442 passed, 31 deselected. `make lint` clean. No `gpu` run: the recorder is tested on a fake backend, and the real recording belongs to MOD-002.D6.
 - **Privacy:** the text inputs and arrays are `repr=False` (planted-secret repr test); every error is fixed text, unchained; every filesystem call is wrapped; the lint refuses links, a model that is not `models.classifier` or `models.nsfw` in `config.yaml`, text outside ASCII letters, digits, single spaces, commas and apostrophes (no `.`, no leading or trailing space, at least one letter, no word of 3 or more digits), non-hash image inputs and extra keys (TST-008.1.5, TST-008.1.6, TST-008.1.7, TST-008.D9). A test may register an extra model id only as `synthetic/<name>` (`<name>` of 1 to 40 of `a-z`, `0-9`, `-`). Every probe string of both privacy rounds is a refused test case. This task commits no recordings.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gaps: the lint cannot prove a text input is synthetic, so it allows only the text characters above and the review checks the rest; the fixture's `upstream` wiring is exercised against a stub, not the ML desk's real gpu fixture.
+
+---
+
+## TST-009 — Requirement (human, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** test infrastructure for the VLM classifier (CLS-004), and gate 3 judged by NSFW level.
+- **Details:**
+  - **TST-009.1:** the Ollama recordings (TST-005.D5) gain image inputs. A request that carries images is keyed with each image's TST-008.D8 digest in place of its bytes, so the default tiers replay VLM calls exactly, from synthetic images only.
+  - **TST-009.2:** gate 3's NSFW lines are judged by level at `nsfw.min_level` (CLS-004.D3). The loader takes an optional `nsfw_level` column (TST-009.D1). Format's target moves to 85% (CLS-004.D12, DOC-009).
+- **Constraint:** TST-008.D1/D6's public form is unchanged. Recordings stay synthetic (TST-008.D9's text rule applies to prompt text in VLM recordings too).
+- **Implements:** §11 M3 gate (as amended by DOC-009), CLAUDE.md §3; CLS-004.
+
+## TST-009 — Confirmed reading
+
+- **TST-009.D1** — **An optional `nsfw_level` column in `fixtures/labels.csv`** (the lead's recommendation from the human's write-up, item 4; **to confirm**).
+  - When a row has a level, the gate expects `adult = (level >= min_level)`.
+  - When it has none, the row's `adult` column stands, as today.
+  - The level values are the human's. QA changes only the loader and `labels.example.csv`.
+- **TST-009.D2** — **The recording key for a VLM call** (lead). It is TST-005.D5's key, with `images` replaced by the list of TST-008.D8 digests in order. No pixel or base64 data is ever written to a recording.
+
+## TST-009 — Tasks
+
+- [ ] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
+- [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
+
+## TST-009 — Results

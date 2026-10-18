@@ -137,3 +137,22 @@ references or host paths here. Use hashes.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. The gap is that the downgrade test covers `0003` to `0002` only, not a populated `image_vec`; a downgrade drops the column, so I judged that low risk.
 - **Reviewer and Privacy auditor:** pending (lead).
+
+---
+
+## DB-004 — Requirement (human, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** store the NSFW level on the ledger (CLS-004.D3), so a later change of `nsfw.min_level` can re-file through `reclassify` without re-running the model.
+- **Details:** migration `0004` adds `files.nsfw_level text null`, checked against `safe | suggestive | nudity | explicit`. `files.nsfw_score` stays: it now holds the Falconsai cross-check score (CLS-004.D5).
+- **Implements:** DESIGN §5 (as amended by DOC-009); CLS-004.D3.
+
+## DB-004 — Confirmed reading
+
+- `0003` is the head on `main`, so `0004` follows it. CLS-003.2's `0004` is dropped, so the number is free.
+- **DB-004.D1** — **no backfill** (lead). In M3, rows stop at `classified` in dry runs, so there are no real rows to backfill. A row classified before `0004` reads null, and the next `reclassify` (M7) fills it.
+
+## DB-004 — Tasks
+
+- [ ] DB-004.1 — Migration `0004`: `files.nsfw_level` with its check constraint, the ORM field, and the one-head and downgrade tests · #129 · Pipeline · acceptance: `tests/db/ledger/test_nsfw_level_migration.py`
+
+## DB-004 — Results

@@ -178,3 +178,26 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 - **Status:** DONE.
 - **Triage:** small. Spec, rule and brief text; no code.
+
+---
+
+## DOC-009 — Requirement (human-side, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** bring DESIGN.md and CLAUDE.md in line with the human's VLM decisions (CLS-004), in a PR from the human's own session (RUN-002.D16).
+- **Details (the lead's list of what changes):**
+  - **R-CLS-1:** the NSFW branch is a VLM level, `>= nsfw.min_level`, on scale A (CLS-004.D2, D3). Falconsai becomes a cross-check (D5).
+  - **R-CLS-2:** scoring is one structured VLM call for format and topic (D1). SigLIP keeps `image_vec` only (D7).
+  - **R-CLS-3 and 3a:** `min_score` and `margin` don't apply to VLM answers. `unsorted` is the format enum's "none fits", and no topic is `none`.
+  - **§13:** C-5 (sigmoid/cosine scoring) is obsolete, and new lines are added for the VLM classifier, scale A and the single resident model.
+  - **The `config.yaml` sketch (§6):** CFG-003's keys.
+  - **§5:** `files.nsfw_level` (DB-004), and `nsfw_score`'s new meaning.
+  - **§11, M3 row:** format ≥ 85% (D12), with the NSFW criteria judged by level at `min_level`. CLS-001.D5 is amended to match.
+  - **§4.3:** the VLM-facing wording, including `memes` as "a joke" and game images under `videogames`.
+  - **The findings (3.7):** the thinking build ignoring `think: false`, and the one CUDA runner crash under memory pressure.
+  - **CLAUDE.md:** the "Current phase" line notes the M3 re-plan.
+  - **Optional, the lead's suggestion:** the triage block's `Branch:` line, in CLAUDE.md §2.1 and `.claude/roles/README.md`, says the repo-relative worktree path, never an absolute one. Desks have posted host paths four times (#89, #90, #96, #101).
+- **Implements:** CLS-004's rule changes.
+
+## DOC-009 — Tasks
+
+- [ ] DOC-009.1 — The human's PR with the DESIGN and CLAUDE.md edits above · human-side · acceptance: review only

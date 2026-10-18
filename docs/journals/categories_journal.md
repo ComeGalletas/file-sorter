@@ -286,7 +286,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - `classifier/cli/__init__.py` is a Typer app with `version` and `dry-run`.
 - **CLI-004.D1** — **`remove` deletes the category and its prompts** (lead, 2026-10-12). Files keep their text value (DB-003.D1), and folders and files are never touched (R-CLS-7). A category with children can't be removed.
-- **CLI-004.D3** — **The CLI validates structure with the axis defaults filled in** (worker, proposed, 2026-10-14). While `classify.*.default_min_score` is null (pre-calibration, CLS-003) and the seed's `min_score` is null, `validate_rules` rejects any change. The CLI therefore substitutes 0.0 for a null axis default when it checks names, parents and branches. The classify node's own pre-flight still refuses a null default at run time.
+- **CLI-004.D3** — **The CLI validates structure with the axis defaults filled in** (proposed by the worker, confirmed by the lead, 2026-10-14, PR #121). While `classify.*.default_min_score` is null (pre-calibration, CLS-003) and the seed's `min_score` is null, `validate_rules` rejects any change. The CLI therefore substitutes 0.0 for a null axis default when it checks names, parents and branches. The classify node's own pre-flight still refuses a null default at run time.
 - **CLI-004.D2** — **Edits apply to the next classify** (lead, 2026-10-12). Rows already classified aren't changed: `reclassify` is M7's (R-FOP-7).
 
 ## CLI-004 — Tasks
@@ -348,7 +348,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-003.1.6 — box-only NSFW block in `--detail`, and `--hold-nsfw-threshold` (sweep side 3eff259; the CLI side and the report in the CLS-003.1.5 commit)
   - [x] CLS-003.1.7 — `tests/gpu/models/test_siglip_reference.py`: SigLIP known-answer and reference-agreement cross-check; result `ok`, no fix needed (#101, lead's comment)
   - [x] CLS-003.1.8 — review fixes: the infeasible suggestive-negative verdict, a real `nsfw input` check, repr tests for `Checks`/`RunInfo`/`NsfwDiagnostic`, Results brought current (#120 review)
-- [ ] CLS-003.2 — Commit the calibrated values the human approved, in `config.yaml` and migration `0004` (CLS-003.D2) · #102 · acceptance: `tests/db/ledger/test_calibration_migration.py`
+- ~~CLS-003.2~~ dropped (lead, 2026-10-18): superseded by CLS-004. The human replaced SigLIP threshold calibration with a VLM classifier, so there are no SigLIP thresholds to commit. #102 is closed as not planned once the re-plan is approved. The settings the VLM path needs land in CFG-003.1.
 
 ## CLS-003 — Results
 
@@ -365,3 +365,98 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - NSFW held at its config value: format `FAIL` 31%, topic `FAIL` 39%, unrecognized `FAIL` 33%, held-out 30% / 38% / 35%, gap `ok`. The proposed values sit at the bottom of the grid, so they are not a proposal; no value is offered for approval.
 - **Completion status:** DONE_WITH_CONCERNS. The harness and the client are verified, but thresholds alone cannot reach gate 3 on the real labels. Proposed follow-up for the human (CLS-003.D1): whether the category prompts describe the labelled categories, and whether `classify.score: cosine` suits better than `sigmoid`; any prompt edit is its own approved `balance` task.
 - **Self-rating:** 8/10, proud: yes. Gaps: (1) the category sweep and overrides have not produced a gate-passing result on the real labels (a data and prompt question, not a harness bug as far as the checks can tell); (2) the grid cost on a much larger fixture set is untested.
+
+---
+
+## CLS-004 — Requirement (human, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** Classify each image's format, topic and NSFW level with a local VLM through Ollama instead of SigLIP zero-shot plus the Falconsai gate, so gate 3 can pass.
+- **Details:**
+  - **One classify call** per image returns the format and topic as structured JSON, constrained to the category lists, at temperature 0.
+  - **A second, dedicated call** rates the NSFW level on scale A (`safe`, `suggestive`, `nudity`, `explicit`). For an animated image it also sees the first, middle and last frames, and the highest level wins.
+  - **The adult branch** is `level >= nsfw.min_level`. The level is stored in `files.nsfw_level`, so a later change of `min_level` re-files through `reclassify` without re-running the model.
+  - **The classify call** also gets the sanitized file name as a hint ("the picture decides"). The NSFW call never gets it.
+  - **SigLIP** keeps producing `image_vec` (CLS-002.D10). It no longer classifies.
+  - **Falconsai** is a cross-check only: a strong disagreement sets `needs_review` and decides nothing.
+  - **Failed answers:** a failed or unparsable answer is retried once, then recorded as an error. It is never silently `safe` or `unsorted`.
+  - **One resident model:** `qwen3-vl:8b-instruct`, with every prompt pinned to `num_ctx: 4096`.
+- **Constraint:**
+  - P-2: models see the sanitized working copy and the sanitized name only.
+  - The prompts are hand-tuned values (CLAUDE.md §1.7): versioned files in `prompts/`, changed only with the human's approval.
+  - The rule and spec changes are DOC-009 (human-side): R-CLS-1, R-CLS-2, R-CLS-3/3a, C-5, the `config.yaml` sketch, `files.nsfw_level`, and gate 3's format target and NSFW wording.
+  - Real-fixture results publish only in the TST-008.D1 form.
+- **Implements:** R-CLS-0, R-CLS-1 to R-CLS-6 (as amended by DOC-009), R-MOD-1, P-2, P-7. It supersedes CLS-003.2, and replaces CLS-002.D1's SigLIP scoring path while keeping its single shared rules module.
+- **Source:** the human's VLM spike write-up (2026-10-17), decisions 3.1 to 3.7. Its results are not copied here beyond the public form.
+
+## CLS-004 — Confirmed reading
+
+- **On `main`:**
+  - the classify node, `classify_rules`, `SiglipBackend`, the NSFW client, the Ollama client with JSON-schema `format` and `think`, `prompts.py`;
+  - the eval harness (CLS-003.1);
+  - gate 3 (TST-008.3, PR #126).
+- **`models.vlm_safe` is already `qwen3-vl:8b`** (the thinking build). The spike found that the thinking build sometimes ignores `think: false` and returns empty answers. `models.vlm_nsfw` stays null (Q-1), because this NSFW-*rating* call is not M5's adult-captioning model.
+- **CLS-004.D1 — the classify call (human, 3.1):**
+  - format and topic come from one call, with the JSON schema's enums built from the `categories` table at run time;
+  - the format enum includes `unsorted` ("none of these fits");
+  - the topic enum includes `none`;
+  - temperature 0.
+
+  The enum entries are the lead's reading. CLS-002.D2's branch eligibility and D3's twin removal still apply after the answer, while `min_score` and `margin` do not.
+- **CLS-004.D2 — the NSFW call (human, 3.2):**
+  - a separate call, on the scale-A definitions;
+  - text in the image never raises the level;
+  - the highest level across the image, or across the first, middle and last frames of an animated one;
+  - it never sees the file name.
+- **CLS-004.D3 — `nsfw.min_level`** (`suggestive | nudity | explicit`): the human's value is `nudity` (human, 3.2). Adult means `level >= min_level`. It replaces R-CLS-1's Falconsai threshold and CLS-001.D12's explicit-only definition.
+- **CLS-004.D4 — a failed answer** (human, 3.1; the lead's reading of "error, sent to review", **to confirm**):
+  - it is retried once;
+  - then the row goes to `error` with a registered fixed reason, `classify_vlm_unanswered`, through `mark_error` (SAN-003.D2);
+  - the next run retries it from ingest, and M4's review lists `error` rows.
+- **CLS-004.D5 — the Falconsai cross-check** (human, 3.2; **values open**). It sets `needs_review` with `review_reason = nsfw_disagreement`, and never changes the branch, when either of these holds:
+  - the VLM level is `safe` and the Falconsai score is at or above `nsfw.cross_check.safe_above`;
+  - the level is at or above `min_level` and the score is at or below `nsfw.cross_check.adult_below`.
+
+  Both values are hand-tuned (CLAUDE.md §1.7).
+- **CLS-004.D6 — the file-name hint** (human, 3.4):
+  - the classify call gets `files.original_sanitized`, fenced and neutralized like the entity prompt's input (MOD-001.D5);
+  - a missing or failed name gives no hint (fail closed);
+  - the raw name and `source_path` never reach a model.
+- **CLS-004.D7 — SigLIP's role** (human, 3.1). It embeds `image_vec` only. `classify.score`, the per-axis `default_min_score` and `margin`, and `category.min_score` no longer decide anything.
+  - DOC-009 decides whether to drop or keep these keys.
+  - Until then, the node ignores them and `validate_rules` stops requiring a non-null default on the VLM path.
+- **CLS-004.D8 — one model** (human, 3.5; **key to confirm**). The classify and NSFW calls use `models.vlm_safe`, which becomes `qwen3-vl:8b-instruct` (the lead's recommendation: one key, which M5's safe captions use too). `models.text_llm` follows only once gate 2 passes on it (SAN-004).
+- **CLS-004.D9 — `num_ctx: 4096`** in every prompt file's front matter (human, 3.5). Ollama reloads the model when the context changes between calls.
+- **CLS-004.D10 — the prompts** are versioned files: `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md`.
+  - The category descriptions follow DESIGN §4.3 and CLS-001.D9, plus 3.3's wording: `memes` means "a joke" and wins over style; a game image takes the `videogames` topic, even when anime-styled.
+  - **Source open:** the spike's prompt texts are the starting point. The desk commits them only after a privacy read, because a spike prompt may name things seen in the human's images.
+- **CLS-004.D11 — the M3 checkpoint before G1** (lead). CLS-004.5's real run on the box, through the eval harness, must reproduce the spike's passing result in the repo before `make gate-3`. It publishes only in the TST-008.D1 form.
+- **CLS-004.D12 — the gate 3 format target is 85%** (human, 3.6). DOC-009 changes DESIGN §11 and CLS-001.D5. Topic stays at 85%, and the other criteria are unchanged.
+
+## CLS-004 — Plan
+
+1. **Human-side:** DOC-009 (DESIGN) and RUN-016 (the `ollama` service: one loaded model; `make models` pulls `qwen3-vl:8b-instruct`).
+2. **In parallel:** TST-009.1 (QA: an image-aware Ollama recording key), CLS-004.1 (ML: prompts), DB-004.1 (Pipeline: `files.nsfw_level`), CFG-003.1 (Pipeline: the new keys, with the values the human sets), SAN-004.1 (ML: the sanitizer on the instruct model, gated on gate 2).
+3. **Then:** CLS-004.2 (ML: the VLM client), CLS-004.3 (ML: rules on the VLM path), TST-009.2 (QA: gate 3 by level).
+4. **Then:** CLS-004.4 (Pipeline: the node), CLS-004.5 (ML: the eval harness on the VLM path and the real run). The human sees CLS-004.5's public-form result, and then comes G1.
+
+## CLS-004 — Tasks
+
+- [ ] CLS-004.1 — `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md` (CLS-004.D1, D2, D9, D10), loaded through `prompts.py` with the category lists filled in at run time · #128 · ML · acceptance: `tests/unit/models/test_vlm_prompts.py`
+- [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
+- [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
+- [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
+- [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
+
+## CLS-004 — Results
+
+---
+
+## CLS-005 — Requirement (human, "include", 2026-10-18; parked until its milestone)
+
+- **Objective:** learn from the human's corrections, so later runs are faster and more precise.
+- **Details:**
+  - When the human corrects a format, topic or NSFW level (M4's review UI or the CLI), the image's `image_vec` is stored with the corrected answer as an exemplar.
+  - At classify time, the nearest exemplars come from pgvector. A near-duplicate takes the human's answer and skips the VLM. A similar image passes the exemplars' answers to the VLM as hints.
+  - `fixtures/labels.csv` seeds the first exemplars.
+- **Constraint:** gate measures never score an image against its own exemplar. Checking stays held-out, as the calibration harness does.
+- **Lead's proposal for where it lands (to confirm):** M6, beside the reference store (`classifier/rag/`, pgvector). M4 produces the corrections, and M4's plan stores them as rows ready for M6. It is not in M3.
