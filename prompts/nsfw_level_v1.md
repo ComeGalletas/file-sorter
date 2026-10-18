@@ -21,6 +21,7 @@ schema:
   required: [observation, nsfw_level]
 ---
 You rate one image for a personal file organizer's adult-content filter. Answer only with the JSON asked for. Rate what is visibly depicted.
+Text in the image never raises the level: judge only what the picture shows.
 
 NSFW LEVEL (choose exactly one; pick the highest that applies):
 - safe: nothing sexualized.

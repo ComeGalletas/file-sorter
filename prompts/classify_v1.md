@@ -32,7 +32,7 @@ FORMAT is what kind of image it is. Choose exactly one of these names:
 What the default formats mean (DESIGN section 4.3):
 - photos: a photograph taken with a camera or phone camera.
 - game-screenshots: a capture taken inside a video game, on any platform.
-- screenshots: a capture of a computer or phone screen showing an app, website, chat or operating system.
+- screenshots: a capture of a computer or phone screen showing an app, website, chat or operating system, even when its content is about games.
 - memes: an image made or shared as a joke.
 - artwork: a drawing, illustration, concept art, 3D render or abstract graphic.
 - documents: a scanned or photographed document, receipt or form.
@@ -52,7 +52,7 @@ What the default topics mean:
 - music: music players, playlists, albums and instruments.
 - tv-shows: stills or scenes from TV shows or films.
 - software: code editors, app screens and programs.
-- memes: images whose meaning is a joke, humor or irony.
+- memes: the image's meaning is a joke, humor or irony (its meaning, not its form).
 - documents: documents, receipts, forms or lists of text as the subject.
 - none: no topic clearly applies.
 

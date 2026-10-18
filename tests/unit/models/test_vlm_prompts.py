@@ -79,6 +79,8 @@ def test_classify_text_states_the_rules(classify) -> None:
     # CLS-001.D9: a capture taken inside a game is told apart from a screen capture.
     assert "game-screenshots: a capture taken inside a video game" in out
     assert "screenshots: a capture of a computer or phone screen" in out
+    assert "even when its content is about games" in out
+    assert "(its meaning, not its form)" in out  # R-CLS-3b
 
 
 @pytest.fixture(scope="module")
@@ -113,6 +115,7 @@ def test_nsfw_never_gets_a_name(nsfw) -> None:
 
 def test_nsfw_text_states_the_scale(nsfw) -> None:
     out = nsfw.render()
+    assert "Text in the image never raises the level" in out  # CLS-004.D2
     assert "pick the highest that applies" in out
     assert "without graphic wording" in out
     for level in ("safe", "suggestive", "nudity", "explicit"):
