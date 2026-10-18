@@ -50,6 +50,8 @@ logs: ## Follow logs (S=<service> to pick one)
 
 models: ## Pull the Ollama tags and HF weights into volumes (~11 GB)
 	$(COMPOSE) up -d ollama
+	@# RUN-016.D2: wait for the server; a recreated container isn't listening yet (60 s cap).
+	@for i in $$(seq 60); do $(COMPOSE) exec -T ollama ollama list >/dev/null 2>&1 && break; sleep 1; done
 	for m in $(OLLAMA_MODELS); do $(COMPOSE) exec -T ollama ollama pull "$$m"; done
 	$(COMPOSE) --profile tools run --rm fetch
 
