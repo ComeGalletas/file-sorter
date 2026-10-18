@@ -77,3 +77,42 @@ def test_classify_text_states_the_rules(classify) -> None:
     # CLS-001.D9: a capture taken inside a game is told apart from a screen capture.
     assert "game-screenshots: a capture taken inside a video game" in out
     assert "screenshots: a capture of a computer or phone screen" in out
+
+
+@pytest.fixture(scope="module")
+def nsfw():
+    return load_prompt("nsfw_level_v1")
+
+
+def test_nsfw_front_matter(nsfw) -> None:
+    assert nsfw.version == "nsfw_level_v1"
+    assert nsfw.temperature == 0
+    assert nsfw.num_ctx == 4096  # CLS-004.D9
+    assert nsfw.raw is False and nsfw.wrap is None
+    assert nsfw.user == "Rate this image."
+
+
+def test_nsfw_levels_are_scale_a_in_order(nsfw) -> None:
+    level = nsfw.output_schema["properties"]["nsfw_level"]
+    assert level["enum"] == ["safe", "suggestive", "nudity", "explicit"]
+    assert list(nsfw.output_schema["properties"]) == ["observation", "nsfw_level"]
+    assert nsfw.output_schema["required"] == ["observation", "nsfw_level"]
+
+
+def test_nsfw_never_gets_a_name(nsfw) -> None:
+    # CLS-004.D2: no slot anywhere, so no file name can reach this call.
+    assert nsfw.slots == frozenset()
+    assert nsfw.render() == nsfw.template
+    frames = nsfw.render_user(alt=True)
+    assert "first, middle and last frames" in frames
+    with pytest.raises(PromptError, match="slots"):
+        nsfw.render_user(alt=True, name="x")
+
+
+def test_nsfw_text_never_raises_the_level(nsfw) -> None:
+    out = nsfw.render()
+    assert "Text alone never raises the level" in out
+    assert "pick the highest that applies" in out
+    assert "without graphic wording" in out
+    for level in ("safe", "suggestive", "nudity", "explicit"):
+        assert f"\n- {level}: " in out
