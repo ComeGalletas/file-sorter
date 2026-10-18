@@ -221,3 +221,37 @@ def test_schema_with_enums_rejects_bad_input(tmp_path: Path, enums: dict[str, li
 def test_repr_hides_user_messages(tmp_path: Path) -> None:
     p = pair(tmp_path, PAIR.replace("Rate this.", "Zzyqx marker"))
     assert "Zzyqx" not in repr(p) and "Zzyqx" not in str(p)
+
+
+# CLS-004.2.2: retry_temperature, max_side and jpeg_quality.
+def test_image_keys_default_to_none(tmp_path: Path) -> None:
+    p = pair(tmp_path)
+    assert (p.retry_temperature, p.max_side, p.jpeg_quality) == (None, None, None)
+    assert p.retry_options == p.options
+
+
+def test_retry_options_change_only_the_temperature(tmp_path: Path) -> None:
+    p = pair(tmp_path, PAIR.replace("num_ctx: 4096", "num_ctx: 4096\nretry_temperature: 0.3"))
+    assert p.retry_options == {"temperature": 0.3, "seed": 7, "num_ctx": 4096}
+    assert p.options["temperature"] == 0.0  # the property returns a copy
+
+
+def test_image_keys_load(tmp_path: Path) -> None:
+    extra = "num_ctx: 4096\nmax_side: 1024\njpeg_quality: 90"
+    p = pair(tmp_path, PAIR.replace("num_ctx: 4096", extra))
+    assert (p.max_side, p.jpeg_quality) == (1024, 90)
+
+
+@pytest.mark.parametrize(
+    "line", ["retry_temperature: -0.1", "max_side: 0", "jpeg_quality: 0", "jpeg_quality: 100"]
+)
+def test_image_keys_are_bounded(tmp_path: Path, line: str) -> None:
+    with pytest.raises(PromptError, match="invalid"):
+        pair(tmp_path, PAIR.replace("num_ctx: 4096", f"num_ctx: 4096\n{line}"))
+
+
+@pytest.mark.parametrize("name", ["classify_v1", "nsfw_level_v1"])
+def test_vlm_prompts_set_the_image_keys(name: str) -> None:
+    p = load_prompt(name)
+    assert (p.retry_temperature, p.max_side, p.jpeg_quality) == (0.3, 1024, 90)
+    assert p.retry_options["temperature"] == 0.3

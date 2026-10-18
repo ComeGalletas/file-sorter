@@ -17,6 +17,7 @@ from classifier.models.ollama import (
     HOST_ENV,
     OllamaClient,
     OllamaError,
+    OllamaUnavailable,
 )
 
 HOST = "http://ollama"
@@ -73,10 +74,44 @@ def test_request_shape() -> None:
     }
 
 
-def test_request_is_text_only() -> None:
+def test_request_is_text_only_by_default() -> None:
     seen, handler = capture()
     generate(client(handler))
+    body = json.loads(seen[0].content)
+    assert "images" not in body and "system" not in body
+
+
+def test_images_and_system_are_sent_when_given() -> None:
+    seen, handler = capture()
+    generate(client(handler), images=["aGk="], system="synthetic system text")
+    body = json.loads(seen[0].content)
+    assert body["images"] == ["aGk="]
+    assert body["system"] == "synthetic system text"
+
+
+def test_empty_images_are_not_sent() -> None:
+    seen, handler = capture()
+    generate(client(handler), images=[])
     assert "images" not in json.loads(seen[0].content)
+
+
+@pytest.mark.parametrize("exc_type", [httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout])
+def test_unreachable_or_timeout_is_unavailable(exc_type: type[httpx.TransportError]) -> None:
+    with pytest.raises(OllamaUnavailable):
+        generate(client(raising(exc_type)))
+
+
+def test_unavailable_is_still_an_ollama_error() -> None:
+    assert issubclass(OllamaUnavailable, OllamaError)
+
+
+def test_a_bad_status_or_body_is_not_unavailable() -> None:
+    with pytest.raises(OllamaError) as status:
+        generate(client(lambda request: httpx.Response(500)))
+    with pytest.raises(OllamaError) as body:
+        generate(client(lambda request: httpx.Response(200, json={"response": "not json"})))
+    assert not isinstance(status.value, OllamaUnavailable)
+    assert not isinstance(body.value, OllamaUnavailable)
 
 
 @pytest.mark.parametrize("think", [False, True])

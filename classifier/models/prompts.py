@@ -3,7 +3,8 @@
 A prompt file is Markdown with YAML front matter between two `---` lines. The front matter
 carries everything a call needs besides the model tag: `version` (equal to the file name, and
 what a stage records on the ledger), `temperature`, `seed`, `keep_alive`, optional
-`num_predict`, `think`, `raw` and `wrap` (MOD-001.D5), `num_ctx` (CLS-004.D9), the user
+`num_predict`, `think`, `raw` and `wrap` (MOD-001.D5), `num_ctx` (CLS-004.D9), `retry_temperature`,
+`max_side` and `jpeg_quality` (CLS-004.2.2), the user
 message `user` and its variant `user_alt` (CLS-004.1), and the output JSON `schema`. The body
 is the template (the system prompt when `user` is set); `{name}` marks a slot.
 
@@ -60,6 +61,11 @@ class Prompt(BaseModel):
     wrap: str | None = None
     # CLS-004.D9: pinned per prompt, because Ollama reloads the model when the context changes.
     num_ctx: int | None = Field(default=None, gt=0)
+    # CLS-004.2.2: a retried call differs from the first (temperature 0 and a fixed seed would
+    # repeat the answer); the longest side and JPEG quality of an image sent with the prompt.
+    retry_temperature: float | None = Field(default=None, ge=0)
+    max_side: int | None = Field(default=None, gt=0)
+    jpeg_quality: int | None = Field(default=None, ge=1, le=95)
     # CLS-004.1: the user message and its variant (the hinted or multi-frame wording). The
     # variant may hold slots; `render_user` neutralizes their values.
     user: str | None = Field(default=None, repr=False)
@@ -85,6 +91,14 @@ class Prompt(BaseModel):
             options["num_predict"] = self.num_predict
         if self.num_ctx is not None:
             options["num_ctx"] = self.num_ctx
+        return options
+
+    @property
+    def retry_options(self) -> dict[str, Any]:
+        """`options` for the one retry of a failed answer, with `retry_temperature` if set."""
+        options = self.options
+        if self.retry_temperature is not None:
+            options["temperature"] = self.retry_temperature
         return options
 
     @property
