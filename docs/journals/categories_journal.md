@@ -469,7 +469,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
   - [x] CLS-004.4.1 — `classify_vlm_unanswered` registered for `mark_error` (this commit). The `NodeContext` VLM-client seam waits for #132's type
   - [ ] CLS-004.4.2 — The node on the VLM path (hint, both calls, `decide`, `nsfw_level`, `image_vec`)
-    - [x] CLS-004.4.2.1 — `open_working_frames` and `first_frame_rgb`: one read per working copy, every frame kept (lead-approved refinement; this commit)
+    - [x] CLS-004.4.2.1 — `open_working_frames` and `first_frame_rgb`: one read per working copy, every frame kept (lead-approved refinement) · `ae40fd8`
+    - [x] CLS-004.4.2.2 — The node on the VLM path: hint from `original_sanitized`, `vlm_classify` per image, `decide`, `nsfw_level` written, `image_vec` and the Falconsai score kept, no SigLIP scoring, `format_scores`/`topic_scores` null (this commit; db tests rewritten as CLS-004.4.5.1)
   - [ ] CLS-004.4.3 — The `mark_error` path and the cross-check into `needs_review`
   - [ ] CLS-004.4.4 — Re-point `cli/categories.py`; drop the SigLIP-scoring code the node no longer uses
     - [x] CLS-004.4.4.1 — `cli/categories.py` validates with `validate_rules(rules, None)`, `_structural` removed (this commit)
