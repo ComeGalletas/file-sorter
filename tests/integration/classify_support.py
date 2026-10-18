@@ -7,9 +7,13 @@ synthetic: flat and generated pictures built in code, hashes of made-up labels, 
 §4.3 prompts the migration seeds. No fixture, no name, no adult content.
 """
 
+import base64
 import hashlib
+import io
+import json
 from pathlib import Path
 
+import httpx
 import psycopg
 import yaml
 from PIL import Image
@@ -80,3 +84,33 @@ def run_classify(dsn: str, tmp_path: Path, vision: object) -> tuple[ClassifyResu
         result = classify(conn, ctx)
         conn.commit()
     return result, config
+
+
+class ScriptedVlm:
+    """A scripted Ollama for the classify node's two calls (CLS-004.4); no real model.
+
+    The level call rates a picture with a red first pixel above 128 as `nudity`, else `safe`
+    (the same made-up gate the fake vision uses). The classify call answers `unsorted` when
+    `unsorted` is set, else the first format and topic the request offers.
+    """
+
+    def __init__(self) -> None:
+        self.unsorted = False
+        self.requests = 0
+
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self._handle)
+
+    def _handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests += 1
+        body = json.loads(request.content)
+        picture = Image.open(io.BytesIO(base64.b64decode(body["images"][0]))).convert("RGB")
+        properties = body["format"]["properties"]
+        if "nsfw_level" in properties:
+            level = "nudity" if picture.getpixel((0, 0))[0] > 128 else "safe"
+            answer = {"observation": "synthetic cues", "nsfw_level": level}
+        else:
+            fmt = "unsorted" if self.unsorted else properties["format"]["enum"][0]
+            topic = "none" if self.unsorted else properties["topic"]["enum"][0]
+            answer = {"observation": "synthetic cues", "format": fmt, "topic": topic}
+        return httpx.Response(200, json={"response": json.dumps(answer)})

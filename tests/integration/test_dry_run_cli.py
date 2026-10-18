@@ -24,6 +24,7 @@ from classifier.cli.dry_run_report import COLUMNS, REPORT_FOLDER_FAILED
 from classifier.graph import classify as classify_node
 from classifier.graph import sanitize as node
 from classifier.graph.classify import IMAGE_VEC_DIM
+from tests.integration.classify_support import ScriptedVlm
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
@@ -63,17 +64,25 @@ class FakeVision:
         return np.array([image.getpixel((0, 0))[0] / 255 for image in images], dtype=np.float32)
 
 
+@pytest.fixture
+def vlm() -> ScriptedVlm:
+    return ScriptedVlm()
+
+
 @pytest.fixture(autouse=True)
-def _fake_vision(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The dry run runs every M3 node; the classify node gets the fake through its seam."""
+def _fake_models(monkeypatch: pytest.MonkeyPatch, vlm: ScriptedVlm) -> None:
+    """The dry run runs every M3 node; classify gets the fakes through its two seams."""
     real = cli.run
-    monkeypatch.setattr(cli, "run", lambda config, **kw: real(config, vision=FakeVision(), **kw))
+    monkeypatch.setattr(
+        cli,
+        "run",
+        lambda config, **kw: real(
+            config, vision=FakeVision(), ollama_transport=vlm.transport(), **kw
+        ),
+    )
 
 
-def _setup(
-    tmp_path: Path, *, results: str = "results", min_score: float | None = -1.0
-) -> tuple[Path, Path, Path]:
-    """`min_score` -1 lets every file win a format and a topic; 2 lets none (cosine ≤ 1)."""
+def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Path]:
     source = tmp_path / "source"
     source.mkdir()
     first = source / "alpha.png"
@@ -88,9 +97,6 @@ def _setup(
     rules = tmp_path / "rules.yaml"  # synthetic: never the local sanitize.yaml (SAN-001.4)
     rules.write_text(yaml.safe_dump(RULES), encoding="utf-8")
     data["sanitizer"]["rules_file"] = str(rules)
-    data["classify"]["score"] = "cosine"  # the fake's scale and bias are 1 and 0
-    for axis in ("format", "topic"):  # test-only values; CLS-003 owns the real ones
-        data["classify"][axis] = {"default_min_score": min_score, "margin": 0.0}
     config = tmp_path / "config.yaml"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     return source, results_root, config
@@ -402,9 +408,12 @@ def _report(results: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
-def test_console_lines_are_pinned_on_a_known_run(tmp_path: Path, schema_dsn: str) -> None:
-    """When no category clears its bar every file is unsorted with no topic; bravo is adult."""
-    _, _, config = _setup(tmp_path, min_score=2.0)
+def test_console_lines_are_pinned_on_a_known_run(
+    tmp_path: Path, schema_dsn: str, vlm: ScriptedVlm
+) -> None:
+    """When the VLM names no format every file is unsorted with no topic; bravo is adult."""
+    vlm.unsorted = True
+    _, _, config = _setup(tmp_path)
     result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code == 0, result.output
     lines = result.stdout.splitlines()
@@ -414,10 +423,11 @@ def test_console_lines_are_pinned_on_a_known_run(tmp_path: Path, schema_dsn: str
     assert result.stderr == ""
 
 
-def test_csv_holds_the_classify_columns_and_folders_when_nothing_clears(
-    tmp_path: Path, schema_dsn: str
+def test_csv_holds_the_classify_columns_and_folders_when_nothing_fits(
+    tmp_path: Path, schema_dsn: str, vlm: ScriptedVlm
 ) -> None:
-    source, results, config = _setup(tmp_path, min_score=2.0)
+    vlm.unsorted = True
+    source, results, config = _setup(tmp_path)
     assert _invoke(config, schema_dsn, "--csv").exit_code == 0
     body = [row for row in _report(results) if row["status"] == "classified"]
     assert len(body) == 2
@@ -465,7 +475,7 @@ def _expected_folder(conn: psycopg.Connection, row: dict[str, str]) -> str:
 
 
 def test_csv_folders_match_the_ledger_when_every_file_wins(tmp_path: Path, schema_dsn: str) -> None:
-    _, results, config = _setup(tmp_path, min_score=-1.0)
+    _, results, config = _setup(tmp_path)
     result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code == 0, result.output
     assert "classified: 2" in result.stdout
@@ -493,14 +503,14 @@ def test_a_working_copy_that_cannot_be_read_is_one_fixed_reason_line(
 ) -> None:
     source, results, config = _setup(tmp_path)
     target = sha256((source / "bravo.png").read_bytes()).hexdigest()
-    real = classify_node.open_working_copy
+    real = classify_node.open_working_frames
 
     def failing(work: Path, source_hash: str, ext: str) -> Image.Image:
         if source_hash == target:
             raise classify_node.WorkingCopyUnreadable
         return real(work, source_hash, ext)
 
-    monkeypatch.setattr(classify_node, "open_working_copy", failing)
+    monkeypatch.setattr(classify_node, "open_working_frames", failing)
     result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code == 0, result.output
     assert "classified: 1" in result.stdout
@@ -515,13 +525,16 @@ def test_a_working_copy_that_cannot_be_read_is_one_fixed_reason_line(
 def test_a_classify_pre_flight_failure_exits_2_after_sanitize_committed(
     tmp_path: Path, schema_dsn: str
 ) -> None:
-    """No `default_min_score` (the shipped config, before CLS-003) is a fixed-text exit 2."""
-    _, results, config = _setup(tmp_path, min_score=None)
+    """A setting the classify node can't work with is a fixed-text exit 2 (CLS-002.D9)."""
+    _, results, config = _setup(tmp_path)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["nsfw"]["mode"] = "separate"  # not supported before M7
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
     result = _invoke(config, schema_dsn, "--csv")
     assert result.exit_code == 2, result.output
     assert isinstance(result.exception, SystemExit)
     assert result.stderr.startswith("error: ")
-    assert "default_min_score" in result.stderr
+    assert "nsfw.mode" in result.stderr
     assert "Traceback" not in result.output
     assert not (results / "reports").exists()
     with psycopg.connect(schema_dsn) as conn:
