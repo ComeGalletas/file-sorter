@@ -108,6 +108,15 @@ def test_classify_request_shape() -> None:
     assert len(body["images"]) == 1
 
 
+def test_the_slot_lists_are_comma_separated_on_one_line() -> None:
+    client, seen = scripted(classify_reply())
+    classify(client)
+    prompt = load_prompt("classify_v1")
+    expected = prompt.render(formats="Qorvex, Zhyndel, unsorted", topics="Vrellik, Xandoz, none")
+    assert seen[0]["system"] == expected
+    assert "Qorvex, Zhyndel, unsorted\n" in seen[0]["system"]
+
+
 def test_enums_gain_unsorted_and_none_once() -> None:
     client, seen = scripted(classify_reply(), classify_reply())
     classify(client)

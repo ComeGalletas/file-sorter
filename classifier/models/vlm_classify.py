@@ -189,7 +189,7 @@ def classify_image(
     prompt = prompt or load_prompt(CLASSIFY_PROMPT)
     format_names = _names(formats, UNSORTED)
     topic_names = _names(topics, NO_TOPIC)
-    system = prompt.render(formats="\n".join(format_names), topics="\n".join(topic_names))
+    system = prompt.render(formats=", ".join(format_names), topics=", ".join(topic_names))
     schema = prompt.schema_with_enums(format=format_names, topic=topic_names)
     name = _usable_hint(hint)
     user = prompt.render_user() if name is None else prompt.render_user(alt=True, name=name)
