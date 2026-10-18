@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from classifier.config import AxisConfig, ClassifyConfig
+from classifier.config import AxisConfig, ClassifyConfig, NsfwLevel
 
 Axis = Literal["format", "topic"]
 Branch = Literal["safe", "nsfw"]
@@ -44,6 +44,7 @@ _ERR_PARENT = "category parent is missing, on another axis, or loops"
 _ERR_BRANCH = "invalid image branch"
 _ERR_SCORE = "scores must be finite numbers"
 _ERR_NSFW = "nsfw score and threshold must be finite numbers"
+_ERR_LEVEL = "nsfw level and min_level must be NsfwLevel values"
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,19 @@ class CategoryRule:
     min_score: float | None = field(repr=False)
     branch: str
     parent_id: int | None
+
+
+@dataclass(frozen=True)
+class VlmAnswer:
+    """What the VLM said about one image (CLS-004.D1), as CLS-004.2 produces it.
+
+    `format` is a format name, or `unsorted` for "none of these fits"; `topic` is a topic name,
+    or None (the schema's `none`) for no topic.
+    """
+
+    format: str = field(repr=False)
+    topic: str | None = field(repr=False)
+    level: NsfwLevel
 
 
 @dataclass(frozen=True)
@@ -91,11 +105,25 @@ def _needs_default(rules: Sequence[CategoryRule], axis: str, classify_config: Cl
         raise ClassifyRulesError(_ERR_DEFAULT[axis])
 
 
-def validate_rules(rules: Sequence[CategoryRule], classify_config: ClassifyConfig) -> None:
+def branch_for_level(level: NsfwLevel, min_level: NsfwLevel) -> Branch:
+    """`nsfw` if the VLM's level reaches `nsfw.min_level`, else `safe` (CLS-004.D3).
+
+    The branch comes from the level alone: a category's own `branch` never changes it.
+    """
+    if not (isinstance(level, NsfwLevel) and isinstance(min_level, NsfwLevel)):
+        raise ClassifyRulesError(_ERR_LEVEL)
+    return "nsfw" if level >= min_level else "safe"
+
+
+def validate_rules(
+    rules: Sequence[CategoryRule], classify_config: ClassifyConfig | None = None
+) -> None:
     """Check the whole rule set once, before any row changes (CLS-002.D4).
 
     Unknown axis or branch, duplicate names on an axis, a `parent_id` that is missing, on
-    another axis or part of a loop, and a null `min_score` with a null axis default.
+    another axis or part of a loop, and a null `min_score` with a null axis default. On the
+    VLM path there is no `classify_config` and no score to compare, so the last check is
+    skipped (CLS-004.D7).
     """
     problem = None
     seen: set[tuple[str, str]] = set()
@@ -120,8 +148,9 @@ def validate_rules(rules: Sequence[CategoryRule], classify_config: ClassifyConfi
             cursor = parent
     if problem is not None:
         raise ClassifyRulesError(problem)
-    for axis in AXES:
-        _needs_default(rules, axis, classify_config)
+    if classify_config is not None:
+        for axis in AXES:
+            _needs_default(rules, axis, classify_config)
 
 
 def _threshold(rule: CategoryRule, axis_config: AxisConfig, axis: str) -> float:

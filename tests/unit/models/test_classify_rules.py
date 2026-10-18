@@ -5,13 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from classifier.config import AxisConfig, ClassifyConfig
+from classifier.config import AxisConfig, ClassifyConfig, NsfwLevel
 from classifier.models import classify_rules as rules_mod
 from classifier.models.classify_rules import (
     CategoryRule,
     ClassifyRulesError,
+    VlmAnswer,
     _pick_axis,
     _rank,
+    branch_for_level,
     nsfw_branch,
     top_scores,
     validate_rules,
@@ -504,3 +506,50 @@ def test_the_module_has_no_io_imports():
         isinstance(n, ast.Call) and getattr(n.func, "id", "") in ("open", "print")
         for n in ast.walk(tree)
     )
+
+
+# ---- the VLM path (CLS-004.3; CLS-004.D3, D7)
+
+
+@pytest.mark.parametrize("min_level", list(NsfwLevel))
+@pytest.mark.parametrize("level", list(NsfwLevel))
+def test_branch_for_level_is_adult_at_or_above_min_level(level, min_level):
+    assert branch_for_level(level, min_level) == ("nsfw" if level >= min_level else "safe")
+
+
+def test_branch_for_level_at_the_human_setting_nudity():
+    got = [branch_for_level(level, NsfwLevel.nudity) for level in NsfwLevel]
+    assert got == ["safe", "safe", "nsfw", "nsfw"]
+
+
+def test_levels_are_ordered():
+    assert NsfwLevel.safe < NsfwLevel.suggestive < NsfwLevel.nudity < NsfwLevel.explicit
+
+
+@pytest.mark.parametrize("bad", [2, 2.0, "nudity", None, True])
+def test_branch_for_level_refuses_non_levels_with_fixed_text(bad):
+    for args in ((bad, NsfwLevel.nudity), (NsfwLevel.nudity, bad)):
+        with pytest.raises(ClassifyRulesError) as caught:
+            branch_for_level(*args)
+        assert caught.value.__cause__ is None and caught.value.__context__ is None
+        assert str(caught.value) == rules_mod._ERR_LEVEL
+
+
+def test_validate_rules_without_a_config_does_not_need_a_default():
+    rules = [rule("qorvex"), rule("vrelk", "topic")]  # no min_score anywhere
+    validate_rules(rules)  # the VLM path: nothing to compare (D7)
+    validate_rules(rules, None)
+    with pytest.raises(ClassifyRulesError):
+        validate_rules(rules, cfg(fmt_default=None))  # the SigLIP path still insists
+
+
+def test_validate_rules_without_a_config_still_checks_structure():
+    with pytest.raises(ClassifyRulesError):
+        validate_rules([rule("qorvex"), rule("qorvex")])
+    with pytest.raises(ClassifyRulesError):
+        validate_rules([rule("qorvex", branch="sideways")])
+
+
+def test_vlm_answer_is_a_plain_value():
+    answer = VlmAnswer("qorvex", None, NsfwLevel.safe)
+    assert (answer.format, answer.topic, answer.level) == ("qorvex", None, NsfwLevel.safe)
