@@ -1,6 +1,9 @@
 # Secrets and local config (public repo)
 .env
 sanitize.yaml
+# The human's private prompt addenda (RUN-017.D1, CLS-004.6); only the examples are committed
+prompts/local/*.md
+!prompts/local/*.example.md
 # Image data never leaves the box
 fixtures/images/
 fixtures/labels.csv
