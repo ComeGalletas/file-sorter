@@ -8,15 +8,19 @@ request shapes come with CLS-004.2.6.
 import base64
 import io
 import json
+import re
+import shutil
+from pathlib import Path
 
 import httpx
 import pytest
 from PIL import Image
 
 from classifier.config import NsfwLevel
+from classifier.models import vlm_classify as vlm_module
 from classifier.models.classify_rules import VlmAnswer
 from classifier.models.ollama import OllamaClient, OllamaUnavailable
-from classifier.models.prompts import load_prompt
+from classifier.models.prompts import PROMPTS_DIR, load_prompt
 from classifier.models.vlm_classify import (
     UNANSWERED_REASON,
     ClassifyAnswer,
@@ -441,9 +445,32 @@ def test_the_nsfw_call_unavailable_propagates() -> None:
 def test_vlm_classify_returns_the_shared_type() -> None:
     client, seen = scripted(classify_reply("Zhyndel", "Xandoz"), level_reply("explicit"))
     answer = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
-    assert answer == VlmAnswer(format="Zhyndel", topic="Xandoz", level=NsfwLevel.explicit)
+    assert answer == VlmAnswer(
+        format="Zhyndel", topic="Xandoz", level=NsfwLevel.explicit, prompt_version="classify_v1"
+    )
     assert "format" in seen[0]["format"]["properties"]
     assert "nsfw_level" in seen[1]["format"]["properties"]
+
+
+def test_the_prompt_version_names_each_addendum_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # CLS-004.6: stand-ins in tmp_path; the NSFW version joins only when it has an addendum.
+    for name in ("classify_v1", "nsfw_level_v1"):
+        shutil.copy(PROMPTS_DIR / f"{name}.md", tmp_path / f"{name}.md")
+    (tmp_path / "local").mkdir()
+    (tmp_path / "local" / "classify_v1.md").write_text("Qorvex placeholder.", encoding="utf-8")
+    real = vlm_module.load_effective_prompt
+    monkeypatch.setattr(vlm_module, "load_effective_prompt", lambda n: real(n, tmp_path))
+    client, seen = scripted(classify_reply(), level_reply())
+    first = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
+    assert re.fullmatch(r"classify_v1\+[0-9a-f]{8}", first.prompt_version or "")
+    assert "Qorvex placeholder." in seen[0]["system"]
+    assert "Qorvex placeholder." not in seen[1]["system"]
+    (tmp_path / "local" / "nsfw_level_v1.md").write_text("Vrellik placeholder.", encoding="utf-8")
+    client, _ = scripted(classify_reply(), level_reply())
+    both = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
+    assert re.fullmatch(r"classify_v1\+[0-9a-f]{8}/nsfw_level_v1\+[0-9a-f]{8}", both.prompt_version)
 
 
 def test_the_name_reaches_the_classify_call_only() -> None:

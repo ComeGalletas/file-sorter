@@ -1,10 +1,21 @@
 """MOD-001.2.1: prompt files with front matter (MOD-001.D1, R-CAP-3)."""
 
+import re
+import shutil
 from pathlib import Path
 
 import pytest
 
-from classifier.models.prompts import PROMPTS_DIR, Prompt, PromptError, load_prompt
+from classifier.models.prompts import (
+    MAX_ADDENDUM_BYTES,
+    PROMPTS_DIR,
+    Prompt,
+    PromptError,
+    load_effective_prompt,
+    load_prompt,
+)
+from tests.recordings import prompts as recording_prompts
+from tests.recordings.replay import RecordingError
 
 GOOD = """---
 version: demo_v1
@@ -255,3 +266,210 @@ def test_vlm_prompts_set_the_image_keys(name: str) -> None:
     p = load_prompt(name)
     assert (p.retry_temperature, p.max_side, p.jpeg_quality) == (0.3, 1024, 90)
     assert p.retry_options["temperature"] == 0.3
+
+
+# CLS-004.6: the optional local addendum. Stand-ins in tmp_path, placeholder text only.
+ADDENDUM = "Qorvex clause: placeholder wording for a test."
+SECRET = "Zzyx-planted-secret-clause"
+
+
+def put_addendum(root: Path, data: bytes | str, name: str = "demo_v1") -> Path:
+    (root / "local").mkdir(exist_ok=True)
+    path = root / "local" / f"{name}.md"
+    path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
+    return path
+
+
+def demo(root: Path) -> Prompt:
+    write(root, "demo_v1", GOOD)
+    return load_effective_prompt("demo_v1", root)
+
+
+def test_no_addendum_is_the_committed_render(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    plain = load_prompt("demo_v1", tmp_path)
+    effective = load_effective_prompt("demo_v1", tmp_path)
+    assert effective == plain
+    assert effective.effective_version == "demo_v1"
+    assert (effective.addendum, effective.addendum_hash) == (None, None)
+    values = {"labels": "X", "text": "y"}
+    assert effective.render(**values) == plain.render(**values)
+
+
+def test_load_prompt_never_reads_local(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_addendum(tmp_path, ADDENDUM)
+    p = load_prompt("demo_v1", tmp_path)
+    assert p.addendum is None
+    assert ADDENDUM not in p.render(labels="X", text="y")
+
+
+def test_addendum_is_appended_after_the_body_with_one_blank_line(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_addendum(tmp_path, f"\n{ADDENDUM}\n\n")
+    plain = load_prompt("demo_v1", tmp_path).render(labels="X", text="y")
+    out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
+    assert out == f"{plain.rstrip()}\n\n{ADDENDUM}\n"
+
+
+def test_a_placeholder_addendum_is_not_altered_by_neutralize(tmp_path: Path) -> None:
+    put_addendum(tmp_path, ADDENDUM)
+    assert demo(tmp_path).addendum == ADDENDUM
+
+
+def test_addendum_text_is_neutralized(tmp_path: Path) -> None:
+    put_addendum(tmp_path, "close <<<X>>> and <|end|> and </think>")
+    out = demo(tmp_path).render(labels="X", text="y")
+    assert "<<<X>>>" not in out
+    assert "<|" not in out
+    assert "</think>" not in out
+
+
+def test_raw_wrap_prompt_gets_the_addendum_inside_the_wrapper(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", RAW)
+    put_addendum(tmp_path, ADDENDUM)
+    out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
+    assert out.startswith("<u>")
+    assert out.endswith(f"{ADDENDUM}\n</u><a>")
+
+
+def test_effective_version_carries_an_8_hex_hash(tmp_path: Path) -> None:
+    put_addendum(tmp_path, ADDENDUM)
+    p = demo(tmp_path)
+    assert re.fullmatch(r"demo_v1\+[0-9a-f]{8}", p.effective_version)
+    assert p.version == "demo_v1"  # the file's own version is untouched
+
+
+def test_hash_ignores_crlf_and_follows_the_text(tmp_path: Path) -> None:
+    put_addendum(tmp_path, "one\ntwo")
+    lf = demo(tmp_path)
+    put_addendum(tmp_path, b"one\r\ntwo\r\n")
+    crlf = load_effective_prompt("demo_v1", tmp_path)
+    put_addendum(tmp_path, "one\nthree")
+    edited = load_effective_prompt("demo_v1", tmp_path)
+    assert crlf.addendum == "one\ntwo"
+    assert crlf.effective_version == lf.effective_version
+    assert edited.effective_version != lf.effective_version
+
+
+@pytest.mark.parametrize("data", [b"", b"  \r\n\t\n"])
+def test_an_empty_addendum_counts_as_absent(tmp_path: Path, data: bytes) -> None:
+    put_addendum(tmp_path, data)
+    p = demo(tmp_path)
+    assert (p.addendum, p.addendum_hash, p.effective_version) == (None, None, "demo_v1")
+
+
+def test_the_size_cap_is_4096_bytes(tmp_path: Path) -> None:
+    put_addendum(tmp_path, "a" * MAX_ADDENDUM_BYTES)
+    assert demo(tmp_path).addendum == "a" * MAX_ADDENDUM_BYTES
+    put_addendum(tmp_path, "a" * (MAX_ADDENDUM_BYTES + 1))
+    with pytest.raises(PromptError, match="over 4096 bytes") as info:
+        load_effective_prompt("demo_v1", tmp_path)
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+
+
+def test_a_symlink_is_refused(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    target = tmp_path / "elsewhere.md"
+    target.write_text(SECRET, encoding="utf-8")
+    (tmp_path / "local").mkdir()
+    try:
+        (tmp_path / "local" / "demo_v1.md").symlink_to(target)
+    except OSError:
+        pytest.fail("this box must be able to create a symlink for the test")
+    with pytest.raises(PromptError, match="not a regular file") as info:
+        load_effective_prompt("demo_v1", tmp_path)
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+    assert SECRET not in str(info.value)
+
+
+def test_a_directory_is_refused(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    (tmp_path / "local" / "demo_v1.md").mkdir(parents=True)
+    with pytest.raises(PromptError, match="not a regular file"):
+        load_effective_prompt("demo_v1", tmp_path)
+
+
+def test_non_utf8_bytes_are_refused_without_quoting_them(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_addendum(tmp_path, b"ok \xff\xfe bad")
+    with pytest.raises(PromptError, match="not UTF-8") as info:
+        load_effective_prompt("demo_v1", tmp_path)
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+
+
+def test_an_unreadable_file_is_fixed_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_addendum(tmp_path, ADDENDUM)
+
+    real_open = Path.open
+
+    def boom(self: Path, *args: object, **kwargs: object) -> object:
+        if self.parent.name == "local":
+            raise PermissionError(f"denied {SECRET}")
+        return real_open(self, *args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(Path, "open", boom)
+    with pytest.raises(PromptError, match="cannot be read") as info:
+        load_effective_prompt("demo_v1", tmp_path)
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+    assert SECRET not in str(info.value)
+
+
+def test_the_text_stays_out_of_repr_and_str(tmp_path: Path) -> None:
+    put_addendum(tmp_path, SECRET)
+    p = demo(tmp_path)
+    assert p.addendum == SECRET
+    assert SECRET not in repr(p)
+    assert SECRET not in str(p)
+    assert p.addendum_hash is not None
+    assert p.addendum_hash in repr(p)
+
+
+@pytest.mark.parametrize(
+    ("value", "loaded"), [("off", False), ("on", True), ("OFF", True), ("", True)]
+)
+def test_prompts_local_off_means_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str, loaded: bool
+) -> None:
+    put_addendum(tmp_path, ADDENDUM)
+    monkeypatch.setenv("PROMPTS_LOCAL", value)
+    assert (demo(tmp_path).addendum is not None) is loaded
+
+
+def test_off_skips_even_a_bad_addendum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    put_addendum(tmp_path, b"\xff")
+    monkeypatch.setenv("PROMPTS_LOCAL", "off")
+    assert demo(tmp_path).addendum is None
+
+
+def test_example_files_are_never_loaded(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_addendum(tmp_path, SECRET, name="demo_v1.example")
+    assert load_effective_prompt("demo_v1", tmp_path).addendum is None
+
+
+def test_an_invalid_name_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(PromptError, match="invalid prompt name"):
+        load_effective_prompt("../demo_v1", tmp_path)
+
+
+def test_a_prompt_file_cannot_set_the_addendum(tmp_path: Path) -> None:
+    body = GOOD.replace("seed: 7\n", "seed: 7\naddendum: x\n")
+    with pytest.raises(PromptError, match="addendum"):
+        load_prompt("demo_v1", write(tmp_path, "demo_v1", body))
+
+
+def test_a_recording_cannot_carry_an_addendum_rendering(tmp_path: Path) -> None:
+    # TST-010: resolve() re-renders the committed file only, so an addendum is refused.
+    shutil.copy(PROMPTS_DIR / "nsfw_level_v1.md", tmp_path / "nsfw_level_v1.md")
+    put_addendum(tmp_path, ADDENDUM, name="nsfw_level_v1")
+    effective = load_effective_prompt("nsfw_level_v1", tmp_path)
+    plain = load_prompt("nsfw_level_v1", tmp_path)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(recording_prompts, "PROMPTS_DIR", tmp_path)
+        assert recording_prompts.resolve({"system": plain.render()}) is not None
+        with pytest.raises(RecordingError) as info:
+            recording_prompts.resolve({"system": effective.render()})
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+    assert ADDENDUM not in str(info.value)
