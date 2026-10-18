@@ -102,3 +102,22 @@ references or host paths here. Use hashes.
   - Privacy: an int or bool YAML key was printed in the location, because pydantic keeps it as an int. `_where` now shows every non-string part as `<unknown key>`. The config has no lists.
   - Reviewer finding 1: an `OSError` from `read_text` now becomes a fixed, unchained `ConfigError` with the file path.
   - Both fixes are in CFG-002.1.6, with regression tests that fail on the old code. The int and bool keys are checked in `str`, `repr` and the CLI's stderr; the read failure is a planted `PermissionError`.
+
+---
+
+## CFG-003 — Requirement (human, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** the configuration for the VLM classifier (CLS-004).
+- **Details:**
+  - **`nsfw.min_level`:** `suggestive | nudity | explicit`, with the human's value `nudity`.
+  - **`nsfw.cross_check.safe_above` and `nsfw.cross_check.adult_below`:** the Falconsai disagreement thresholds (CLS-004.D5). The human sets both values.
+  - **`models.vlm_safe`:** becomes `qwen3-vl:8b-instruct` (CLS-004.D8, key to confirm).
+  - **The obsolete keys:** `nsfw.threshold`, `classify.score` and the per-axis `default_min_score`/`margin` stop deciding anything. Whether DOC-009 drops them or keeps them for compatibility, the loader must not require them on the VLM path.
+- **Constraint:** these are hand-tuned values (CLAUDE.md §1.7). The task commits exactly the values the human sets, as type `balance`, with the schema change in its own commit.
+- **Implements:** DESIGN §6 (as amended by DOC-009); CLS-004.D3, D5, D7, D8.
+
+## CFG-003 — Tasks
+
+- [ ] CFG-003.1 — The schema in `classifier/config.py` (with typed enums for `min_level`, validated cross-check bounds, and fixed-text errors naming the key) and the human's values in `config.yaml` · #130 · Pipeline · acceptance: `tests/unit/test_config.py`
+
+## CFG-003 — Results

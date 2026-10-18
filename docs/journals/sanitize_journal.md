@@ -315,6 +315,10 @@ Decisions:
 - Every item still stands on `main` at `4340780`. M3's `classify` node (CLS-002.2) adds the first path where a `sanitized` row goes to `error` (CLS-002.D7), so item 6 must merge before CLS-002.2.
 - **SAN-003.D1** — **Item 4's reason** (lead, 2026-10-12). It is `sanitize_metadata_unavailable`, used when exiftool or the working copy can't be read. `sanitize_metadata_residual` keeps its one meaning: the read-back found tags outside the allow-list (SAN-001.D3). Both are fixed strings (SAN-001.D17).
 - **SAN-003.D2** — **Item 6 is one helper** (lead, 2026-10-12; generalises SAN-001.D18). Every move of a row that is past `queued` into `error` goes through one function in `classifier/graph/`. It clears the row's `sanitize_log` rows in the same transaction, so a retry from ingest (R-ING-2) never doubles them. CLS-002.2 calls it for its `error` path (CLS-002.D7).
+- **SAN-003.D4** — **Image-library warnings are ignored** (lead, 2026-10-14, the #93 plan). `PIL` and `pillow_heif` warnings are filtered by `module=`, `DecompressionBombWarning` included.
+  - A bomb more than twice the limit still raises, and the file fails with a fixed reason.
+  - The helper is idempotent.
+  - A non-zero exiftool exit on an unreadable working copy reads as `residual`, because `_absolute` refuses the unreadable cases first (#115 review).
 - **SAN-003.D3** — **The split** (lead, 2026-10-12). There are three tasks, by package: `graph`/`fileops` (items 1, 2, 5, 6), `sanitize` (3, 4) and `cli` (7). Each is at most a day, and they have no dependencies on each other.
 
 ## SAN-003 — Tasks
@@ -381,3 +385,25 @@ Decisions:
 - **Self-rating:** 9/10, proud: yes. The one point is that `prepare_folders` is also edited by #92 (SAN-003.1); whoever merges second brings in `origin/main`.
 - **Reviewer / Privacy auditor:** pending.
 
+
+---
+
+## SAN-004 — Requirement (human, the M3 VLM re-plan, 2026-10-18; 3.5)
+
+- **Objective:** run the sanitizer's entity check on `qwen3-vl:8b-instruct`, so one model stays resident (CLS-004.D8), only once gate 2 passes on it again.
+- **Details:**
+  - The entity prompt (`prompts/sanitize_entity_v1.md`) pins `num_ctx: 4096`, like every prompt (CLS-004.D9).
+  - `make gate-2` runs on the instruct model.
+  - Only after a PASS does `models.text_llm` switch, as its own commit with the gate result in public form.
+- **Constraint:**
+  - The entity check is a privacy control (P-2). The human has reviewed the instruct model's redactions on the box and found them fine. The switch still waits for gate 2.
+  - A prompt edit is a hand-tuned value (CLAUDE.md §1.7). Pinning `num_ctx` is the only edit approved here.
+- **Implements:** R-SAN-*, the §11 M2 gate; CLS-004.D8, D9.
+- **Finding to record (3.7):** `qwen3-vl:8b`, the thinking build, sometimes ignores `think: false` on Ollama 0.35.1 and returns an empty answer after spending its budget thinking. The instruct build has no thinking mode. That is the reason for the switch.
+
+## SAN-004 — Tasks
+
+- [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
+- [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · issue: the lead opens it on the PASS · acceptance: `tests/unit/test_config.py`
+
+## SAN-004 — Results
