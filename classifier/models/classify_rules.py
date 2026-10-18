@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from classifier.config import AxisConfig, ClassifyConfig, CrossCheckConfig, NsfwLevel
+from classifier.config import AxisConfig, ClassifyConfig, CrossCheckConfig, NsfwConfig, NsfwLevel
 
 Axis = Literal["format", "topic"]
 Branch = Literal["safe", "nsfw"]
@@ -44,6 +44,7 @@ _ERR_PARENT = "category parent is missing, on another axis, or loops"
 _ERR_BRANCH = "invalid image branch"
 _ERR_SCORE = "scores must be finite numbers"
 _ERR_NSFW = "nsfw score and threshold must be finite numbers"
+_ERR_UNKNOWN = "answer names a category that is not a rule of its axis"
 _ERR_LEVEL = "nsfw level and min_level must be NsfwLevel values"
 
 
@@ -71,6 +72,17 @@ class VlmAnswer:
     format: str = field(repr=False)
     topic: str | None = field(repr=False)
     level: NsfwLevel
+
+
+@dataclass(frozen=True)
+class VlmChoice:
+    """The decision for one image on the VLM path (no scores, so no `*_top` lists)."""
+
+    branch: Branch
+    format: str = field(repr=False)
+    topic: str | None = field(repr=False)
+    needs_review: bool
+    review_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -138,6 +150,62 @@ def nsfw_cross_check(
     if level == NsfwLevel.safe and above is not None and nsfw_score + _EPS >= above:
         return True
     return level >= min_level and below is not None and nsfw_score <= below + _EPS
+
+
+def decide(
+    answer: VlmAnswer,
+    rules: Sequence[CategoryRule],
+    nsfw_score: float | None,
+    nsfw_config: NsfwConfig,
+) -> VlmChoice:
+    """Turn the VLM's answer into one image's branch, format and topic (CLS-004.D1, D3, D5).
+
+    - Branch: from the level alone (`branch_for_level`). A category's `branch` never changes it.
+    - Format (R-CLS-3): `unsorted` ("none fits"), or a format the branch excludes (R-CLS-6,
+      CLS-002.D2), gives `unsorted`.
+    - Topic (R-CLS-3a): `None`, an excluded topic, or the topic named like the chosen format
+      (R-CLS-3b, CLS-002.D3) gives `None`. Decided even when the format is `unsorted`, where
+      nothing is dropped. Not a review case (CLS-001.D7).
+    - Review: `nsfw_disagreement` when the Falconsai cross-check flags (D5, CLS-004.D13); it
+      wins over `unsorted`, which stays visible in `format`.
+    - An ineligible answer never falls through to another category, and no score decides
+      anything (D7).
+
+    A format or topic that is not a rule of its axis raises: the node treats it as an
+    unanswered call (CLS-004.D4).
+    """
+    branch = branch_for_level(answer.level, nsfw_config.min_level)
+    flagged = nsfw_cross_check(
+        answer.level, nsfw_config.min_level, nsfw_score, nsfw_config.cross_check
+    )
+    named = {(rule.axis, rule.name): rule for rule in rules if rule.name != UNSORTED}
+
+    format_rule = None
+    if answer.format != UNSORTED:
+        format_rule = named.get(("format", answer.format))
+        if format_rule is None:
+            raise ClassifyRulesError(_ERR_UNKNOWN)
+        if not _eligible(format_rule, branch):
+            format_rule = None
+    chosen_format = format_rule.name if format_rule is not None else UNSORTED
+
+    topic_rule = None
+    if answer.topic is not None:
+        topic_rule = named.get(("topic", answer.topic))
+        if topic_rule is None:
+            raise ClassifyRulesError(_ERR_UNKNOWN)
+        if not _eligible(topic_rule, branch) or topic_rule.name == chosen_format:
+            topic_rule = None
+
+    unsorted = format_rule is None
+    reason = "nsfw_disagreement" if flagged else (UNSORTED if unsorted else None)
+    return VlmChoice(
+        branch=branch,
+        format=chosen_format,
+        topic=topic_rule.name if topic_rule is not None else None,
+        needs_review=reason is not None,
+        review_reason=reason,
+    )
 
 
 def validate_rules(
