@@ -7,7 +7,13 @@ import pytest
 import yaml
 
 from classifier.config import Config
-from classifier.graph.classify import ClassifyConfigError, ClassifyResult, check_settings
+from classifier.graph.classify import (
+    VLM_UNANSWERED,
+    ClassifyConfigError,
+    ClassifyResult,
+    check_settings,
+)
+from classifier.graph.errors import _REASONS
 from classifier.graph.ingest import IngestResult
 from classifier.graph.nodes import NodeContext
 from classifier.graph.state import RunResult
@@ -60,9 +66,17 @@ def test_run_result_classify_rejects_a_foreign_count() -> None:
         _ = result.classify
 
 
-def test_prompt_texts_never_reach_a_repr() -> None:  # privacy checklist 4
-    from classifier.graph.classify import _Prompts
+def test_the_name_hint_never_reaches_a_repr() -> None:  # privacy checklist 4, CLS-004.D6
+    from classifier.graph.classify import _Row
 
     secret = "Qorvex-Zhyndel-secret"
-    shown = repr(_Prompts([secret], [secret]))
-    assert secret not in shown
+    row = _Row("a" * 64, "aaaaaaaa", "png", secret)
+    assert secret not in repr(row) and secret not in str(row)
+
+
+# --- the VLM's fixed error reason (CLS-004.4.1, CLS-004.D4) --------------------------------
+
+
+def test_the_unanswered_reason_is_fixed_and_registered_for_mark_error() -> None:
+    assert VLM_UNANSWERED == "classify_vlm_unanswered"
+    assert VLM_UNANSWERED in _REASONS

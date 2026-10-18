@@ -12,13 +12,12 @@ Labels are derived from what the node wrote on a first pass, so this test proves
 vocabularies, label matching, the runner and the output. The measures themselves are proved on
 plain numbers in tests/unit/gate/.
 
-The node on main writes a branch but not yet `files.nsfw_level` (CLS-004.4 adds it), so the
-`levelled` fixture fills the level from the branch it wrote, as the VLM node will. It stops
-being needed when CLS-004.4 lands; the unit tests cover the level logic meanwhile (TST-009.2.3).
+The classify node asks a scripted Ollama (`ScriptedVlm`): the level call rates the one picture
+the double flags as `nudity` and the rest `safe`, and the node writes `files.nsfw_level` itself
+(CLS-004.4). The gate script has no Ollama seam, so the test wraps `run` to pass the transport.
 The labels stay 7-column, which also covers a labels file without the optional level column.
 """
 
-import dataclasses
 import importlib.util
 import re
 from pathlib import Path
@@ -30,7 +29,7 @@ import yaml
 from classifier.config import load_config
 from classifier.sanitize.rules import LOG_KEY_ENV
 from tests.db.db_support import require_db_dsn
-from tests.integration.classify_support import LABELS, REPO, TEST_MIN_SCORE, make_image
+from tests.integration.classify_support import LABELS, REPO, ScriptedVlm, make_image
 
 SCRIPT = REPO / "scripts" / "gate_3.py"
 _spec = importlib.util.spec_from_file_location("gate_3_it", SCRIPT)
@@ -68,27 +67,20 @@ class NumericGate:
 def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv(LOG_KEY_ENV, "00112233445566778899aabbccddeeff")
     monkeypatch.setenv("DB_DSN", require_db_dsn())
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama:11434")
     data = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8"))
-    for axis in ("format", "topic"):
-        data["classify"][axis]["default_min_score"] = TEST_MIN_SCORE
-        data["classify"][axis]["margin"] = 0.0
     config = tmp_path / "config-test.yaml"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     monkeypatch.setattr(gate_3, "CONFIG", config)
+    # gate_3 imports `run` when it is called, so this wrapper adds the scripted Ollama to it.
+    import classifier.graph.run as graph_run
 
-
-@pytest.fixture(autouse=True)
-def levelled(monkeypatch: pytest.MonkeyPatch) -> None:
-    real = gate_3.to_outcomes
-    level_of = {"nsfw": "nudity", "safe": "safe"}
-
-    def fill(rows, images):
-        return [
-            o if o.nsfw_level else dataclasses.replace(o, nsfw_level=level_of.get(o.branch or ""))
-            for o in real(rows, images)
-        ]
-
-    monkeypatch.setattr(gate_3, "to_outcomes", fill)
+    real, ollama = graph_run.run, ScriptedVlm()
+    monkeypatch.setattr(
+        graph_run,
+        "run",
+        lambda config, **kw: real(config, ollama_transport=ollama.transport(), **kw),
+    )
 
 
 @pytest.fixture

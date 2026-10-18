@@ -466,7 +466,22 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
   - [x] CLS-004.3.3 — `decide` and `VlmChoice` (this commit)
   - [x] CLS-004.3.4 — Results, self-rating, PR (this commit)
-- [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
+- [x] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
+  - [x] CLS-004.4.1 — `classify_vlm_unanswered` registered for `mark_error` · `a1dcf0a`. No new `NodeContext` field: `ctx.ollama_transport` is the seam, as in sanitize (lead-approved)
+  - [x] CLS-004.4.2 — The node on the VLM path (hint, both calls, `decide`, `nsfw_level`, `image_vec`)
+    - [x] CLS-004.4.2.1 — `open_working_frames` and `first_frame_rgb`: one read per working copy, every frame kept (lead-approved refinement) · `aedd4a1`
+    - [x] CLS-004.4.2.2 — The node on the VLM path: hint from `original_sanitized`, `vlm_classify` per image, `decide`, `nsfw_level` written, `image_vec` and the Falconsai score kept, no SigLIP scoring, `format_scores`/`topic_scores` null · `5257e9f`
+  - [x] CLS-004.4.3 — The `mark_error` path and the cross-check into `needs_review`
+    - [x] CLS-004.4.3.1 — `VlmUnanswered` and `ClassifyRulesError` → `error` with `classify_vlm_unanswered`; `VlmImageError` → `classify_working_copy_unreadable`; `OllamaUnavailable` propagates · `3fcf43d`
+    - [x] CLS-004.4.3.2 — The cross-check into `needs_review` (`decide` flags it, the node writes it): the db test for a strong disagreement, back after migration `0005` (DB-005.1, #159) admits `nsfw_disagreement` · `6f2d939`
+  - [x] CLS-004.4.4 — Re-point `cli/categories.py`; drop the SigLIP-scoring code the node no longer uses
+    - [x] CLS-004.4.4.1 — `cli/categories.py` validates with `validate_rules(rules, None)`, `_structural` removed · `2e8b078`
+  - [x] CLS-004.4.5 — Tests, Results, self-rating
+    - [x] CLS-004.4.5.1 — `tests/db/graph/test_classify_node.py` on the VLM path, on a scripted Ollama behind `ctx.ollama_transport` · `5257e9f`, `3fcf43d`, `6f2d939`
+    - [x] CLS-004.4.5.2 — `tests/integration/test_classify_node.py` and `classify_support.py` replaying the CLS-004.2.6 recordings · `c810bf3` (`classify_support`'s scenario is identical to `tests/unit/models/vlm_scenario.py`)
+      - [x] CLS-004.4.5.2.1 — The scenario ML records against, in `classify_support.py`: `FORMATS`, `TOPICS`, `HINTS`, `make_animated`, `seed_scenario`, `run_classify(..., ollama_transport)` · `9fef89a`
+    - [x] CLS-004.4.5.3 — Drop the `default_min_score` setup from the integration tests; remove the `levelled` fixture in `test_gate_3_script.py`; both run the real nodes on a scripted Ollama (`ScriptedVlm`, now in `classify_support.py`) · `b8824c2`
+    - [x] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`) (this commit)
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
 ## CLS-004 — Results
@@ -510,6 +525,34 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Decision applied:** `nsfw_disagreement` wins over `unsorted` as `review_reason` (lead, CLS-004.D13, provisional).
 - **Deferred:** removing the dead SigLIP functions (`nsfw_branch`, `choose`, `_judge`, `_pick_axis`, `top_scores`) after #135 and #136, under a new ID the lead allocates.
 - **Self-rating:** 9/10, proud: yes. Gap: the pre-push `gpu` tier and the Reviewer and Privacy auditor verdicts are not in yet, and the module carries both paths until the follow-up. Neither blocks the acceptance criteria.
+- **Reviewer / Privacy auditor:** pending.
+
+### CLS-004.4 (Pipeline, #135)
+
+- **Status:** DONE_WITH_CONCERNS (concerns below; none blocks the acceptance test).
+- **Tests** (all in the worktree's own compose project, no Ollama running): `make test` 2339 passed, 57 deselected (`unit + db + integration`); ruff check and format clean. By file:
+  - the acceptance test `tests/integration/test_classify_node.py`: 7 passed, replaying `tests/recordings/graph/` and `tests/recordings/models/`;
+  - `tests/db/graph/test_classify_node.py`: 31 passed (hint, level, branch at `min_level`, cross-check, unanswered, unknown name, undecodable frame, outage, savepoint, idempotence, no path or hint in a request or a log);
+  - `tests/unit/graph`: 39 passed; `tests/db/cli` category tests: 70 passed;
+  - `tests/integration/test_dry_run_cli.py` and `test_gate_3_script.py`: 32 passed on a scripted Ollama.
+  No `gpu` or `eval/` run: no prompt, threshold or model changed, and CLS-004.5 owns the real run. `tests/gpu/graph/test_record_classify.py` was edited (it counts five rows) but not run here.
+- **Delivered:**
+  - **Node:** each `sanitized` row goes through `open_working_frames` (one read, every frame kept) and `first_frame_rgb` (SigLIP's and Falconsai's input, from the same image), then `vlm_classify` with `files.original_sanitized` as the hint (CLS-004.D6), then `decide`. The write adds `nsfw_level`, keeps `image_vec` and the Falconsai score (cross-check evidence), and sets `format_scores` and `topic_scores` to null.
+  - **Failures (D4):** `VlmUnanswered` and a `ClassifyRulesError` from an unknown name go to `error` as `classify_vlm_unanswered` through `mark_error`. A frame that won't decode is `classify_working_copy_unreadable`. `OllamaUnavailable` propagates, so `run` rolls the node back and no file is blamed for an outage.
+  - **Ordering:** `run` already runs the whole batch through sanitize, then the whole batch through classify, so there is one Ollama swap per stage. Both VLM calls use `models.vlm_safe`, so classify swaps nothing per file. Nothing in the node touches the sanitizer's model.
+  - **Seam:** `ctx.ollama_transport`, as in sanitize; one `OllamaClient` per node run. No new `NodeContext` field.
+  - **Removed:** the category-prompt embedding, the score matrices, `choose` and `nsfw_branch` from the node; `cli/categories.py` validates with `validate_rules(rules, None)` (`_structural` is gone).
+- **Test infrastructure:** `classify_support.py` holds the scenario ML's recordings match (`FORMATS`, `TOPICS`, `HINTS`, `make_animated`, `seed_scenario`, `ScriptedVlm`), identical to `tests/unit/models/vlm_scenario.py`. The `levelled` fixture in `test_gate_3_script.py` is removed, as the lead asked.
+- **Test files touched outside `tests/*/graph` and `tests/*/cli` (for QA):** `tests/integration/classify_support.py`, `tests/integration/test_classify_node.py`, `tests/integration/test_dry_run_cli.py`, `tests/integration/test_gate_3_script.py`. Not touched: `scripts/gate_3.py` and the shared replay code.
+- **Readers of `format_scores` and `topic_scores` outside my paths (not edited):** `eval/classify_eval.py` and `eval/classify_sweep.py` use in-memory fields of the same names, not the ledger columns (CLS-004.5's, ML). The columns stay in the schema and in `tests/db/ledger/test_files_migration.py` and `tests/unit/db/test_models.py`.
+- **Decisions applied:** `VlmImageError` maps to `classify_working_copy_unreadable` (lead agreed on #135). A non-finite Falconsai score turns the cross-check off for that row instead of erroring it.
+- **Found on the way:** the `files_review_reason` constraint rejected `nsfw_disagreement`, so a flagged row would have been reported as `classify_ledger_write_failed`. Fixed by DB-005.1 (#159), which merged before this PR; the cross-check db test (CLS-004.4.3.2) runs against it.
+- **Deferred:** removing the now-unused SigLIP scoring functions in `classifier/models/classify_rules.py` (ML-owned; CLS-004.3's Results already names it) and re-pointing `eval/` (CLS-004.5).
+- **Concerns:**
+  - The VLM is called one image at a time, two calls each. Throughput on a large folder is unmeasured; CLS-004.5's real run on the box is the first measurement.
+  - A non-VLM integration test that reaches `classify` without `ollama_transport` would hit a live Ollama if one is up, and fail with `OllamaUnavailable` if not. Every test I touched passes a transport; I did not audit other desks' tests.
+  - An unanswered file stays in `error` until the next run retries it from ingest (D4); M4's review lists such rows.
+- **Self-rating:** 9/10, proud: yes. Gaps: (1) the node has not run against the real model; its only evidence is the scripted and recorded runs, until CLS-004.5's box run (CLS-004.D11); (2) the Reviewer and Privacy auditor verdicts are not in yet. Neither blocks the acceptance criteria.
 - **Reviewer / Privacy auditor:** pending.
 
 ---
