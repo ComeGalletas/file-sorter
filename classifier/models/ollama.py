@@ -1,8 +1,9 @@
 """The Ollama text client (MOD-001.1, R-MOD-1, P-3, C-13).
 
 Every Ollama call in the app goes through `OllamaClient`. It talks to the compose `ollama`
-service (or localhost) over `httpx` and refuses any other host. Text only: the request never
-carries an `images` field.
+service (or localhost) over `httpx` and refuses any other host. The request carries an `images`
+field only when the caller passes images (CLS-004.2.1), and a `system` field only when it passes
+a system prompt.
 
 Nothing about the model is hard-coded here. The caller passes the tag (`models.text_llm`) and
 the sampling options and `keep_alive` from the prompt file's front matter (MOD-001.D1).
@@ -16,7 +17,7 @@ Errors never carry the prompt or the model's answer, only a short hash of the pr
 import hashlib
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import TracebackType
 from typing import Any, Self
 
@@ -32,6 +33,14 @@ ALLOWED_HOSTS = frozenset({"ollama", "localhost", "127.0.0.1", "::1"})
 
 class OllamaError(Exception):
     """An Ollama call failed: refused host, connection, timeout, HTTP status or bad JSON."""
+
+
+class OllamaUnavailable(OllamaError):
+    """Ollama could not be reached or did not answer in time (CLS-004.2.2).
+
+    Unlike a bad status or a bad body, this says nothing about one answer, so a caller lets it
+    propagate instead of marking the file as failed. It is still an `OllamaError`.
+    """
 
 
 def _prompt_hash(prompt: str) -> str:
@@ -89,11 +98,14 @@ class OllamaClient:
         keep_alive: str | int,
         think: bool | None = None,
         raw: bool = False,
+        images: Sequence[str] | None = None,
+        system: str | None = None,
     ) -> dict[str, Any]:
         """Run `prompt` on `model` and return its answer, constrained to the JSON `schema`.
 
         `raw=True` sends the prompt without Ollama's chat template, so the prompt carries its
         own (MOD-001.D5). An answer cut off at the token limit is an error (fail closed).
+        `images` are base64 strings and `system` the system prompt; each is sent only when given.
         """
         body: dict[str, Any] = {
             "model": model,
@@ -107,13 +119,17 @@ class OllamaClient:
             body["think"] = think
         if raw:
             body["raw"] = True
+        if images:
+            body["images"] = list(images)
+        if system is not None:
+            body["system"] = system
         where = f"model {model!r}, prompt {_prompt_hash(prompt)}"
         try:
             response = self._http.post(GENERATE_PATH, json=body)
         except httpx.TimeoutException as exc:
-            raise OllamaError(f"Ollama timed out ({where}): {type(exc).__name__}") from exc
+            raise OllamaUnavailable(f"Ollama timed out ({where}): {type(exc).__name__}") from exc
         except httpx.TransportError as exc:
-            raise OllamaError(f"cannot reach Ollama ({where}): {type(exc).__name__}") from exc
+            raise OllamaUnavailable(f"cannot reach Ollama ({where}): {type(exc).__name__}") from exc
         if response.is_error:
             raise OllamaError(f"Ollama returned HTTP {response.status_code} ({where})")
         try:

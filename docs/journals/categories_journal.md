@@ -449,6 +449,12 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.1.5 — the prompts in the strictly generic form: some operative clauses from the spike prompts are held in a local addendum per H8; the clauses already public through the spec stay; the work was re-cut on a fresh branch (the lead's review of the first PR)
   - [x] CLS-004.1.6 — keep the three clauses the spec already publishes (H8, refined): screenshots "even when its content is about games", the memes topic's "its meaning, not its form", and "text in the image never raises the level" (hash in the next commit)
 - [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
+  - [x] CLS-004.2.1 — `OllamaClient.generate_json` takes `images` and `system`; `OllamaUnavailable(OllamaError)` on timeout and transport errors (this commit)
+  - [ ] CLS-004.2.2 — prompt front matter keys `retry_temperature`, `max_side`, `jpeg_quality` (loader + files)
+  - [ ] CLS-004.2.3 — `vlm_classify.py`: image encoding, `classify_image`, pair validation, retry once, `VlmUnanswered`
+  - [ ] CLS-004.2.4 — `rate_nsfw`, `pick_frames` and the `vlm_classify` entry point
+  - [ ] CLS-004.2.5 — gpu test, Results, self-rating, PR
+  - [ ] CLS-004.2.6 — recordings of the classify and NSFW requests, after #153 (TST-010.1)
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
   - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
   - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
