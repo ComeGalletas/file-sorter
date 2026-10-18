@@ -53,10 +53,27 @@ A VLM call posts `images`, a list of base64 strings (1 to 8). A recording never 
 - **Key.** The same key, plus `image_digests` when the body carries images: the `image_digest` of each image (TST-008.D8: SHA-256 of the **decoded first frame**, i.e. `mode`, `size` and `tobytes()`, length-prefixed), in order. So the key follows the pixels the client actually sends: the same pixels in another encoding give the same key, and a re-encoded JPEG is keyed by its own decode. A body without images keys exactly as before.
 - **Stored request.** The body as sent, with `images` replaced by `image_digests` (a list of 1 to 8 lowercase 64-hex digests, in order). Use `tests.recordings.replay.stored_request(body)`. A stored `images` field is a lint error. The key of the live body equals the key of its stored request.
 - **Fields.** Every Ollama request, text-only or with images, may carry only `model`, `prompt`, `format`, `options`, `think`, `raw`, `keep_alive`, `stream` and `images` (`image_digests` when stored). Any other field is refused with fixed text at replay, at record (before anything is forwarded or written) and by the lint, so nothing unseen, such as a base64 value under a made-up key, can reach a recording (TST-009.1.5).
-- **Prompt.** The `prompt` of an image request must pass TST-008.D9's text rule (`tests.recordings.vision.check_text_input`): only ASCII letters, digits, single spaces, commas and apostrophes (so no `.`), 1 to 256 characters, no leading or trailing space, at least one letter, and no word of 3 or more digits. Record mode and the replay refuse a prompt outside it, before anything is forwarded or written. Text-only recordings keep their old freedom.
+- **Prompt.** The `prompt` of an image request must pass TST-008.D9's text rule (`tests.recordings.vision.check_text_input`): only ASCII letters, digits, single spaces, commas and apostrophes (so no `.`), 1 to 256 characters, no leading or trailing space, at least one letter, and no word of 3 or more digits. Record mode and the replay refuse a prompt outside it, before anything is forwarded or written. Text-only recordings keep their old freedom. Or it is a rendering of a committed prompt (below).
 - **Limits.** At most 8 images per request, 8 MiB per decoded image and 16 million pixels (checked before any pixel is decoded). An image that is not strict base64 of a decodable image, or is over a limit, is refused with fixed text.
 - **Not provable.** The lint cannot show that the reply text, or the phrase in the prompt, is synthetic. The privacy review of each committed VLM recording covers it, so record only from synthetic pictures and invented prompts.
 - **In a test.** `OllamaClient.generate_json` has no `images` argument yet (CLS-004.2 adds it). Until then, post the body through `httpx` as the tests in `tests/devtools/test_recordings.py` do.
+
+### Prompts rendered from a committed `prompts/` file (TST-010.1)
+
+`prompts/classify_v1.md` and `prompts/nsfw_level_v1.md` render to text far outside the D9 rule, and split a system text from a user text. So an image request may also carry `system` (keyed like `prompt`, only when present, so existing keys are unchanged), and its `prompt` and `system` are each **either** D9 text **or** a rendering of a committed prompt file. The recording stores the exact text sent (replay is exact) and, when a part is not D9 text, a `prompt_source`:
+
+```
+"prompt_source": {"name": "classify_v1", "sha256": "<hash of prompts/classify_v1.md>",
+                  "system": {"slots": {"formats": "...", "topics": "..."}},
+                  "prompt": {"alt": true, "slots": {"name": "..."}}}
+```
+
+- **Nothing to add in a test.** The client sends text only. `stored_request(body)` (and the record transport) finds the prompt by matching the text against each committed file and writes `prompt_source`. A body that carries one is verified the same way, so it can't be forged.
+- **The check** (`tests/recordings/prompts.py`, one function for record, replay and the lint): the file must load, its LF-normalised SHA-256 must equal `sha256`, every slot value must pass its rule, and `Prompt.render` (system) or `render_user(alt=...)` (prompt) of the stored slots must equal the text exactly. A recording therefore holds only committed text plus checked slot values.
+- **Slot rules, by slot name.** `formats` and `topics` take a `", "`-joined category list: names of `[a-z0-9]+(-[a-z0-9]+)*`, 1 to 40 characters each, 1 to 64 names, no repeats, nothing else (so DESIGN §4.3's default names pass). Every other slot, `name` included, takes TST-008.D9's text rule. The client must join the lists with `", "`.
+- **Stale recordings.** Edit or rename a prompt file and the lint fails, naming the recording: `its prompt file changed since it was recorded; re-record it`, or `its prompt file is missing or invalid; re-record it`. Replay of such a recording fails the same way. Delete it and re-record in the `gpu` tier.
+- **Refusals.** Text that is neither D9 text nor a committed rendering, a bad slot, a mismatched or malformed `prompt_source`, a `prompt_source` on a text-only request, or any `system` on a request without images (nothing would check it), is refused with fixed text (no prompt, slot or path) before anything is forwarded or written. Only image requests may carry one.
+- **In a test of the checker.** The module reads `tests.recordings.prompts.PROMPTS_DIR` at call time; monkeypatch it to a temporary copy to test an edit or a rename.
 
 ## Recording
 
