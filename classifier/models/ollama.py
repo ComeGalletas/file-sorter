@@ -124,12 +124,22 @@ class OllamaClient:
         if system is not None:
             body["system"] = system
         where = f"model {model!r}, prompt {_prompt_hash(prompt)}"
+        # The errors below are raised outside the `except` from fixed text, so neither
+        # __cause__ nor __context__ holds the httpx error (CLS-004.2.8, CLS-004.2.9).
+        failure: str | None = None
+        unavailable = True
         try:
             response = self._http.post(GENERATE_PATH, json=body)
         except httpx.TimeoutException as exc:
-            raise OllamaUnavailable(f"Ollama timed out ({where}): {type(exc).__name__}") from exc
+            failure = f"Ollama timed out ({where}): {type(exc).__name__}"
         except httpx.TransportError as exc:
-            raise OllamaUnavailable(f"cannot reach Ollama ({where}): {type(exc).__name__}") from exc
+            failure = f"cannot reach Ollama ({where}): {type(exc).__name__}"
+        except httpx.DecodingError:
+            # A body that cannot be decoded is an answer failure, not an outage.
+            failure = f"Ollama sent a body that cannot be decoded ({where})"
+            unavailable = False
+        if failure is not None:
+            raise (OllamaUnavailable if unavailable else OllamaError)(failure)
         if response.is_error:
             raise OllamaError(f"Ollama returned HTTP {response.status_code} ({where})")
         try:

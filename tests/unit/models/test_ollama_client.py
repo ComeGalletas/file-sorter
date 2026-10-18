@@ -101,6 +101,28 @@ def test_unreachable_or_timeout_is_unavailable(exc_type: type[httpx.TransportErr
         generate(client(raising(exc_type)))
 
 
+@pytest.mark.parametrize("exc_type", [httpx.ConnectError, httpx.ReadTimeout])
+def test_unavailable_is_unchained_fixed_text(exc_type: type[httpx.TransportError]) -> None:
+    with pytest.raises(OllamaUnavailable) as info:
+        generate(client(raising(exc_type)))
+    assert info.value.__cause__ is None
+    assert info.value.__context__ is None
+    assert "synthetic failure" not in str(info.value)
+
+
+def test_a_body_that_cannot_be_decoded_is_an_answer_failure() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.DecodingError("qorvexsecret zhyndelmarker", request=request)
+
+    with pytest.raises(OllamaError) as info:
+        generate(client(handler))
+    assert not isinstance(info.value, OllamaUnavailable)
+    assert "cannot be decoded" in str(info.value)
+    assert "qorvexsecret" not in str(info.value)
+    assert info.value.__cause__ is None
+    assert info.value.__context__ is None
+
+
 def test_unavailable_is_still_an_ollama_error() -> None:
     assert issubclass(OllamaUnavailable, OllamaError)
 

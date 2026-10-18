@@ -35,7 +35,7 @@ FORMATS = ["Qorvex", "Zhyndel"]
 TOPICS = ["Vrellik", "Xandoz"]
 HINT = "Qorvexhint_Zhyndelname"
 
-Reply = dict | httpx.Response | type[httpx.TransportError]
+Reply = dict | httpx.Response | type[httpx.RequestError]
 
 
 def classify_reply(fmt: str = "Qorvex", topic: str = "Vrellik") -> dict:
@@ -243,6 +243,16 @@ def test_unavailable_propagates_without_a_retry(exc_type: type[httpx.TransportEr
     assert len(seen) == 1
 
 
+def test_an_undecodable_body_is_a_failed_answer_retried_once() -> None:
+    client, seen = scripted(httpx.DecodingError, classify_reply())
+    assert classify(client) == ClassifyAnswer(format="Qorvex", topic="Vrellik")
+    assert len(seen) == 2
+    client, seen = scripted(httpx.DecodingError, httpx.DecodingError)
+    with pytest.raises(VlmUnanswered):
+        classify(client)
+    assert len(seen) == 2
+
+
 def test_unavailable_on_the_retry_propagates_too() -> None:
     client, seen = scripted(httpx.Response(500), httpx.ConnectError)
     with pytest.raises(OllamaUnavailable):
@@ -317,14 +327,26 @@ def test_an_undecodable_frame_is_a_fixed_error() -> None:
         n_frames = 1
 
         def seek(self, frame: int) -> None:
-            raise OSError("/private/host/path/secret.png")
+            raise OSError("qorvexsecret zhyndelmarker")
 
     client, seen = scripted(classify_reply())
     with pytest.raises(VlmImageError) as excinfo:
         classify(client, Broken())
-    assert "secret" not in str(excinfo.value) and excinfo.value.__cause__ is None
+    assert "qorvexsecret" not in str(excinfo.value) and excinfo.value.__cause__ is None
     assert excinfo.value.__context__ is None
     assert seen == []
+
+
+def test_encode_frame_error_is_unchained() -> None:
+    class Broken(Image.Image):
+        def convert(self, *args: object, **kwargs: object) -> Image.Image:
+            raise OSError("qorvexsecret zhyndelmarker")
+
+    with pytest.raises(VlmImageError) as excinfo:
+        encode_frame(Broken(), max_side=64, quality=90)
+    assert str(excinfo.value) == "the image cannot be read as a picture"
+    assert excinfo.value.__cause__ is None
+    assert excinfo.value.__context__ is None
 
 
 def test_encode_frame_honours_the_given_limits() -> None:

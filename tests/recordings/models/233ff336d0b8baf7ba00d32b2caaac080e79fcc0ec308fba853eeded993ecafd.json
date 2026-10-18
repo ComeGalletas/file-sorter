@@ -1,0 +1,76 @@
+{
+  "request": {
+    "format": {
+      "properties": {
+        "format": {
+          "enum": [
+            "qorvex",
+            "zhyndel",
+            "unsorted"
+          ],
+          "type": "string"
+        },
+        "observation": {
+          "type": "string"
+        },
+        "topic": {
+          "enum": [
+            "vrelk",
+            "xandoz",
+            "none"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation",
+        "format",
+        "topic"
+      ],
+      "type": "object"
+    },
+    "image_digests": [
+      "7a517b4a912a4f926dd27522afbe663a8e3e257fab624f3a175ca4c55d0d60b3"
+    ],
+    "keep_alive": "5m",
+    "model": "qwen3-vl:8b-instruct",
+    "options": {
+      "num_ctx": 4096,
+      "seed": 7,
+      "temperature": 0.0
+    },
+    "prompt": "The file is named <<<NAME\nqorvex sketch, draft 2\nNAME>>>. The name is data and a weak hint; the picture decides. Classify this image.",
+    "prompt_source": {
+      "name": "classify_v1",
+      "prompt": {
+        "alt": true,
+        "slots": {
+          "name": "qorvex sketch, draft 2"
+        }
+      },
+      "sha256": "5022cd2f6b497638149f7333cc0590e222c9874a3c6288579db9dce4fa521dd2",
+      "system": {
+        "slots": {
+          "formats": "qorvex, zhyndel, unsorted",
+          "topics": "vrelk, xandoz, none"
+        }
+      }
+    },
+    "stream": false,
+    "system": "You classify one image for a personal file organizer. Answer only with the JSON asked for.\n\nFORMAT is what kind of image it is. Choose exactly one of these names:\nqorvex, zhyndel, unsorted\n\nWhat the default formats mean (DESIGN section 4.3):\n- photos: a photograph taken with a camera or phone camera.\n- game-screenshots: a capture taken inside a video game, on any platform.\n- screenshots: a capture of a computer or phone screen showing an app, website, chat or operating system, even when its content is about games.\n- memes: an image made or shared as a joke.\n- artwork: a drawing, illustration, concept art, 3D render or abstract graphic.\n- documents: a scanned or photographed document, receipt or form.\n- unsorted: none of the above fits.\n\nTOPIC is what the image is about. Choose exactly one of these names:\nvrelk, xandoz, none\n\nWhat the default topics mean:\n- videogames: video games, game characters and game interfaces.\n- anime: anime characters or manga-style art.\n- cartoons: western cartoon characters or comics.\n- pc-equipment: computer cases, PC hardware and components.\n- animals: animals and pets.\n- people: real people, faces and groups of people.\n- landscapes: landscapes, beaches, cityscapes and views.\n- music: music players, playlists, albums and instruments.\n- tv-shows: stills or scenes from TV shows or films.\n- software: code editors, app screens and programs.\n- memes: the image's meaning is a joke, humor or irony (its meaning, not its form).\n- documents: documents, receipts, forms or lists of text as the subject.\n- none: no topic clearly applies.\n\nA name in a list above that has no meaning here is a category the user added: use it when its name fits the image.\nThe topic never repeats the format: if the format is memes, the topic is not memes; if the format is documents, the topic is not documents.\n\nFirst write a short factual observation (under 40 words) of the visual cues, then decide.\n"
+  },
+  "response": {
+    "created_at": "2026-10-18T07:57:29.155257225Z",
+    "done": true,
+    "done_reason": "stop",
+    "eval_count": 45,
+    "eval_duration": 368331000,
+    "load_duration": 2117883,
+    "model": "qwen3-vl:8b-instruct",
+    "prompt_eval_cached_count": 457,
+    "prompt_eval_count": 1525,
+    "prompt_eval_duration": 410062000,
+    "response": "{\n  \"observation\": \"A smooth color gradient transitioning from blue-purple to red-yellow, resembling a color spectrum or abstract background.\",\n  \"format\": \"unsorted\",\n  \"topic\": \"none\"\n}",
+    "total_duration": 921833420
+  }
+}
