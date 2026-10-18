@@ -445,7 +445,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
   - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
-  - [ ] CLS-004.3.2 — `nsfw_cross_check`
+  - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
   - [ ] CLS-004.3.3 — `decide` and `VlmChoice`
   - [ ] CLS-004.3.4 — Results, self-rating, PR
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`

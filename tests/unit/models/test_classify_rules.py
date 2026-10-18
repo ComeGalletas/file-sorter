@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from classifier.config import AxisConfig, ClassifyConfig, NsfwLevel
+from classifier.config import AxisConfig, ClassifyConfig, CrossCheckConfig, NsfwLevel
 from classifier.models import classify_rules as rules_mod
 from classifier.models.classify_rules import (
     CategoryRule,
@@ -15,6 +15,7 @@ from classifier.models.classify_rules import (
     _rank,
     branch_for_level,
     nsfw_branch,
+    nsfw_cross_check,
     top_scores,
     validate_rules,
 )
@@ -553,3 +554,85 @@ def test_validate_rules_without_a_config_still_checks_structure():
 def test_vlm_answer_is_a_plain_value():
     answer = VlmAnswer("qorvex", None, NsfwLevel.safe)
     assert (answer.format, answer.topic, answer.level) == ("qorvex", None, NsfwLevel.safe)
+
+
+# ---- the Falconsai cross-check (CLS-004.D5)
+
+BOTH = CrossCheckConfig(safe_above=0.8, adult_below=0.2)
+OFF = CrossCheckConfig()
+
+
+def check(level, score, cross=BOTH, min_level=NsfwLevel.nudity):
+    return nsfw_cross_check(level, min_level, score, cross)
+
+
+def test_safe_level_with_a_high_score_disagrees_inclusive():
+    assert check(NsfwLevel.safe, 0.8) is True
+    assert check(NsfwLevel.safe, 0.99) is True
+    assert check(NsfwLevel.safe, 0.79) is False
+    assert check(NsfwLevel.safe, 0.5) is False
+
+
+def test_adult_level_with_a_low_score_disagrees_inclusive():
+    for level in (NsfwLevel.nudity, NsfwLevel.explicit):
+        assert check(level, 0.2) is True
+        assert check(level, 0.0) is True
+        assert check(level, 0.21) is False
+        assert check(level, 0.9) is False
+
+
+def test_agreement_and_the_middle_levels_do_not_disagree():
+    assert check(NsfwLevel.safe, 0.01) is False  # both say safe
+    assert check(NsfwLevel.explicit, 0.99) is False  # both say adult
+    # suggestive is below min_level and not safe: neither half applies
+    assert check(NsfwLevel.suggestive, 0.0) is False
+    assert check(NsfwLevel.suggestive, 1.0) is False
+
+
+def test_the_adult_half_follows_min_level():
+    assert check(NsfwLevel.suggestive, 0.0, min_level=NsfwLevel.suggestive) is True
+    assert check(NsfwLevel.nudity, 0.0, min_level=NsfwLevel.explicit) is False
+
+
+def test_a_null_threshold_turns_only_its_half_off():
+    only_safe = CrossCheckConfig(safe_above=0.8)
+    only_adult = CrossCheckConfig(adult_below=0.2)
+    assert check(NsfwLevel.safe, 0.9, only_safe) is True
+    assert check(NsfwLevel.explicit, 0.0, only_safe) is False
+    assert check(NsfwLevel.safe, 0.9, only_adult) is False
+    assert check(NsfwLevel.explicit, 0.0, only_adult) is True
+
+
+def test_both_null_is_off_and_no_score_is_off():
+    for level in NsfwLevel:
+        for score in (0.0, 0.5, 1.0):
+            assert check(level, score, OFF) is False
+        assert check(level, None) is False
+
+
+def test_float_noise_does_not_flip_a_boundary():
+    assert check(NsfwLevel.safe, 0.6 + 0.2 - 1e-12) is True  # 0.7999999...
+    assert check(NsfwLevel.explicit, 0.1 + 0.1 + 1e-12) is True
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_score_raises_fixed_text(bad):
+    with pytest.raises(ClassifyRulesError) as caught:
+        check(NsfwLevel.safe, bad)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert str(caught.value) == rules_mod._ERR_NSFW
+
+
+def test_the_cross_check_refuses_non_levels():
+    with pytest.raises(ClassifyRulesError):
+        nsfw_cross_check(1, NsfwLevel.nudity, 0.5, BOTH)
+    with pytest.raises(ClassifyRulesError):
+        nsfw_cross_check(NsfwLevel.safe, "nudity", 0.5, BOTH)
+
+
+def test_the_cross_check_returns_a_flag_never_a_branch():
+    # the branch is decided by the level alone, whatever the score says
+    assert branch_for_level(NsfwLevel.safe, NsfwLevel.nudity) == "safe"
+    assert check(NsfwLevel.safe, 0.99) is True
+    assert branch_for_level(NsfwLevel.explicit, NsfwLevel.nudity) == "nsfw"
+    assert check(NsfwLevel.explicit, 0.0) is True

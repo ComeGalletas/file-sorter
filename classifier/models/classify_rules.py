@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from classifier.config import AxisConfig, ClassifyConfig, NsfwLevel
+from classifier.config import AxisConfig, ClassifyConfig, CrossCheckConfig, NsfwLevel
 
 Axis = Literal["format", "topic"]
 Branch = Literal["safe", "nsfw"]
@@ -113,6 +113,31 @@ def branch_for_level(level: NsfwLevel, min_level: NsfwLevel) -> Branch:
     if not (isinstance(level, NsfwLevel) and isinstance(min_level, NsfwLevel)):
         raise ClassifyRulesError(_ERR_LEVEL)
     return "nsfw" if level >= min_level else "safe"
+
+
+def nsfw_cross_check(
+    level: NsfwLevel,
+    min_level: NsfwLevel,
+    nsfw_score: float | None,
+    cross_check: CrossCheckConfig,
+) -> bool:
+    """Whether Falconsai strongly disagrees with the VLM's level (CLS-004.D5).
+
+    True when the level is `safe` and the score is at or above `safe_above`, or the level is
+    at or above `min_level` and the score is at or below `adult_below`. A null threshold turns
+    its half off; no score (None) turns the check off. It only flags: the branch comes from
+    the level alone (`branch_for_level`).
+    """
+    if not (isinstance(level, NsfwLevel) and isinstance(min_level, NsfwLevel)):
+        raise ClassifyRulesError(_ERR_LEVEL)
+    if nsfw_score is None:
+        return False
+    if not math.isfinite(nsfw_score):
+        raise ClassifyRulesError(_ERR_NSFW)
+    above, below = cross_check.safe_above, cross_check.adult_below
+    if level == NsfwLevel.safe and above is not None and nsfw_score + _EPS >= above:
+        return True
+    return level >= min_level and below is not None and nsfw_score <= below + _EPS
 
 
 def validate_rules(
