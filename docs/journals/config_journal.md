@@ -118,11 +118,11 @@ references or host paths here. Use hashes.
 
 ## CFG-003 — Tasks
 
-- [ ] CFG-003.1 — The schema in `classifier/config.py` (with typed enums for `min_level`, validated cross-check bounds, and fixed-text errors naming the key) and the human's values in `config.yaml` · #130 · Pipeline · acceptance: `tests/unit/test_config.py`
+- [x] CFG-003.1 — The schema in `classifier/config.py` (with typed enums for `min_level`, validated cross-check bounds, and fixed-text errors naming the key) and the human's values in `config.yaml` · #130 · Pipeline · acceptance: `tests/unit/config/test_config.py` (the path in the plan was wrong; the lead approved the actual one on #130) · PR #144, merged as `1056ac3`
   - [x] CFG-003.1.1 — The schema: ordered `NsfwLevel`, `nsfw.min_level` (refuses `safe`), `nsfw.cross_check` bounds and order check, the obsolete SigLIP keys optional. `min_level` is optional here so `config.yaml` still loads until .2 sets it · hash: c5e9a2c
   - [x] CFG-003.1.2 — `config.yaml`: the human's values (type `balance`): `nsfw.min_level: nudity`, both cross-check values null, `models.vlm_safe: qwen3-vl:8b-instruct` · hash: e95b8bb
   - [x] CFG-003.1.3 — `min_level` becomes required, now that the file sets it · hash: 3066d47
-  - [x] CFG-003.1.4 — Results and the self-rating · this commit
+  - [x] CFG-003.1.4 — Results and the self-rating · hash: ee681b2
 
 ## CFG-003 — Results
 

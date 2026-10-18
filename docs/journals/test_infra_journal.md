@@ -455,7 +455,7 @@ references or host paths here. Use hashes.
   - **Model ids:** only the ids in the committed `config.yaml`'s `models` section that the vision backend uses. A test-only id must be `synthetic/<[a-z0-9-]{1,40}>`.
   - **Text inputs:** ASCII letters, digits, single spaces, `,` and `'` only, with at least one letter. No `.` at all, no word with 3 or more digits, and at most 256 characters.
   - **Not provable:** the lint cannot prove a phrase is synthetic. The privacy review of each committed recording covers that.
-- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; reported confirmed by the human through their watch session, to be confirmed in the lead session). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
+- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; reported confirmed by the human through their own session: "keep config values public, currently these are standard nsfw conditions"). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
 
 ## TST-008 — Tasks
 
@@ -534,18 +534,18 @@ references or host paths here. Use hashes.
 
 ## TST-009 — Tasks
 
-- [ ] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
+- [x] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
   - [x] TST-009.1.1 — key: `image_digests` from decoded `images` (limits as module constants), prompt rule, `stored_request`
   - [x] TST-009.1.2 — replay and record: the record writes the digest form, refuses before forwarding what the lint would refuse
   - [x] TST-009.1.3 — lint: `images` refused, `image_digests` shape, stray fields, the key
-  - [x] TST-009.1.4 — README and Results (.1.1 to .1.3 are commit `24f40d4`)
-  - [x] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording
-  - [x] TST-009.1.6 — review fix (PR #143): `image_digest` raises its refusal outside the `except`, so a truncated image leaves no `__context__`
+  - [x] TST-009.1.4 — README and Results (.1.1 to .1.3 are commit `24f40d4`; .1.4 is `e3483d6`)
+  - [x] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording · `62c98fa`
+  - [x] TST-009.1.6 — review fix (PR #143): `image_digest` raises its refusal outside the `except`, so a truncated image leaves no `__context__` · `52da42a` (PR #143, merged as `ba030a3`)
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
-  - [x] TST-009.2.1 — Loader: the optional trailing `nsfw_level` column, `expects_adult(min_level)`, `labels.example.csv`
-  - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85%
+  - [x] TST-009.2.1 — Loader: the optional trailing `nsfw_level` column, `expects_adult(min_level)`, `labels.example.csv` · `e174308`
+  - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85% · `923a804`
   - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
-  - [x] TST-009.2.4 — Results and self-rating
+  - [x] TST-009.2.4 — Results and self-rating · `8adc3d6` (PR #151, merged as `3a211b3`)
   - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5
 
 ## TST-009 — Results
@@ -563,7 +563,7 @@ references or host paths here. Use hashes.
   - a missing or unknown ledger level is a miss;
   - a `suggestive-negative` row at or above `min_level` stops the gate with a fixed line/column error;
   - the public form is unchanged (TST-008.D1, D6).
-- **Interim shim:** the integration test fills the ledger level from the branch until CLS-004.4 writes `files.nsfw_level`. Remove it then. The labels there stay 7-column, so it also covers a file without the optional column.
+- **Interim shim:** the integration test fills the ledger level from the branch until CLS-004.4 writes `files.nsfw_level`. Remove it then (removed in CLS-004.4.5.3, `b8824c2`). The labels there stay 7-column, so it also covers a file without the optional column.
 - **Deferred:** TST-009.2.5, the `make gate-3` G1 run, on the lead's go after CLS-004.5. The PR says "Refs #134" until then.
 - **Status:** DONE for .2.1 to .2.4; the issue stays open for .2.5.
 - **Self-rating:** 9/10, proud: yes. Gap: the level logic is proved on synthetic ledger rows only, because the node on main doesn't write `nsfw_level` yet; the end-to-end check comes with CLS-004.4 and the G1 run.
@@ -578,3 +578,59 @@ references or host paths here. Use hashes.
 - **Tests:** acceptance `tests/devtools/test_recordings.py` (unit tier); `tests/devtools` 399 passed; `make test` 1966 passed, 48 deselected; `make lint` clean. No `gpu` run (the recorder is tested on a fake upstream) and no `eval/` run (no prompt, threshold or model change). This task commits no recordings.
 - **Privacy:** all pictures are synthetic gradients generated in code; every error is fixed text and unchained (`__cause__` and `__context__` tested); no new type holds a prompt or digests, so no `repr` test was needed; no filesystem call was added outside the wrapped ones.
 - **Status:** DONE. **Self-rating:** 8/10, proud: yes. Gaps: `OllamaClient.generate_json` has no `images` argument, so the round trip is tested through a raw `httpx` post (CLS-004.2 adds the argument, then a test through the client belongs there); subtasks .1.1 to .1.3 share one commit because they edit one module and its tests together.
+
+---
+
+## TST-010 — Requirement (lead, from CLS-004.2's plan, 2026-10-18)
+
+- **Objective:** let a VLM recording hold the real classify and NSFW-level requests, so the default tiers replay them (CLS-004.2.6, CLS-004.4), without weakening the synthetic-only guarantee.
+- **Details:**
+  - An image request's `prompt` and `system` must be either TST-008.D9 text or an exact rendering of a **committed** `prompts/` file.
+  - `system` becomes an allowed request field.
+  - Record, replay and the lint apply one check.
+- **Implements:** CLAUDE.md §3 (determinism); TST-005.D1, TST-008.D3, TST-009.D2; CLS-004.D9, D10.
+
+## TST-010 — Confirmed reading
+
+- **TST-010.D1** — **The recording names its source, and the check re-renders it** (QA's design, lead-approved on #153).
+  - A non-D9 text needs a `prompt_source`: the prompt name, the committed file's SHA-256 and the slot values.
+  - The lint re-renders the committed file with those slots and requires an exact match.
+  - An edited, renamed or missing prompt file fails the recording, naming it.
+- **TST-010.D2** — **Slot rules by slot name** (lead, #153).
+  - `formats` and `topics` take a `", "`-joined category list: names of `[a-z0-9]+(-[a-z0-9]+)*`, 1 to 40 characters, 1 to 64 names, no repeats. That admits DESIGN §4.3's public defaults and test coinages.
+  - Every other slot, `name` included, takes D9's text rule.
+- **TST-010.D3** — **`system` only on an image request** (lead, after the privacy round on PR #156). A text-only request carrying `system` is refused, because nothing would check its text.
+
+## TST-010 — Tasks
+
+- [x] TST-010.1 — The prompt-source check for image recordings, the `system` field, README · #153 · QA · acceptance: `tests/devtools/test_recordings.py` · PR #156, merged as `1aa1c4e`
+  - [x] TST-010.1.1 — `tests/recordings/prompts.py`, wired into `replay.py` and the lint, with tests (.1.2 and .1.3 of the plan landed inside it) · `3749d76`
+  - [x] TST-010.1.4 — `tests/recordings/README.md` · `4124d1b`
+  - [x] TST-010.1.5 — privacy round 1: refuse `system` on a request without images (TST-010.D3) · `14d2409`
+
+## TST-010 — Results
+
+### TST-010.1 (#153)
+
+- **Tests:** `tests/devtools` 460 passed (42 new), including:
+  - both committed prompts and both variants round-tripping through record, replay and the lint;
+  - each slot rule at its limits;
+  - an edited, a renamed and a stale prompt file;
+  - 12 forged `prompt_source` shapes, refused with zero upstream calls and nothing written.
+
+  `make lint` clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a body-only prompt (no `user`) can't be inferred yet, and is refused.
+- **Reviewer and Privacy auditor:** APPROVE. Privacy FAIL on round 1 (`system` unchecked on text-only requests), then PASS on round 2 after TST-010.1.5.
+
+---
+
+## TST-011 — Requirement (lead, from CLS-004.6's plan, 2026-10-18)
+
+- **Objective:** the default tiers never depend on a local prompt addendum (CLS-004.D16).
+- **Details:** `make init` copies `prompts/local/` into every worktree (RUN-017), and the default-tier replays are keyed on the exact prompt text (TST-010). `tests/conftest.py` sets the loader's `PROMPTS_LOCAL=off` for `unit`, `db` and `integration`. The `gpu`, `gate` and eval runs keep the addenda.
+- **Order:** merges with or after CLS-004.6 (#148), and before the human writes any real addendum.
+- **Implements:** CLAUDE.md §3 (determinism); CLS-004.D16.
+
+## TST-011 — Tasks
+
+- [ ] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: named in the plan on #161
