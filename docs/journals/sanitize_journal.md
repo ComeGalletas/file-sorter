@@ -404,6 +404,34 @@ Decisions:
 ## SAN-004 — Tasks
 
 - [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
+  - [x] SAN-004.1.1 — Run `make gate-2` on `qwen3-vl:8b-instruct` for its own process (Proposal A, no repo change) · gate 2 PASS (Results)
+  - [ ] SAN-004.1.2 — Pin `num_ctx: 4096` in the entity prompt and re-record the entity-prompt recordings, after #128's loader change is on `main` (the lead says when)
 - [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · issue: the lead opens it on the PASS · acceptance: `tests/unit/test_config.py`
 
 ## SAN-004 — Results
+
+### SAN-004.1.1 — gate 2 on `qwen3-vl:8b-instruct` (ML desk)
+
+- **Command** (run from the repo root of the worktree, in the `test` compose service; container paths only). It writes a temporary copy of `config.yaml` in the container with only `models.text_llm` replaced, points `gate_2.CONFIG` at it and calls `gate_2.main()`. `config.yaml` in the repo is unchanged:
+
+  ```
+  docker compose up -d ollama   # the project name is the worktree's, as in the Makefile
+  docker compose --profile test run --rm test python -c "
+  import sys, tempfile, pathlib, yaml
+  sys.path.insert(0, 'scripts')
+  import gate_2
+  d = yaml.safe_load(gate_2.CONFIG.read_text(encoding='utf-8'))
+  d['models']['text_llm'] = 'qwen3-vl:8b-instruct'
+  p = pathlib.Path(tempfile.mkdtemp()) / 'config.yaml'
+  p.write_text(yaml.safe_dump(d), encoding='utf-8')
+  gate_2.CONFIG = p
+  sys.exit(gate_2.main())"
+  ```
+
+- **Result (public form, DOC-008.D3):** exit 0.
+  - names: residual seeded values 0.0% (required 0.0%): ok
+  - metadata, synthetic: 100.0% sanitized, 100.0% of outputs clean (required 100.0% and 100.0%): ok
+  - metadata, synthetic: seeded values in results files: ok
+  - metadata, real fixtures: every input sanitized and clean (required): ok
+  - **gate 2 PASS**
+- The prompt was unchanged for this run (no `num_ctx` yet, SAN-004.1.2). Context size doesn't change the entity check's accuracy (lead, #131).
