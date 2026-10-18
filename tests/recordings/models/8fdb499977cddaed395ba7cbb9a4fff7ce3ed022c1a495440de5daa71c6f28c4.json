@@ -34,6 +34,7 @@
     "keep_alive": "5m",
     "model": "qwen3-vl:8b",
     "options": {
+      "num_ctx": 4096,
       "num_predict": 512,
       "seed": 7,
       "temperature": 0.0
@@ -43,17 +44,17 @@
     "stream": false
   },
   "response": {
-    "created_at": "2026-10-07T23:51:44.444913121Z",
+    "created_at": "2026-10-18T07:03:07.282373961Z",
     "done": true,
     "done_reason": "stop",
     "eval_count": 60,
-    "eval_duration": 572494000,
-    "load_duration": 1586189,
+    "eval_duration": 432985000,
+    "load_duration": 1014975,
     "model": "qwen3-vl:8b",
     "prompt_eval_cached_count": 467,
     "prompt_eval_count": 495,
-    "prompt_eval_duration": 22180000,
+    "prompt_eval_duration": 17151000,
     "response": "{\"entities\": [{\"text\": \"Vrollmark\", \"label\": \"LOCATION\"}, {\"text\": \"Bay\", \"label\": \"LOCATION\"}, {\"text\": \"Tavrelle\", \"label\": \"PERSON\"}, {\"text\": \"Druvel\", \"label\": \"PERSON\"}]}",
-    "total_duration": 600310946
+    "total_duration": 453536961
   }
 }

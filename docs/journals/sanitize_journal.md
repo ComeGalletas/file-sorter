@@ -405,7 +405,7 @@ Decisions:
 
 - [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
   - [x] SAN-004.1.1 — Run `make gate-2` on `qwen3-vl:8b-instruct` for its own process (Proposal A, no repo change) · gate 2 PASS (Results)
-  - [ ] SAN-004.1.2 — Pin `num_ctx: 4096` in the entity prompt and re-record the entity-prompt recordings, after #128's loader change is on `main` (the lead says when)
+  - [x] SAN-004.1.2 — Pin `num_ctx: 4096` in the entity prompt and re-record the entity-prompt recordings, after #128's loader change is on `main` (the lead says when) · tick commit below
 - [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · issue: the lead opens it on the PASS · acceptance: `tests/unit/test_config.py`
 
 ## SAN-004 — Results
@@ -435,3 +435,11 @@ Decisions:
   - metadata, real fixtures: every input sanitized and clean (required): ok
   - **gate 2 PASS**
 - The prompt was unchanged for this run (no `num_ctx` yet, SAN-004.1.2). Context size doesn't change the entity check's accuracy (lead, #131).
+
+### SAN-004.1.2 — `num_ctx: 4096` pinned (ML desk)
+
+- `prompts/sanitize_entity_v1.md` gains `num_ctx: 4096` in its front matter (CLS-004.D9), using the loader field #152 added. Nothing else in the prompt changed.
+- `num_ctx` is part of the request `options`, so every entity-prompt recording changed its key. The old ones were deleted and the gpu entity test re-recorded them (`--record-ollama`) from its synthetic strings, on the model `config.yaml` names today (`models.text_llm`, unchanged). The recordings count is the same as before. **SAN-004.2:** when `models.text_llm` switches, the entity recordings are keyed by the model tag, so they must be re-recorded again in that task.
+- `tests/unit/models/test_text_llm.py` expects `num_ctx` in the request options.
+- **Tests:** `make test` 2169 passed (unit, db, integration); `make lint` clean; `pytest -m gpu tests/gpu/models/test_entity_detection.py` 22 passed on the current `models.text_llm`.
+- **Finding for the human (diagnostic on #131, 2026-10-18):** on `qwen3-vl:8b-instruct` the same gpu test file passes 20 of 22 with the current wrap, and two cases fail in every wrap variant tried (the empty think block, no think block, and Ollama's own template). One case is a label mismatch (covered, so redacted); the other is an injection shape that returns no entity and differs by variant. Gate 2 passed on the current wrap (SAN-004.1.1). No wrap change helps; a fix would be a wording task.

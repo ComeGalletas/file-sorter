@@ -7,6 +7,8 @@ seed: 7
 keep_alive: 5m
 # Bounded, so a runaway answer can't stall a batch; a cut-off answer fails closed (MOD-001.D5).
 num_predict: 512
+# CLS-004.D9: one context size for every prompt, so the resident model is never reloaded between calls.
+num_ctx: 4096
 # MOD-001.D5: the qwen3-vl:8b tag on the pinned Ollama accepts `think: false` but still thinks
 # (~3 000 tokens, ~30 s a name, sometimes cut off). So the request is raw: the wrapper below is
 # Qwen's ChatML user turn with an empty think block, and `think` is left out. It is the only
