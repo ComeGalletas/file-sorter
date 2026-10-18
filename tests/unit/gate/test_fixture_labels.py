@@ -240,3 +240,61 @@ def test_an_encoded_lone_surrogate_loads_and_is_never_quoted(tmp_path: Path) -> 
         load(path)
     assert str(info.value) == "labels line 2, column format: not in the format vocabulary"
     assert_fixed_unchained(info.value, "blorp")
+
+
+# --- TST-009.2.1: the optional trailing nsfw_level column (TST-009.D1) ---
+
+LEVEL_HEADER = HEADER.rstrip("\n") + ",nsfw_level\n"
+
+
+def test_a_seven_column_file_has_no_levels() -> None:
+    row = parse("a1.zz,zorbs,,yes,,,\n").rows[0]
+    assert row.nsfw_level is None
+    assert row.expects_adult(2) is True  # the adult column stands
+    assert parse("a1.zz,zorbs,,no,,,\n").rows[0].expects_adult(0) is False
+
+
+def test_a_level_overrides_the_adult_column_at_min_level() -> None:
+    body = (
+        "a1.zz,zorbs,,no,,,,explicit\n"
+        "b2.zz,zorbs,,yes,,,,suggestive\n"
+        "c3.zz,zorbs,,no,,,,nudity\n"
+        "d4.zz,zorbs,,yes,,,,\n"
+    )
+    rows = parse(body, LEVEL_HEADER).rows
+    assert [r.expects_adult(2) for r in rows] == [True, False, True, True]
+    assert [r.expects_adult(1) for r in rows[:3]] == [True, True, True]
+    assert [r.expects_adult(3) for r in rows[:3]] == [True, False, False]
+    assert [r.nsfw_level for r in rows] == ["explicit", "suggestive", "nudity", None]
+
+
+def test_every_level_name_is_accepted_and_ordered() -> None:
+    assert fl.LEVELS == ("safe", "suggestive", "nudity", "explicit")
+    rows = parse(
+        "".join(f"f{i}.zz,zorbs,,no,,,,{n}\n" for i, n in enumerate(fl.LEVELS)), LEVEL_HEADER
+    )
+    assert [r.nsfw_level for r in rows.rows] == list(fl.LEVELS)
+
+
+@pytest.mark.parametrize("level", ["Explicit", "2", "qorvex-level", "yes"])
+def test_a_bad_level_names_line_and_column_only(level: str) -> None:
+    error = error_of(f"a1.zz,zorbs,,no,,,,{level}\n", LEVEL_HEADER)
+    assert str(error) == (
+        "labels line 2, column nsfw_level: must be blank, safe, suggestive, nudity or explicit"
+    )
+    assert error.__cause__ is None and error.__context__ is None
+
+
+def test_the_level_header_fixes_the_cell_count() -> None:
+    assert str(error_of("a1.zz,zorbs,,no,,,\n", LEVEL_HEADER)) == (
+        "labels line 2, column row: wrong number of cells"
+    )
+    assert str(error_of("a1.zz,zorbs,,no,,,,safe\n")) == (
+        "labels line 2, column row: wrong number of cells"
+    )
+
+
+def test_rows_remember_their_line_and_hide_the_level() -> None:
+    row = parse("a1.zz,zorbs,,no,,,,nudity\nb2.zz,zorbs,,no,,,,\n", LEVEL_HEADER).rows
+    assert [r.line for r in row] == [2, 3]
+    assert "nudity" not in repr(row[0]) and "nudity" not in str(row[0])
