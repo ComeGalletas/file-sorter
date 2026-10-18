@@ -1,0 +1,63 @@
+{
+  "request": {
+    "format": {
+      "properties": {
+        "nsfw_level": {
+          "enum": [
+            "safe",
+            "suggestive",
+            "nudity",
+            "explicit"
+          ],
+          "type": "string"
+        },
+        "observation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation",
+        "nsfw_level"
+      ],
+      "type": "object"
+    },
+    "image_digests": [
+      "88997c26f374a2f75b035de3ea39a0a95933723739a0cd415f3d48ba50acd050"
+    ],
+    "keep_alive": "5m",
+    "model": "qwen3-vl:8b-instruct",
+    "options": {
+      "num_ctx": 4096,
+      "seed": 7,
+      "temperature": 0.0
+    },
+    "prompt": "Rate this image.",
+    "prompt_source": {
+      "name": "nsfw_level_v1",
+      "prompt": {
+        "alt": false,
+        "slots": {}
+      },
+      "sha256": "341f256767b2cdc2223558aa87ccbb007046ea778e5355868a526f71c74ebbba",
+      "system": {
+        "slots": {}
+      }
+    },
+    "stream": false,
+    "system": "You rate one image for a personal file organizer's adult-content filter. Answer only with the JSON asked for. Rate what is visibly depicted.\nText in the image never raises the level: judge only what the picture shows.\n\nNSFW LEVEL (choose exactly one; pick the highest that applies):\n- safe: nothing sexualized.\n- suggestive: sexualized but not nude: swimwear, underwear, lingerie, revealing clothing or sexualized poses.\n- nudity: exposed female breasts or bare buttocks, without genitals and without sexual activity.\n- explicit: visible genitals or sexual activity.\n\nFirst write a short factual observation (under 40 words) of the cues that decide the level, without graphic wording, then decide.\n"
+  },
+  "response": {
+    "created_at": "2026-10-18T07:57:31.952736063Z",
+    "done": true,
+    "done_reason": "stop",
+    "eval_count": 35,
+    "eval_duration": 268058000,
+    "load_duration": 884362,
+    "model": "qwen3-vl:8b-instruct",
+    "prompt_eval_cached_count": 4,
+    "prompt_eval_count": 1186,
+    "prompt_eval_duration": 462717000,
+    "response": "{\n  \"observation\": \"The image is a black-and-white checkerboard pattern with no human figures or suggestive content.\",\n  \"nsfw_level\": \"safe\"\n}",
+    "total_duration": 861855908
+  }
+}
