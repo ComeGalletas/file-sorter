@@ -63,6 +63,9 @@ class File(Base):
         CheckConstraint(
             "review_reason in ('unsorted', 'ambiguous_reference')", name="files_review_reason"
         ),
+        CheckConstraint(
+            "nsfw_level in ('safe', 'suggestive', 'nudity', 'explicit')", name="files_nsfw_level"
+        ),
         Index("ix_files_status", "status"),
         Index("ix_files_short_hash", "short_hash"),
     )
@@ -110,6 +113,8 @@ class File(Base):
     original_sanitized: Mapped[str | None] = mapped_column(Text)
     # CLS-002.D10: the SigLIP image embedding of the sanitized copy.
     image_vec: Mapped[Any | None] = mapped_column(Vector(1152))
+    # CLS-004.D3: the VLM's NSFW level; null until classified (DB-004.D1, no backfill).
+    nsfw_level: Mapped[str | None] = mapped_column(Text)
 
 
 class SanitizeLog(Base):

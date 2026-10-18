@@ -15,6 +15,7 @@ KEY_COLUMNS = {
     "topic_scores", "caption", "prompt_version", "reference_id", "template", "proposed_path",
     "output_path", "output_hash", "needs_review", "review_reason", "has_sensitive_text",
     "error", "created_at", "updated_at", "original_sanitized", "image_vec",
+    "nsfw_level",
 }  # fmt: skip
 FILLED_AT_INGEST = {
     "source_hash", "short_hash", "source_path", "duplicate_paths", "source_mtime", "ext",
@@ -73,6 +74,17 @@ def test_category_tables_mirror_0003() -> None:
     (fk,) = prompts.c.category_id.foreign_keys
     assert fk.ondelete == "CASCADE"
     assert File.__table__.c.image_vec.nullable is True
+
+
+def test_nsfw_level_mirrors_0004() -> None:
+    """DB-004.1: a nullable text column, checked against the four levels."""
+    column = File.__table__.c.nsfw_level
+    assert column.nullable is True
+    assert column.type.python_type is str
+    (check,) = [
+        c for c in File.__table__.constraints if getattr(c, "name", None) == "files_nsfw_level"
+    ]
+    assert str(check.sqltext) == "nsfw_level in ('safe', 'suggestive', 'nudity', 'explicit')"
 
 
 def test_category_reprs_hide_names_folders_and_prompts() -> None:

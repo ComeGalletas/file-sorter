@@ -154,5 +154,7 @@ references or host paths here. Use hashes.
 ## DB-004 — Tasks
 
 - [ ] DB-004.1 — Migration `0004`: `files.nsfw_level` with its check constraint, the ORM field, and the one-head and downgrade tests · #129 · Pipeline · acceptance: `tests/db/ledger/test_nsfw_level_migration.py`
+  - [x] DB-004.1.1 — Migration `0004`, the `File.nsfw_level` field with its check constraint, and the model test · `(hash in next commit)`
+  - [ ] DB-004.1.2 — The acceptance test `test_nsfw_level_migration.py`
 
 ## DB-004 — Results
