@@ -7,6 +7,10 @@ and `options`, plus `think` and `raw` only when the body carries them, with `sor
 `separators=(",", ":")`, `ensure_ascii=False`, encoded as UTF-8. `keep_alive` and `stream`
 are not part of the key.
 
+A request that carries `images` (TST-009.D2) also keys `image_digests`: the TST-008.D8 digest of
+each decoded image, in order. The recording stores that list in place of `images`, so no pixel or
+base64 data ever reaches disk, and the prompt of such a request must pass TST-008.D9's text rule.
+
 `ReplayTransport` serves those files to `OllamaClient(host, transport=...)` and never opens a
 socket. `RecordingTransport` (record mode, `gpu` tier only) forwards to an upstream transport
 that the caller builds, and writes the files. The shared `ollama_transport` fixture in
@@ -17,7 +21,9 @@ names at most the package, the 64-hex key and the test id, never a prompt, schem
 and is raised unchained.
 """
 
+import base64
 import hashlib
+import io
 import json
 import re
 from collections.abc import Mapping
@@ -33,6 +39,24 @@ GENERATE_PATH = "/api/generate"
 # TST-005.D5: always keyed, and keyed only when the body carries them.
 KEYED_FIELDS = ("model", "prompt", "format", "options")
 OPTIONAL_KEYED_FIELDS = ("think", "raw")
+# TST-009.D2: a request with images is keyed by their digests, within these limits.
+IMAGES_FIELD = "images"
+DIGESTS_FIELD = "image_digests"
+MAX_IMAGES = 8
+MAX_IMAGE_BYTES = 8 * 1024 * 1024  # decoded bytes of one image, as sent
+MAX_IMAGE_PIXELS = 16_000_000  # width x height, checked before any pixel is decoded
+IMAGE_REFUSED = "a request image is not a base64 image within the recording limits"
+# TST-009.1.5: the only top-level fields a request may carry, live or stored. Anything else
+# would be written to disk unseen (a base64 value under a made-up key), so it is refused.
+REQUEST_FIELDS = {
+    *KEYED_FIELDS,
+    *OPTIONAL_KEYED_FIELDS,
+    "keep_alive",
+    "stream",
+    IMAGES_FIELD,
+    DIGESTS_FIELD,
+}
+UNKNOWN_FIELD_REFUSED = "the request body holds a field an Ollama request may not have"
 RECORDING_FIELDS = {"request", "response"}
 # Ollama's token ids of the prompt: bulky, and unused by OllamaClient. Not recorded.
 UNRECORDED_RESPONSE_FIELDS = ("context",)
@@ -49,16 +73,83 @@ class RecordingError(BaseException):
     """
 
 
+def _image_digest(encoded: object) -> str:
+    """The TST-008.D8 digest of one base64 image of a live body, decoded in memory only."""
+    from PIL import Image
+
+    from tests.recordings.vision import image_digest
+
+    digest = None
+    if isinstance(encoded, str) and len(encoded) <= MAX_IMAGE_BYTES * 4 // 3 + 4:
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+            if len(raw) <= MAX_IMAGE_BYTES:
+                with Image.open(io.BytesIO(raw)) as image:
+                    if image.width * image.height <= MAX_IMAGE_PIXELS:
+                        digest = image_digest(image)
+        except Exception:  # noqa: BLE001 - any decode failure is the same fixed refusal
+            digest = None
+    if digest is None:
+        # Raised outside the except block: a library message could quote the input.
+        raise RecordingError(IMAGE_REFUSED)
+    return digest
+
+
+def _digest_list(body: Mapping[str, Any]) -> list[str] | None:
+    """The image digests of a body: from `images` (live) or `image_digests` (stored), or None."""
+    if IMAGES_FIELD in body and DIGESTS_FIELD in body:
+        raise RecordingError("the request body holds both images and image_digests")
+    if IMAGES_FIELD in body:
+        images = body[IMAGES_FIELD]
+        if not isinstance(images, list) or not 1 <= len(images) <= MAX_IMAGES:
+            raise RecordingError(f"the request images are not a list of 1 to {MAX_IMAGES} images")
+        return [_image_digest(image) for image in images]
+    if DIGESTS_FIELD in body:
+        digests = body[DIGESTS_FIELD]
+        if (
+            not isinstance(digests, list)
+            or not 1 <= len(digests) <= MAX_IMAGES
+            or not all(isinstance(d, str) and KEY_RE.fullmatch(d) for d in digests)
+        ):
+            raise RecordingError(
+                f"the request image_digests are not a list of 1 to {MAX_IMAGES} sha256 digests"
+            )
+        return list(digests)
+    return None
+
+
 def canonical_request(body: object) -> dict[str, Any]:
-    """The fields of an `/api/generate` body that the key covers (TST-005.D5)."""
+    """The fields of an `/api/generate` body that the key covers (TST-005.D5, TST-009.D2)."""
     if not isinstance(body, Mapping):
         raise RecordingError("the request body is not a JSON object")
+    if not set(body) <= REQUEST_FIELDS:
+        # Fixed text: the field's name and value are never echoed.
+        raise RecordingError(UNKNOWN_FIELD_REFUSED)
     missing = [field for field in KEYED_FIELDS if field not in body]
     if missing:
         raise RecordingError(f"the request body lacks {', '.join(missing)}")
     canonical = {field: body[field] for field in KEYED_FIELDS}
     canonical.update({field: body[field] for field in OPTIONAL_KEYED_FIELDS if field in body})
+    digests = _digest_list(body)
+    if digests is not None:
+        from tests.recordings.vision import check_text_input
+
+        # TST-009.D2: the prompt of an image request is held to TST-008.D9's text rule.
+        if not isinstance(body["prompt"], str):
+            raise RecordingError("the prompt of an image request is not text")
+        check_text_input(body["prompt"])
+        canonical[DIGESTS_FIELD] = digests
     return canonical
+
+
+def stored_request(body: Mapping[str, Any]) -> dict[str, Any]:
+    """`body` as a recording stores it: `images` replaced by their digests (TST-009.D2)."""
+    digests = _digest_list(body)
+    if digests is None:
+        return dict(body)
+    stored = {k: v for k, v in body.items() if k != IMAGES_FIELD}
+    stored[DIGESTS_FIELD] = digests
+    return stored
 
 
 def recording_key(body: object) -> str:
@@ -153,7 +244,17 @@ def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     response = recording["response"]
     if not isinstance(response, dict) or not isinstance(response.get("response"), str):
         raise RecordingError(f"{where} has no text response.response field")
-    if recording_key(recording["request"]) != path.stem:
+    request = recording["request"]
+    if isinstance(request, Mapping):
+        if IMAGES_FIELD in request:
+            raise RecordingError(f"{where} carries images; store image_digests instead")
+    try:
+        key = recording_key(request)
+    except RecordingError:
+        key = None
+    if key is None:
+        raise RecordingError(f"{where} holds a request that cannot be keyed")
+    if key != path.stem:
         raise RecordingError(f"{where} is not named by the key of its stored request")
     return recording
 
@@ -162,8 +263,8 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
     """Every problem with the `*.json` files under `root`, one line each (TST-005.1.3).
 
     Each file sits in `<package>/`, follows the format, is named by its request's key, and
-    its request is text only (P-3: never an `images` field). A request with a `kind` is a vision
-    recording (TST-008.D3) and is checked by `tests.recordings.vision` instead.
+    its request holds no `images` field, only `image_digests` (TST-009.D2). A request with a
+    `kind` is a vision recording (TST-008.D3) and is checked by `tests.recordings.vision` instead.
     """
     try:
         paths = sorted(root.rglob("*.json"))
@@ -188,8 +289,8 @@ def lint_recordings(root: Path = RECORDINGS) -> list[str]:
                 from tests.recordings.vision import load_vision_recording
 
                 load_vision_recording(path, where)
-            elif "images" in load_recording(path, root)["request"]:
-                raise RecordingError(f"{where} carries images; recordings are text only")
+            else:
+                load_recording(path, root)
         except RecordingError as exc:
             problems.append(str(exc))
     return problems
@@ -305,7 +406,7 @@ class RecordingTransport(httpx.BaseTransport):
                 )
             return httpx.Response(200, json=payload)
         text = json.dumps(
-            {"request": body, "response": recorded},
+            {"request": stored_request(body), "response": recorded},
             sort_keys=True,
             indent=2,
             ensure_ascii=False,
