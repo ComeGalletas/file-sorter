@@ -453,7 +453,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.2.2 — prompt front matter keys `retry_temperature`, `max_side`, `jpeg_quality` (loader + files) (this commit)
   - [x] CLS-004.2.3 — `vlm_classify.py`: image encoding, `classify_image`, pair validation, retry once, `VlmUnanswered` (this commit)
   - [x] CLS-004.2.4 — `rate_nsfw`, `pick_frames` and the `vlm_classify` entry point (this commit)
-  - [ ] CLS-004.2.5 — gpu test, Results, self-rating, PR
+  - [x] CLS-004.2.5 — gpu test, Results, self-rating, PR (this commit)
   - [ ] CLS-004.2.6 — recordings of the classify and NSFW requests, after #153 (TST-010.1)
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
   - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
@@ -475,6 +475,20 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Deferred:** user-added categories appear in the lists and enums by name only, with no definition. A possible follow-up is a description column. Rejecting or repairing a repeated format/topic pair in code goes to CLS-004.2 or .4 (the reviewer's note).
 - **Self-rating:** 9/10, proud: yes. The gap is that prompt quality is unmeasured until CLS-004.5, and held-back clauses may cost accuracy until H8 is decided.
 - **Reviewer / Privacy auditor:** pending on the new PR.
+
+### CLS-004.2 (ML, #132)
+
+- **Status:** DONE_WITH_CONCERNS (recordings deferred to CLS-004.2.6, as the lead decided).
+- **Tests:** `tests/unit/models/test_vlm_classify.py` 67 passed; `tests/unit/models` 394 passed; `make test` 2251 passed; `make test-gpu` 52 passed, including `tests/gpu/models/test_vlm_classify.py` (4, real `models.vlm_safe`, synthetic images only); ruff check and format clean. No `eval/` run: the prompts' wording is unchanged (front-matter keys only); CLS-004.5 does the real run.
+- **Delivered:**
+  - `OllamaClient.generate_json(images=, system=)` and `OllamaUnavailable(OllamaError)`.
+  - Front-matter keys `retry_temperature` (0.3), `max_side` (1024), `jpeg_quality` (90), provisional.
+  - `classifier/models/vlm_classify.py`: `vlm_classify`, `classify_image`, `rate_nsfw`, `pick_frames`, `encode_frame`, `VlmUnanswered`.
+  - Frames converted to RGB, scaled down to 1024 px, sent as JPEG 90. Slot lists joined with ', '.
+  - A topic equal to the format becomes `None` with no retry. Out-of-enum or missing fields are rejected, then retried once at `retry_temperature`, then `VlmUnanswered` (`classify_vlm_unanswered`, unchained). `OllamaUnavailable` propagates.
+- **Deferred:** CLS-004.2.6, the recordings of the real request shapes, after #153 (TST-010.1).
+- **Self-rating:** 9/10, proud: yes. Gap: no recordings yet (.2.6), and the Reviewer and Privacy auditor verdicts are pending.
+- **Reviewer / Privacy auditor:** pending.
 
 ### CLS-004.3 (ML, #133)
 
