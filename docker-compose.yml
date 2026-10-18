@@ -45,6 +45,10 @@ services:
   ollama:
     image: ollama/ollama:0.35.1
     <<: *gpu
+    environment:
+      # RUN-016.D1: one resident model. Two 8B models at once filled the GPU and pushed host RAM
+      # to its limit in the M3 spike; every call shares one model and one num_ctx (CLS-004.D9).
+      OLLAMA_MAX_LOADED_MODELS: "1"
     volumes:
       - ollama:/root/.ollama
     networks: [internal, egress]

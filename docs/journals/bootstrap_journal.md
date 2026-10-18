@@ -870,4 +870,16 @@ and then (PR #43 review round 2):
 
 ## RUN-016 — Tasks
 
-- [ ] RUN-016.1 — The `ollama` service setting and the model pull · human-side · acceptance: `make models` and `make test-gpu`
+- [x] RUN-016.1 — The `ollama` service setting and the model pull · human-side · acceptance: `make models` and `make test-gpu`
+- [x] RUN-016.2 — `make models` waits for the Ollama server before it pulls (found by RUN-016.1's acceptance run)
+
+## RUN-016 — Confirmed reading
+
+- **RUN-016.D1:** **one resident Ollama model.** `OLLAMA_MAX_LOADED_MODELS: "1"` on the `ollama` service. `make models` pulls `qwen3-vl:8b-instruct`, the classify model (CLS-004.D8); `qwen3-vl:8b` stays for the sanitizer until SAN-004 passes gate 2, and the adult VLM still waits for Q-1. Until SAN-004, the sanitize and classify steps use two models, so Ollama swaps between them: slower, but correct. (human, 2026-10-17, decision 3.5 of the re-plan write-up)
+- **RUN-016.D2:** **`make models` waits for the server** (`ollama list`, 60 s cap) before pulling. It used to pull right after `up -d ollama`, which worked only when the container was already running; RUN-016.1's new environment recreates the container, and the first pull failed with "could not connect to ollama server". (the human's session, 2026-10-18)
+
+## RUN-016 — Results
+
+- **Status:** DONE.
+- **Triage:** small. One Compose setting, one Makefile list entry and a readiness wait, and a pinning test.
+- **Tests:** `tests/unit/runtime/test_ollama_service.py` (3) pins the setting and the pull, and that no adult VLM is pulled before Q-1. The pre-push default tiers passed. On the box: `make test-gpu` 48 passed; `make models` passed from a stopped, removed `ollama` container after RUN-016.2 (before it, the first pull failed).

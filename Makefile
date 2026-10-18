@@ -13,7 +13,7 @@ TEST := $(if $(WT_NAME),FIXTURE_IMAGES="$(MAIN_CHECKOUT)/fixtures/images" )$(COM
 # RUN-011.D1: Ollama for the gpu tier and the gates only, in the same compose project.
 OLLAMA_UP := $(COMPOSE) $(if $(WT_NAME),-p file-sorter-$(WT_NAME)) up -d ollama
 RUFF := MSYS_NO_PATHCONV=1 docker run --rm -v "$(CURDIR):/io" -w /io ghcr.io/astral-sh/ruff:0.16.10
-OLLAMA_MODELS := qwen3-vl:8b bge-m3   # the adult VLM is not pulled until Q-1 is decided (M5)
+OLLAMA_MODELS := qwen3-vl:8b-instruct qwen3-vl:8b bge-m3   # RUN-016: the instruct build classifies; the 8b stays for the sanitizer until SAN-004; the adult VLM waits for Q-1 (M5)
 
 .PHONY: help init prune-test up down ps logs build models test test-gpu lint format
 
@@ -50,6 +50,8 @@ logs: ## Follow logs (S=<service> to pick one)
 
 models: ## Pull the Ollama tags and HF weights into volumes (~11 GB)
 	$(COMPOSE) up -d ollama
+	@# RUN-016.D2: wait for the server; a recreated container isn't listening yet (60 s cap).
+	@for i in $$(seq 60); do $(COMPOSE) exec -T ollama ollama list >/dev/null 2>&1 && break; sleep 1; done
 	for m in $(OLLAMA_MODELS); do $(COMPOSE) exec -T ollama ollama pull "$$m"; done
 	$(COMPOSE) --profile tools run --rm fetch
 
