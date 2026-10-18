@@ -412,7 +412,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - it is retried once;
   - then the row goes to `error` with a registered fixed reason, `classify_vlm_unanswered`, through `mark_error` (SAN-003.D2);
   - the next run retries it from ingest, and M4's review lists `error` rows.
-- **CLS-004.D5 — the Falconsai cross-check** (human, 3.2; **values open**). It sets `needs_review` with `review_reason = nsfw_disagreement`, and never changes the branch, when either of these holds:
+- **CLS-004.D5 — the Falconsai cross-check** (human, 3.2: a cross-check only, where a strong disagreement sets `needs_review` and never decides on its own). **The lead's reading of "strong disagreement"; values open:** it sets `needs_review` with `review_reason = nsfw_disagreement`, and never changes the branch, when either of these holds:
   - the VLM level is `safe` and the Falconsai score is at or above `nsfw.cross_check.safe_above`;
   - the level is at or above `min_level` and the score is at or below `nsfw.cross_check.adult_below`.
 
@@ -421,14 +421,14 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - the classify call gets `files.original_sanitized`, fenced and neutralized like the entity prompt's input (MOD-001.D5);
   - a missing or failed name gives no hint (fail closed);
   - the raw name and `source_path` never reach a model.
-- **CLS-004.D7 — SigLIP's role** (human, 3.1). It embeds `image_vec` only. `classify.score`, the per-axis `default_min_score` and `margin`, and `category.min_score` no longer decide anything.
+- **CLS-004.D7 — SigLIP's role** (human, 3.1: SigLIP is no longer the classifier and stays for `image_vec`). **The lead's consequence:** `classify.score`, the per-axis `default_min_score` and `margin`, and `category.min_score` no longer decide anything.
   - DOC-009 decides whether to drop or keep these keys.
   - Until then, the node ignores them and `validate_rules` stops requiring a non-null default on the VLM path.
 - **CLS-004.D8 — one model** (human, 3.5; **key to confirm**). The classify and NSFW calls use `models.vlm_safe`, which becomes `qwen3-vl:8b-instruct` (the lead's recommendation: one key, which M5's safe captions use too). `models.text_llm` follows only once gate 2 passes on it (SAN-004).
 - **CLS-004.D9 — `num_ctx: 4096`** in every prompt file's front matter (human, 3.5). Ollama reloads the model when the context changes between calls.
 - **CLS-004.D10 — the prompts** are versioned files: `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md`.
-  - The category descriptions follow DESIGN §4.3 and CLS-001.D9, plus 3.3's wording: `memes` means "a joke" and wins over style; a game image takes the `videogames` topic, even when anime-styled.
-  - **Source open:** the spike's prompt texts are the starting point. The desk commits them only after a privacy read, because a spike prompt may name things seen in the human's images.
+  - The category descriptions follow DESIGN §4.3 and CLS-001.D9, with the wording the human set (3.3). That wording lives in the prompt files, not here.
+  - **Source:** the human's spike prompt texts, available to the ML desk locally on the box (the location isn't published). They are the starting point. The desk commits them only after a privacy read, because a prompt may name or hint at things seen in the human's images. Any wording that does gets generalised before it lands.
 - **CLS-004.D11 — the M3 checkpoint before G1** (lead). CLS-004.5's real run on the box, through the eval harness, must reproduce the spike's passing result in the repo before `make gate-3`. It publishes only in the TST-008.D1 form.
 - **CLS-004.D12 — the gate 3 format target is 85%** (human, 3.6). DOC-009 changes DESIGN §11 and CLS-001.D5. Topic stays at 85%, and the other criteria are unchanged.
 

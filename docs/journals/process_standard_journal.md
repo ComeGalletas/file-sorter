@@ -192,10 +192,10 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
   - **The `config.yaml` sketch (§6):** CFG-003's keys.
   - **§5:** `files.nsfw_level` (DB-004), and `nsfw_score`'s new meaning.
   - **§11, M3 row:** format ≥ 85% (D12), with the NSFW criteria judged by level at `min_level`. CLS-001.D5 is amended to match.
-  - **§4.3:** the VLM-facing wording, including `memes` as "a joke" and game images under `videogames`.
+  - **§4.3:** the VLM-facing category wording the human set (3.3), stated as generic definitions.
   - **The findings (3.7):** the thinking build ignoring `think: false`, and the one CUDA runner crash under memory pressure.
   - **CLAUDE.md:** the "Current phase" line notes the M3 re-plan.
-  - **Optional, the lead's suggestion:** the triage block's `Branch:` line, in CLAUDE.md §2.1 and `.claude/roles/README.md`, says the repo-relative worktree path, never an absolute one. Desks have posted host paths four times (#89, #90, #96, #101).
+  - The triage block's `Branch:` line is not part of this: it is DOC-010 (PR #138).
 - **Implements:** CLS-004's rule changes.
 
 ## DOC-009 — Tasks

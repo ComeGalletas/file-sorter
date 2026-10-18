@@ -403,6 +403,7 @@ Decisions:
 
 ## SAN-004 — Tasks
 
-- [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt, run `make gate-2` on `qwen3-vl:8b-instruct`, and switch `models.text_llm` only on PASS · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
+- [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
+- [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · issue: the lead opens it on the PASS · acceptance: `tests/unit/test_config.py`
 
 ## SAN-004 — Results
