@@ -124,8 +124,10 @@ def test_the_harness_runs_end_to_end_and_prints_the_public_form(
     out = capsys.readouterr().out
 
     # The public form: verdicts, whole percents, ok or FAIL, and the prompt versions as hashes.
-    versions = r"classify_v1\+[0-9a-f]{8}, nsfw_level_v1\+[0-9a-f]{8}"
-    assert re.search(rf"^effective prompts: {versions}$", out, re.M)
+    assert re.search(
+        r"^local addenda: classify_v1 (present|absent), nsfw_level_v1 (present|absent)$", out, re.M
+    )
+    assert not re.search(r"[0-9a-f]{8}", out)  # no addendum hash in anything pasteable
     assert re.search(r"^bug checks: nsfw label ok, nsfw input ok, coverage ok$", out, re.M)
     assert re.search(r"^format agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
     assert re.search(r"^topic agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
@@ -155,6 +157,9 @@ def test_detail_stays_behind_the_flag(siglip_backend, client, workspace, capsys)
     assert ev.main([*args, "--detail"], client=client, backend=siglip_backend) == 0
     out = capsys.readouterr().out
     assert "DETAIL: box console only" in out
+    assert re.search(
+        r"^effective prompts \(console only\): classify_v1(\+[0-9a-f]{8})?, ", out, re.M
+    )
     assert re.search(r"^Falconsai cross-check flags \d+ rows", out, re.M)
 
 

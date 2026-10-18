@@ -498,7 +498,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.5.3 — No sweep: `eval/classify_sweep.py` and its tests deleted (`83a40ca`); the dead SigLIP functions in `classify_rules.py` stay for a follow-up
   - [x] CLS-004.5.4 — `--detail` console-only (`83a40ca`)
   - [x] CLS-004.5.5 — Unit tests on a scripted VLM client; `tests/gpu/models/test_classify_eval.py` re-pointed to the real `models.vlm_safe` on synthetic images
-  - [ ] CLS-004.5.6 — The real run on the box, public form only, "with the provisional H8 addenda" (waits for the lead's go)
+  - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
+  - [ ] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (waits for the lead's go)
 - [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (hash in Results)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`

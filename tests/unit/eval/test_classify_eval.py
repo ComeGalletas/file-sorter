@@ -26,6 +26,7 @@ from fixture_labels import parse_labels  # noqa: E402
 from classifier.config import NsfwConfig, NsfwLevel  # noqa: E402
 from classifier.models.classify_rules import CategoryRule  # noqa: E402
 from classifier.models.ollama import OllamaClient, OllamaUnavailable  # noqa: E402
+from classifier.models.prompts import load_effective_prompt  # noqa: E402
 
 HOST = "http://ollama"
 MODEL = "synthetic-vlm:1b"
@@ -83,34 +84,55 @@ def row(hint: str | None = "Hintqorvex") -> ev._Row:
 # --- Prompt versions --------------------------------------------------------------------------
 
 
-def test_effective_versions_are_name_plus_eight_hex_and_show_no_text(tmp_path, monkeypatch):
-    monkeypatch.delenv(ev.LOCAL_OFF_ENV, raising=False)
-    local = tmp_path / "local"
-    local.mkdir()
-    bare = ev.effective_versions(local_dir=local)
-    assert all(re.fullmatch(r"[a-z0-9_]+\+[0-9a-f]{8}", v) for v in bare)
-    assert [v.split("+")[0] for v in bare] == list(ev.PROMPT_NAMES)
-    (local / "classify_v1.md").write_text(f"{SECRET} addendum", encoding="utf-8")
-    with_addendum = ev.effective_versions(local_dir=local)
-    assert with_addendum[0] != bare[0]
-    assert with_addendum[1] == bare[1]
-    assert SECRET not in " ".join(with_addendum)
+@pytest.fixture
+def prompts_dir(tmp_path, monkeypatch):
+    """A copy of the committed prompts with an empty `local/`, local addenda on."""
+    monkeypatch.delenv("PROMPTS_LOCAL", raising=False)
+    folder = tmp_path / "prompts"
+    (folder / "local").mkdir(parents=True)
+    for name in ev.PROMPT_NAMES:
+        (folder / f"{name}.md").write_bytes((ev.PROMPTS_DIR / f"{name}.md").read_bytes())
+    return folder
 
 
-def test_the_local_off_switch_ignores_the_addendum(tmp_path, monkeypatch):
-    local = tmp_path / "local"
-    local.mkdir()
-    monkeypatch.delenv(ev.LOCAL_OFF_ENV, raising=False)
-    bare = ev.prompt_digest("classify_v1", local_dir=local)
-    (local / "classify_v1.md").write_text("an addendum", encoding="utf-8")
-    assert ev.prompt_digest("classify_v1", local_dir=local) != bare
-    monkeypatch.setenv(ev.LOCAL_OFF_ENV, "off")
-    assert ev.prompt_digest("classify_v1", local_dir=local) == bare
+def test_the_addenda_line_says_present_or_absent_and_never_a_hash(prompts_dir):
+    bare = ev.addenda_lines(ev.effective_prompts(prompts_dir))
+    assert bare == ["local addenda: classify_v1 absent, nsfw_level_v1 absent"]
+    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} addendum", encoding="utf-8")
+    prompts = ev.effective_prompts(prompts_dir)
+    lines = ev.addenda_lines(prompts)
+    assert lines == [
+        "local addenda: classify_v1 present, nsfw_level_v1 absent",
+        "with the provisional H8 addenda",
+    ]
+    line = " | ".join(lines)
+    assert SECRET not in line and not re.search(r"[0-9a-f]{8}", line)
 
 
-def test_a_missing_prompt_file_gives_fixed_unchained_text(tmp_path):
+def test_the_versions_line_carries_the_hash_for_the_console_only(prompts_dir):
+    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} addendum", encoding="utf-8")
+    prompts = ev.effective_prompts(prompts_dir)
+    line = ev.versions_line(prompts)
+    assert re.fullmatch(
+        r"effective prompts \(console only\): classify_v1\+[0-9a-f]{8}, nsfw_level_v1", line
+    )
+    assert SECRET not in line
+
+
+def test_the_local_off_switch_ignores_the_addendum(prompts_dir, monkeypatch):
+    (prompts_dir / "local" / "classify_v1.md").write_text("an addendum", encoding="utf-8")
+    monkeypatch.setenv("PROMPTS_LOCAL", "off")
+    assert ev.addenda_lines(ev.effective_prompts(prompts_dir)) == [
+        "local addenda: classify_v1 absent, nsfw_level_v1 absent"
+    ]
+
+
+def test_the_file_digest_ignores_the_addendum_and_a_missing_file_is_unchained(prompts_dir):
+    before = ev.prompt_file_digest("classify_v1", prompts_dir)
+    (prompts_dir / "local" / "classify_v1.md").write_text("an addendum", encoding="utf-8")
+    assert ev.prompt_file_digest("classify_v1", prompts_dir) == before
     with pytest.raises(ev.EvalError) as caught:
-        ev.prompt_digest("classify_v1", prompts_dir=tmp_path)
+        ev.prompt_file_digest("classify_v1", prompts_dir / "nowhere")
     assert str(caught.value) == "a prompt file cannot be read"
     assert caught.value.__cause__ is None and caught.value.__context__ is None
 
@@ -254,14 +276,19 @@ def collected(rows: list[gate.Outcome], cross_checked: int = 0, **checks) -> ev.
     measures = gate.evaluate(labels, rows, int(NsfwLevel.nudity))
     flags = {"nsfw_label": True, "nsfw_input": True} | checks
     result = ev.Checks(coverage=measures.coverage_ok, **flags)
-    versions = ("classify_v1+0a1b2c3d", "nsfw_level_v1+4e5f6a7b")
-    return ev.Collected(measures, result, versions, "nudity", cross_checked)
+    prompts = tuple(
+        load_effective_prompt(name).model_copy(update={"addendum_hash": hashed})
+        for name, hashed in zip(ev.PROMPT_NAMES, ("0a1b2c3d", None), strict=True)
+    )
+    return ev.Collected(measures, result, prompts, "nudity", cross_checked)
 
 
-def test_the_public_form_is_verdicts_whole_percents_and_hashes():
+def test_the_public_form_is_verdicts_whole_percents_and_no_hash():
     lines = ev.render(collected(outcomes()))
     out = "\n".join(lines)
-    assert "effective prompts: classify_v1+0a1b2c3d, nsfw_level_v1+4e5f6a7b" in lines
+    assert "local addenda: classify_v1 present, nsfw_level_v1 absent" in lines
+    assert "with the provisional H8 addenda" in lines
+    assert "0a1b2c3d" not in out and not re.search(r"[0-9a-f]{8}", out)
     assert "bug checks: nsfw label ok, nsfw input ok, coverage ok" in lines
     assert "format agreement: 100% (required >= 85%): ok" in lines
     assert "topic agreement: 100% (required >= 85%): ok" in lines
@@ -303,6 +330,7 @@ def test_detail_is_console_only_and_adds_the_cross_check_count():
     assert "DETAIL: box console only" in extra
     assert re.search(r"format \d+\.\d%", extra)
     assert "Falconsai cross-check flags 2 rows" in extra
+    assert "effective prompts (console only): classify_v1+0a1b2c3d, nsfw_level_v1" in extra
     assert "Falconsai" not in "\n".join(plain)
 
 
@@ -341,7 +369,7 @@ def test_result_types_hold_nothing_planted_in_their_reprs():
                 *(gate.Tally(7, 9) for _ in range(6)), 0, True, ((SECRET, gate.Tally(1, 2)),), ()
             ),
             ev.Checks(True, True, True),
-            (SECRET,),
+            (load_effective_prompt("classify_v1"),),
             SECRET,
             13,
         ),

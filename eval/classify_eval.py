@@ -17,10 +17,12 @@ The measures are `scripts/gate_3.py`'s own (`evaluate` and `judge`), so the eval
 the same thing. Nothing is copied from them.
 
 Privacy (TST-008.D1, D6): the default output is the public form, safe to paste: format, topic and
-unrecognized as a verdict and a whole percent, adult and suggestive-negative as ok or FAIL, and the
-effective prompt versions as hashes. `--detail` adds one-decimal figures, per-category detail and
-the Falconsai cross-check count for the box console, and is never pasted or committed. Labels are
-matched to ledger rows by file name in memory only; the cache holds answers keyed by source hash.
+unrecognized as a verdict and a whole percent, adult and suggestive-negative as ok or FAIL, and
+whether each prompt has a local addendum (present or absent, never its hash: the hash fingerprints
+private text). `--detail` adds one-decimal figures, per-category detail, the effective prompt
+versions with their addendum hashes and the Falconsai cross-check count for the box console, and is
+never pasted or committed. Labels are matched to ledger rows by file name in memory only; the
+cache holds answers keyed by source hash.
 Every error is fixed text.
 """
 
@@ -50,7 +52,7 @@ from classifier.models.classify_rules import (  # noqa: E402
     decide,
     validate_rules,
 )
-from classifier.models.prompts import PROMPTS_DIR, load_prompt  # noqa: E402
+from classifier.models.prompts import PROMPTS_DIR, Prompt, load_effective_prompt  # noqa: E402
 from classifier.models.vlm_classify import (  # noqa: E402
     CLASSIFY_PROMPT,
     NSFW_PROMPT,
@@ -65,7 +67,6 @@ LABELS = REPO / "fixtures" / "labels.csv"
 CACHE_DIR = REPO / "eval" / ".cache"  # git-ignored by eval/.gitignore
 NODES = ("ingest", "sanitize")
 PROMPT_NAMES = (CLASSIFY_PROMPT, NSFW_PROMPT)
-LOCAL_OFF_ENV = "PROMPTS_LOCAL"  # "off" ignores the local addenda (the unit tier sets it)
 DISAGREEMENT = "nsfw_disagreement"  # classify_rules.decide's review reason for the cross-check
 
 
@@ -81,44 +82,42 @@ _ERR_NO_CLIENT = "OLLAMA_HOST is not set: run it in the test container"
 # --- Prompt versions ------------------------------------------------------------------------
 
 
-def _read_bytes(path: Path) -> bytes | None:
-    """The file's bytes, or None when it is missing or not a regular file."""
+def prompt_file_digest(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
+    """SHA-256 of the committed prompt file: part of the cache key, never printed."""
     data = None
     try:
+        path = prompts_dir / f"{name}.md"
         if stat.S_ISREG(path.lstat().st_mode):
             data = path.read_bytes()
     except OSError:
         data = None
-    return data
-
-
-def prompt_digest(name: str, prompts_dir: Path = PROMPTS_DIR, local_dir: Path | None = None) -> str:
-    """SHA-256 over a prompt file and its local addendum, when there is one (CLS-004.D16).
-
-    The addendum is `prompts/local/<name>.md`, git-ignored; `PROMPTS_LOCAL=off` ignores it.
-    """
-    local = local_dir if local_dir is not None else prompts_dir / "local"
-    text = _read_bytes(prompts_dir / f"{name}.md")
-    if text is None:
+    if data is None:  # raised outside the `except`, so it is unchained
         raise EvalError(_ERR_PROMPT)
-    digest = hashlib.sha256(text)
-    if os.environ.get(LOCAL_OFF_ENV) != "off":
-        addendum = _read_bytes(local / f"{name}.md")
-        if addendum is not None:
-            digest.update(b"\0local\0" + addendum)
-    return digest.hexdigest()
+    return hashlib.sha256(data).hexdigest()
 
 
-def effective_versions(
-    prompts_dir: Path = PROMPTS_DIR, local_dir: Path | None = None
-) -> tuple[str, ...]:
-    """`<version>+<8-hex>` for each prompt the VLM path uses: a hash, never any text."""
-    out = []
-    for name in PROMPT_NAMES:
-        version = load_prompt(name, prompts_dir).version
-        short = prompt_digest(name, prompts_dir, local_dir)[:8]
-        out.append(version if "+" in version else f"{version}+{short}")
-    return tuple(out)
+def effective_prompts(prompts_dir: Path = PROMPTS_DIR) -> tuple[Prompt, ...]:
+    """The prompts the VLM path uses, with their local addenda when present (CLS-004.6)."""
+    return tuple(load_effective_prompt(name, prompts_dir) for name in PROMPT_NAMES)
+
+
+def addenda_lines(prompts: Sequence[Prompt]) -> list[str]:
+    """The publishable fact about the addenda: present or absent per prompt, never a hash.
+
+    When any is present the report says so (CLS-004.D16: provisional, the human decides).
+    """
+    lines = [
+        "local addenda: "
+        + ", ".join(f"{p.version} {'present' if p.addendum_hash else 'absent'}" for p in prompts)
+    ]
+    if any(p.addendum_hash for p in prompts):
+        lines.append("with the provisional H8 addenda")
+    return lines
+
+
+def versions_line(prompts: Sequence[Prompt]) -> str:
+    """Effective versions with their addendum hashes: the local console only (CLS-004.D16)."""
+    return "effective prompts (console only): " + ", ".join(p.effective_version for p in prompts)
 
 
 def _digest(value: object) -> str:
@@ -212,7 +211,7 @@ class Checks:
 class Collected:
     measures: gate.Measures = field(repr=False)
     checks: Checks = field(repr=False)
-    versions: tuple[str, ...] = field(repr=False)
+    prompts: tuple[Prompt, ...] = field(repr=False)  # their hashes are console-only
     min_level: str = field(repr=False)
     cross_checked: int = field(repr=False)  # rows the Falconsai cross-check flags: detail only
 
@@ -368,8 +367,9 @@ def collect(
         labels = fixture_labels.load_labels(labels_path, formats=set(formats), topics=set(topics))
         model = config.models.vlm_safe
         min_level = config.nsfw.min_level
-        versions = effective_versions(prompts_dir)
-        hashes = [prompt_digest(name, prompts_dir) for name in PROMPT_NAMES]
+        prompts = effective_prompts(prompts_dir)
+        hashes = [prompt_file_digest(name, prompts_dir) for name in PROMPT_NAMES]
+        hashes += [p.effective_version for p in prompts]
         key = cache_key(model, hashes, min_level, formats, topics)
         answers = load_cache(cache_folder, key) if cache_folder is not None else {}
         cached = len(answers)
@@ -409,7 +409,7 @@ def collect(
             nsfw_input=verify_copies(kept, work),
             coverage=measures.coverage_ok,
         )
-    return Collected(measures, checks, versions, min_level.name, cross_checked)
+    return Collected(measures, checks, prompts, min_level.name, cross_checked)
 
 
 def _decide(answer: Answer | None, rules: Sequence[CategoryRule], nsfw_config):
@@ -441,13 +441,14 @@ def render(collected: Collected, detail: bool = False) -> list[str]:
     verdict = gate.judge(collected.measures, detail)
     lines = [
         f"classify eval, VLM path (CLS-004.5; judged at nsfw.min_level = {collected.min_level})",
-        "effective prompts: " + ", ".join(collected.versions),
+        *addenda_lines(collected.prompts),
         f"bug checks: nsfw label {_ok(checks.nsfw_label)}, nsfw input {_ok(checks.nsfw_input)}, "
         f"coverage {_ok(checks.coverage)}",
         *verdict.lines[:-1],
     ]
     if detail:
         lines += [
+            versions_line(collected.prompts),
             *verdict.detail,
             f"Falconsai cross-check flags {collected.cross_checked} rows (needs_review)",
         ]
