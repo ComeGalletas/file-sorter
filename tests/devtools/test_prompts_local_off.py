@@ -127,3 +127,13 @@ def test_the_same_addendum_applies_once_the_switch_is_not_off(
     prompt = load_effective_prompt("classify_v1", prompts_dir=planted)
     assert prompt.addendum == PLACEHOLDER
     assert prompt.effective_version.startswith("classify_v1+")
+
+
+def test_only_the_loader_tests_opt_out() -> None:
+    """The opt-out marker stays on the unit tests of the addendum loader (TST-011.1)."""
+    users = sorted(
+        path.relative_to(REPO_TESTS).as_posix()
+        for path in REPO_TESTS.rglob("test_*.py")
+        if path != Path(__file__).resolve() and "prompts_local_on" in path.read_text("utf-8")
+    )
+    assert users == ["unit/models/test_prompts.py", "unit/models/test_vlm_classify.py"]

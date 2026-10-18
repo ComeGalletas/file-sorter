@@ -66,4 +66,5 @@ markers = [
     "integration: the full graph on fixtures with recorded model responses",
     "gpu: real SigLIP, NSFW and Ollama on the box",
     "gate: milestone metrics on the real labelled fixtures",
+    "prompts_local_on: unit test of the addendum loader itself; PROMPTS_LOCAL is left unset (TST-011.1)",
 ]

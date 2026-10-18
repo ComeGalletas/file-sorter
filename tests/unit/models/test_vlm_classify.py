@@ -452,6 +452,7 @@ def test_vlm_classify_returns_the_shared_type() -> None:
     assert "nsfw_level" in seen[1]["format"]["properties"]
 
 
+@pytest.mark.prompts_local_on  # TST-011.1: it plants addenda and expects them applied
 def test_the_prompt_version_names_each_addendum_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

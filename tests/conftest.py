@@ -18,6 +18,8 @@ TST-011.1: the `prompts_local_switch` fixture sets PROMPTS_LOCAL=off for every `
 `integration` test, so the human's local prompt addenda (prompts/local/*.md, RUN-017) never reach
 a default-tier run or its recordings (CLS-004.D16, TST-010). `off` means off; any other value
 means on. The `gpu` and `gate` tiers get the variable cleared, so they use the addenda on the box.
+A unit test of the addendum loader itself opts out with `@pytest.mark.prompts_local_on`; the
+modules that do are pinned in tests/devtools/test_prompts_local_off.py.
 It is set in os.environ, so a subprocess a test starts inherits it.
 """
 
@@ -49,6 +51,7 @@ RECORD_VISION_OPTION = "--record-vision"
 RECORD_OPTIONS = (RECORD_OPTION, RECORD_VISION_OPTION)
 CALL_FAILED = pytest.StashKey[bool]()
 PROMPTS_LOCAL_ENV = "PROMPTS_LOCAL"
+PROMPTS_LOCAL_MARK = "prompts_local_on"  # unit tests of the addendum loader itself
 PROMPTS_LOCAL_TIERS = frozenset({"gpu", "gate"})  # the tiers that use the local addenda
 
 
@@ -103,7 +106,10 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo[None]):
 @pytest.fixture(autouse=True)
 def prompts_local_switch(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
     """PROMPTS_LOCAL=off outside `gpu` and `gate`; cleared inside them (TST-011.1)."""
-    if tier_of(Path(request.node.fspath)) in PROMPTS_LOCAL_TIERS:
+    tier = tier_of(Path(request.node.fspath))
+    if tier in PROMPTS_LOCAL_TIERS or (
+        tier == "unit" and request.node.get_closest_marker(PROMPTS_LOCAL_MARK)
+    ):
         monkeypatch.delenv(PROMPTS_LOCAL_ENV, raising=False)
     else:
         monkeypatch.setenv(PROMPTS_LOCAL_ENV, "off")

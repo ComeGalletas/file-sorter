@@ -633,6 +633,17 @@ references or host paths here. Use hashes.
 
 ## TST-011 — Tasks
 
-- [ ] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: `tests/devtools/test_prompts_local_off.py`
-  - [x] TST-011.1.1 — the `prompts_local_switch` fixture in `tests/conftest.py`, with the per-tier and subprocess tests (`6f63812`)
-  - [x] TST-011.1.2 — a planted placeholder addendum changes nothing for a default-tier test, against the real `load_effective_prompt`, with a control that it applies once the switch is cleared (commit hash in the next commit)
+- [x] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: `tests/devtools/test_prompts_local_off.py`
+  - [x] TST-011.1.1 — the `prompts_local_switch` fixture in `tests/conftest.py`, with the per-tier and subprocess tests (`1b89967`)
+  - [x] TST-011.1.2 — a planted placeholder addendum changes nothing for a default-tier test, against the real `load_effective_prompt`, with a control that it applies once the switch is cleared (hash in `.1.3`'s commit)
+  - [x] TST-011.1.3 — discovered: 13 tests of the addendum loader (CLS-004.6) plant addenda and expect them applied, so they opt out with `@pytest.mark.prompts_local_on` (unit tier only, registered in `pyproject.toml`); a test pins the modules that use it (commit hash in the next commit)
+
+## TST-011 — Results
+
+### TST-011.1 (QA, #161)
+
+- **Tests:** `make test` 2373 passed, 57 deselected (default tiers); `tests/devtools/test_prompts_local_off.py` 8 passed; `make lint` clean. The tier audit passes. No `gpu`, `gate` or eval run: nothing in `models/` or `prompts/` changed.
+- **Subprocess check:** every `env=` in `tests/` is built from `os.environ`, and no default-tier test starts a real compose process, so no RUN issue.
+- **Found along the way (.1.3):** the autouse switch broke 13 loader tests from CLS-004.6, which set up addenda. They opt out with a marker, and a test pins which modules may.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a test that builds its own `env=` without `os.environ` would not see the switch, and none exists today.
+- **Reviewer and Privacy auditor:** pending.
