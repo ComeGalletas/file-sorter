@@ -223,3 +223,26 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Status:** DONE.
 - **Triage:** medium. Spec and rule text across DESIGN §3, §4.3, §5, §6, §8, §11, §13 and §14, and CLAUDE.md; no code.
 - **Privacy:** no counts, file names or per-category figures. The spike appears only as "passed every gate 3 criterion", per TST-008.D1.
+
+---
+
+## DOC-010 — Requirement (human, 2026-10-14)
+
+**Objective:** stop desks writing an absolute worktree path in the triage block's `Branch:` line.
+
+**Details:** the privacy auditor, reviewing PR #120, found host paths in the `Branch:` line of desks' plan comments on four issues, and a fifth was found later. The lead edited the comments to repo-relative paths, but GitHub keeps every earlier version of a comment in its public edit history, so each fix left the host path visible until the human deleted the old revision by hand. The template said `<worktree path>`, which desks filled with the absolute path. The lead suggested the fix as a human-side PR, since `CLAUDE.md` is the human's.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-010 — Confirmed reading
+
+- **DOC-010.D1:** **the triage block's `Branch:` line names the worktree by its repo-relative path** (for example `.agent-office/worktrees/<desk>`), never an absolute one, in `CLAUDE.md` §2.1 and in `.github/pull_request_template.md`. A host path in a comment can't be fully removed by editing it, because the edit history stays public. (human, 2026-10-14; the PR opened 2026-10-18 under the human's standing instruction to take easily reversible steps while away)
+
+## DOC-010 — Tasks
+
+- [x] DOC-010.1 — `CLAUDE.md` §2.1 and `.github/pull_request_template.md`: the `Branch:` line and one sentence on why
+
+## DOC-010 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Rule and template text; no code.
