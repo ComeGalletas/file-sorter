@@ -633,4 +633,6 @@ references or host paths here. Use hashes.
 
 ## TST-011 — Tasks
 
-- [ ] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: named in the plan on #161
+- [ ] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: `tests/devtools/test_prompts_local_off.py`
+  - [x] TST-011.1.1 — the `prompts_local_switch` fixture in `tests/conftest.py`, with the per-tier and subprocess tests (commit hash in the next commit)
+  - [ ] TST-011.1.2 — a planted addendum changes nothing for a default-tier test, against the real `load_effective_prompt` (waits for #148 on `main`)
