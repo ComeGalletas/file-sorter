@@ -7,6 +7,12 @@ seed: 7
 keep_alive: 5m
 # CLS-004.D9: pinned, because Ollama reloads the model when the context changes between calls.
 num_ctx: 4096
+# CLS-004.2.2 (provisional): the one retry of a failed answer runs warmer, because the same request
+# at temperature 0 and a fixed seed would fail the same way. Images are sent as JPEG, scaled down
+# so a large one stays within num_ctx.
+retry_temperature: 0.3
+max_side: 1024
+jpeg_quality: 90
 user: "Classify this image."
 # CLS-004.D6: the sanitized file name is a hint only. It sits inside a fence, and
 # `render_user` neutralizes the value (MOD-001.D5).
