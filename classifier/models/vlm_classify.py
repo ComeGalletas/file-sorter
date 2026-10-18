@@ -72,13 +72,16 @@ def pick_frames(n_frames: int) -> list[int]:
 
 def encode_frame(frame: Image.Image, *, max_side: int, quality: int) -> str:
     """One frame as base64 JPEG: RGB, longest side at most `max_side`, never scaled up."""
+    buffer = io.BytesIO()
+    ok = True
     try:
         rgb = frame.convert("RGB")
         rgb.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
-        buffer = io.BytesIO()
         rgb.save(buffer, format="JPEG", quality=quality)
     except (OSError, ValueError, EOFError, SyntaxError):
-        raise VlmImageError(_ERR_IMAGE) from None
+        ok = False
+    if not ok:  # raised outside the `except`, so no __context__ holds the Pillow error
+        raise VlmImageError(_ERR_IMAGE)
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
