@@ -46,7 +46,7 @@ def test_updated_at_refreshes_through_the_orm() -> None:
 
 
 def test_review_reasons() -> None:
-    assert REVIEW_REASONS == ("unsorted", "ambiguous_reference")
+    assert REVIEW_REASONS == ("unsorted", "ambiguous_reference", "nsfw_disagreement")
 
 
 def test_sanitize_log_columns_and_foreign_key() -> None:
