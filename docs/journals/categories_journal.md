@@ -431,6 +431,16 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - **Source:** the human's spike prompt texts, available to the ML desk locally on the box (the location isn't published). They are the starting point. The desk commits them only after a privacy read, because a prompt may name or hint at things seen in the human's images. Any wording that does gets generalised before it lands.
 - **CLS-004.D11 — the M3 checkpoint before G1** (lead). CLS-004.5's real run on the box, through the eval harness, must reproduce the spike's passing result in the repo before `make gate-3`. It publishes only in the TST-008.D1 form.
 - **CLS-004.D12 — the gate 3 format target is 85%** (human, 3.6). DOC-009 changes DESIGN §11 and CLS-001.D5. Topic stays at 85%, and the other criteria are unchanged.
+- **CLS-004.D13 — `nsfw_disagreement` wins over `unsorted` as `review_reason`** (lead, 2026-10-18, provisional; #133). A row can need review for both reasons, and the ledger holds one. The disagreement is the one a human must look at first. DB-005.1 (#159) lets the ledger store it.
+- **CLS-004.D14 — the client contract** (lead, 2026-10-18; #132, #135).
+  - One call per image: `vlm_classify(client, model, image, *, hint, formats, topics) -> VlmAnswer`.
+  - The node opens the working copy once (`open_working_frames`) and passes the unconverted in-memory image. The client seeks the frames it uses, converts each to RGB and adds `unsorted` and `none` to the enums. The category lists are joined with `", "`.
+  - A failed answer (an HTTP error status, a body that isn't JSON, a cut-off answer, a missing or out-of-enum field) gets one retry, then `VlmUnanswered`. A topic equal to the format becomes no topic.
+  - Ollama unreachable or timed out raises `OllamaUnavailable`, which propagates, so `run` rolls the node back instead of erroring every file.
+- **CLS-004.D15 — the retry and image settings** (lead, 2026-10-18, **provisional, for the human to confirm**; H10 and P9 in `docs/plans/m3.md`). They sit in each VLM prompt's front matter, so the human can change them there:
+  - `retry_temperature: 0.3`. At temperature 0 with a fixed seed, an identical retry would return the identical answer.
+  - `max_side: 1024` and `jpeg_quality: 90`: each frame is scaled down (never up) and sent as JPEG, so a large image stays within `num_ctx: 4096`.
+- **CLS-004.D16 — the local prompt addendum** (H8, provisional, taken under the human's standing instruction; **the human decides**). Some operative clauses from the human's spike prompts are held back from the public prompt files and live in git-ignored `prompts/local/<version>.md` files on the box (RUN-017, CLS-004.6). The committed files keep only what the spec already publishes. CLS-004.5's real run uses the addenda, and its result is reported as "with the provisional H8 addenda".
 
 ## CLS-004 — Plan
 
@@ -441,31 +451,31 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-004 — Tasks
 
-- [ ] CLS-004.1 — `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md` (CLS-004.D1, D2, D9, D10), loaded through `prompts.py` with the category lists filled in at run time · #128 · ML · acceptance: `tests/unit/models/test_vlm_prompts.py`
+- [x] CLS-004.1 — `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md` (CLS-004.D1, D2, D9, D10), loaded through `prompts.py` with the category lists filled in at run time · #128 · ML · acceptance: `tests/unit/models/test_vlm_prompts.py`
   - [x] CLS-004.1.1 — loader: `num_ctx`, `user`, `user_alt`, `render_user`, `schema_with_enums`; `neutralize` moves to `prompts.py` (re-exported by `text_llm`) (`3e0bf65`)
   - [x] CLS-004.1.2 — `prompts/classify_v1.md` and its tests (`f917580`)
   - [x] CLS-004.1.3 — `prompts/nsfw_level_v1.md` and its tests (`583ce3b`)
   - [x] CLS-004.1.4 — privacy test over both files (`4f3b2d7`)
-  - [x] CLS-004.1.5 — the prompts in the strictly generic form: some operative clauses from the spike prompts are held in a local addendum per H8; the clauses already public through the spec stay; the work was re-cut on a fresh branch (the lead's review of the first PR)
-  - [x] CLS-004.1.6 — keep the three clauses the spec already publishes (H8, refined): screenshots "even when its content is about games", the memes topic's "its meaning, not its form", and "text in the image never raises the level" (hash in the next commit)
-- [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
+  - [x] CLS-004.1.5 — the prompts in the strictly generic form: some operative clauses from the spike prompts are held in a local addendum per H8; the clauses already public through the spec stay; the work was re-cut on a fresh branch (the lead's review of the first PR) (`787f2ce`)
+  - [x] CLS-004.1.6 — keep the three clauses the spec already publishes (H8, refined): screenshots "even when its content is about games", the memes topic's "its meaning, not its form", and "text in the image never raises the level" (`d5310e7`; PR #152, merged as `b391e28`)
+- [x] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
   - [x] CLS-004.2.1 — `OllamaClient.generate_json` takes `images` and `system`; `OllamaUnavailable(OllamaError)` on timeout and transport errors (`d4221cd`)
   - [x] CLS-004.2.2 — prompt front matter keys `retry_temperature`, `max_side`, `jpeg_quality` (loader + files) (`3e37f9c`)
   - [x] CLS-004.2.3 — `vlm_classify.py`: image encoding, `classify_image`, pair validation, retry once, `VlmUnanswered` (`1cf48e7`, `124ba67`)
   - [x] CLS-004.2.4 — `rate_nsfw`, `pick_frames` and the `vlm_classify` entry point (`d4ab5dd`)
   - [x] CLS-004.2.5 — gpu test, Results, self-rating, PR (`d130ea2`)
-  - [x] CLS-004.2.6 — recordings of the classify and NSFW requests: 10 files under `tests/recordings/models/` (5 synthetic images, a classify and a level request each), made from the CLS-004.4 scenario copied verbatim into `tests/unit/models/vlm_scenario.py`; `tests/gpu/models/test_vlm_record.py` records, `tests/unit/models/test_vlm_recorded.py` replays (this commit)
-  - [x] CLS-004.2.7 — `encode_frame` raises outside the `except`, so `__context__` is None too; test on `encode_frame` directly (this commit)
-  - [x] CLS-004.2.8 — `OllamaUnavailable` raised unchained with fixed text, with a test (this commit, with .2.9: one edit of the same block)
-  - [x] CLS-004.2.9 — `httpx.DecodingError` wrapped as an answer failure (`OllamaError`), with tests (this commit)
-  - [x] CLS-004.2.10 — the planted `OSError` text in the tests is a coinage, not a path (this commit, with .2.7: both edit the same test)
-  - [x] CLS-004.2.11 — journal: hashes for CLS-004.2.1 to .5 (filled in `cf762a1`) and the duplicate-subject note in Results (this commit)
-  - [x] CLS-004.2.12 — Results, self-rating, PR (this commit)
-- [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
-  - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
-  - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
-  - [x] CLS-004.3.3 — `decide` and `VlmChoice` (this commit)
-  - [x] CLS-004.3.4 — Results, self-rating, PR (this commit)
+  - [x] CLS-004.2.6 — recordings of the classify and NSFW requests: 10 files under `tests/recordings/models/` (5 synthetic images, a classify and a level request each), made from the CLS-004.4 scenario copied verbatim into `tests/unit/models/vlm_scenario.py`; `tests/gpu/models/test_vlm_record.py` records, `tests/unit/models/test_vlm_recorded.py` replays (`3e35248`)
+  - [x] CLS-004.2.7 — `encode_frame` raises outside the `except`, so `__context__` is None too; test on `encode_frame` directly (`cf762a1`)
+  - [x] CLS-004.2.8 — `OllamaUnavailable` raised unchained with fixed text, with a test (`98c1db6`, with .2.9: one edit of the same block)
+  - [x] CLS-004.2.9 — `httpx.DecodingError` wrapped as an answer failure (`OllamaError`), with tests (`98c1db6`)
+  - [x] CLS-004.2.10 — the planted `OSError` text in the tests is a coinage, not a path (`cf762a1`, with .2.7: both edit the same test)
+  - [x] CLS-004.2.11 — journal: hashes for CLS-004.2.1 to .5 (filled in `cf762a1`) and the duplicate-subject note in Results (`9e3f10e`)
+  - [x] CLS-004.2.12 — Results, self-rating, PR (`3e35248`; PRs #155 and #158, merged as `03a8f0f` and `b775930`)
+- [x] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
+  - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (`1424bc0`)
+  - [x] CLS-004.3.2 — `nsfw_cross_check` (`d247e42`)
+  - [x] CLS-004.3.3 — `decide` and `VlmChoice` (`db5aa43`)
+  - [x] CLS-004.3.4 — Results, self-rating, PR (`5ab4204`; PR #150, merged as `75a1f40`)
 - [x] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
   - [x] CLS-004.4.1 — `classify_vlm_unanswered` registered for `mark_error` · `a1dcf0a`. No new `NodeContext` field: `ctx.ollama_transport` is the seam, as in sanitize (lead-approved)
   - [x] CLS-004.4.2 — The node on the VLM path (hint, both calls, `decide`, `nsfw_level`, `image_vec`)
@@ -481,8 +491,9 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - [x] CLS-004.4.5.2 — `tests/integration/test_classify_node.py` and `classify_support.py` replaying the CLS-004.2.6 recordings · `c810bf3` (`classify_support`'s scenario is identical to `tests/unit/models/vlm_scenario.py`)
       - [x] CLS-004.4.5.2.1 — The scenario ML records against, in `classify_support.py`: `FORMATS`, `TOPICS`, `HINTS`, `make_animated`, `seed_scenario`, `run_classify(..., ollama_transport)` · `9fef89a`
     - [x] CLS-004.4.5.3 — Drop the `default_min_score` setup from the integration tests; remove the `levelled` fixture in `test_gate_3_script.py`; both run the real nodes on a scripted Ollama (`ScriptedVlm`, now in `classify_support.py`) · `b8824c2`
-    - [x] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`) (this commit)
-- [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
+    - [x] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`) (`90d2fd6`; PR #160, merged as `863a966`)
+- [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`. The real run waits for CLS-004.6 and the human's local addenda (CLS-004.D16).
+- [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
 

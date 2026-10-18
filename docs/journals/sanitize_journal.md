@@ -403,10 +403,10 @@ Decisions:
 
 ## SAN-004 — Tasks
 
-- [ ] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
-  - [x] SAN-004.1.1 — Run `make gate-2` on `qwen3-vl:8b-instruct` for its own process (Proposal A, no repo change) · gate 2 PASS (Results)
-  - [x] SAN-004.1.2 — Pin `num_ctx: 4096` in the entity prompt and re-record the entity-prompt recordings, after #128's loader change is on `main` (the lead says when) · tick commit below
-- [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · issue: the lead opens it on the PASS · acceptance: `tests/unit/test_config.py`
+- [x] SAN-004.1 — Pin `num_ctx: 4096` in the entity prompt and run `make gate-2` on `qwen3-vl:8b-instruct` (the run sets the model for its own process; nothing in `config.yaml` changes) · #131 · ML · acceptance: `scripts/gate_2.py` · depends on RUN-016 (the model pulled)
+  - [x] SAN-004.1.1 — Run `make gate-2` on `qwen3-vl:8b-instruct` for its own process (Proposal A, no repo change) · gate 2 PASS (Results) · `63befb5`
+  - [x] SAN-004.1.2 — Pin `num_ctx: 4096` in the entity prompt and re-record the entity-prompt recordings, after #128's loader change is on `main` (the lead says when) · `6feb678` (PR #154, merged as `01bbe0e`). The two subtasks ran in this order because the loader that reads `num_ctx` landed later (lead, 2026-10-18)
+- [ ] SAN-004.2 — On SAN-004.1's PASS only, switch `models.text_llm` to `qwen3-vl:8b-instruct` in `config.yaml`, in its own commit with the gate result in public form · Pipeline (CFG owner) · #141 · acceptance: `tests/unit/config/test_config.py` · **on hold (H9)**: gate 2 passes on the instruct model, but the gpu-tier entity tests fail two synthetic cases on it, one of them an injection case, in every wrap variant tried. The human decides (H9 in `docs/plans/m3.md`). Until then, `models.text_llm` stays `qwen3-vl:8b` (the provisional option 1).
 
 ## SAN-004 — Results
 

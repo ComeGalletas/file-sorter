@@ -155,7 +155,7 @@ references or host paths here. Use hashes.
 
 - [x] DB-004.1 — Migration `0004`: `files.nsfw_level` with its check constraint, the ORM field, and the one-head and downgrade tests · #129 · Pipeline · acceptance: `tests/db/ledger/test_nsfw_level_migration.py`
   - [x] DB-004.1.1 — Migration `0004`, the `File.nsfw_level` field with its check constraint, and the model test · `afc3afc`
-  - [x] DB-004.1.2 — The acceptance test `test_nsfw_level_migration.py` · this commit's hash is in Results
+  - [x] DB-004.1.2 — The acceptance test `test_nsfw_level_migration.py` · `c96acf0` (PR #145, merged as `863affd`)
 
 ## DB-004 — Results
 
@@ -166,4 +166,36 @@ references or host paths here. Use hashes.
 - **Existing tests touched:** `tests/unit/db/test_models.py` lists `nsfw_level` and checks the mirrored constraint.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. The gap is that the check's refused values cover case and whitespace variants and `nsfw`, not every possible string; the constraint is a closed `in` list, so I judged that low risk.
-- **Reviewer and Privacy auditor:** pending (lead).
+- **Reviewer and Privacy auditor:** APPROVE and PASS (PR #145, lead's verdict comment).
+
+---
+
+## DB-005 — Requirement (lead, from CLS-004.4's review of the ledger, 2026-10-18)
+
+- **Objective:** the ledger accepts `review_reason = nsfw_disagreement`, which DESIGN §5 and `classify_rules.decide` already use (CLS-004.D5, D13).
+- **Details:** the `files_review_reason` check (migration `0001`) allowed only `unsorted` and `ambiguous_reference`. So the first Falconsai disagreement on the real ledger would have failed the write and sent the file to `error` instead of review. Migration `0005` widens it.
+- **Implements:** DESIGN §5; CLS-004.D5, D13.
+
+## DB-005 — Confirmed reading
+
+- `0004` (DB-004.1) is the head on `main`, so `0005` follows it.
+- **DB-005.D1** — **The downgrade refuses while any row holds `nsfw_disagreement`** (lead, 2026-10-18, reversible; **for the human to confirm**). It raises fixed text and never rewrites a row's `review_reason`. With no such row, it restores the `0001` constraint.
+
+## DB-005 — Tasks
+
+- [x] DB-005.1 — Migration `0005`, the ORM `CheckConstraint` and `REVIEW_REASONS`, and the db-tier migration tests · #157 · Pipeline · acceptance: `tests/db/ledger/test_review_reason_migration.py` · `53a0459` (PR #159, merged as `6a6bb60`)
+
+## DB-005 — Results
+
+### DB-005.1 (#157)
+
+- **Tests:** the acceptance test, 11 db tests:
+  - a single head, with `0005` extending `0004`;
+  - each reason, and null, accepted;
+  - unknown reasons still refused;
+  - the downgrade refused while a row holds the reason (revision, constraint and row checked on a fresh connection);
+  - a downgrade on an empty table restores the old check, and re-upgrading works.
+
+  `make test` 2264 passed, 52 deselected. `make lint` clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: "unchained" is asserted at the root of what Alembic surfaces, not on the migration's own exception object.
+- **Reviewer and Privacy auditor:** APPROVE and PASS (PR #159). An optional follow-up for the G1 list is calling `downgrade()` directly with a mocked bind.
