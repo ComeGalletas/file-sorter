@@ -447,11 +447,21 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
   - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
   - [x] CLS-004.3.3 — `decide` and `VlmChoice` (this commit)
-  - [ ] CLS-004.3.4 — Results, self-rating, PR
+  - [x] CLS-004.3.4 — Results, self-rating, PR (this commit)
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
 ## CLS-004 — Results
+
+### CLS-004.3 (ML, #133)
+
+- **Status:** DONE.
+- **Tests:** `tests/unit/models/test_classify_rules.py` 115 passed (85 before this task, +30 for the VLM path); all of `tests/unit` 1397 passed; ruff check and format clean. No `eval/` run: no prompt, threshold or model changed.
+- **Delivered:** `VlmAnswer`, `VlmChoice`, `branch_for_level` (adult iff `level >= min_level`), `nsfw_cross_check` (a flag, never a branch), `decide` (branch eligibility and twin removal kept, no `min_score`/`margin`, unknown names fail closed with fixed text), and `validate_rules(rules, None)`. The SigLIP functions are untouched, so the node and `eval/` keep working until #135 and #136 re-point them.
+- **Decision applied:** `nsfw_disagreement` wins over `unsorted` as `review_reason` (lead, CLS-004.D13, provisional).
+- **Deferred:** removing the dead SigLIP functions (`nsfw_branch`, `choose`, `_judge`, `_pick_axis`, `top_scores`) after #135 and #136, under a new ID the lead allocates.
+- **Self-rating:** 9/10, proud: yes. Gap: the pre-push `gpu` tier and the Reviewer and Privacy auditor verdicts are not in yet, and the module carries both paths until the follow-up. Neither blocks the acceptance criteria.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 
