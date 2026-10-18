@@ -542,8 +542,31 @@ references or host paths here. Use hashes.
   - [x] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording
   - [x] TST-009.1.6 — review fix (PR #143): `image_digest` raises its refusal outside the `except`, so a truncated image leaves no `__context__`
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
+  - [x] TST-009.2.1 — Loader: the optional trailing `nsfw_level` column, `expects_adult(min_level)`, `labels.example.csv`
+  - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85%
+  - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
+  - [x] TST-009.2.4 — Results and self-rating
+  - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5
 
 ## TST-009 — Results
+
+### TST-009.2 — Results (QA)
+
+- **Commits:** TST-009.2.1 (the loader and `labels.example.csv`), TST-009.2.2 (the gate, with its .2.3 tests).
+- **Tests, by tier:**
+  - unit + db + integration (`make test`): 2020 passed, 48 deselected (gpu and gate markers), 0 failed;
+  - acceptance `tests/unit/gate/test_gate_3_measures.py`, with the loader and runner modules and `tests/integration/test_gate_3_script.py`: 178 passed;
+  - lint: ruff check and format clean. No gpu tier: no models or prompts are touched.
+- **What the gate does now:**
+  - format target 85%;
+  - a row is flagged or safe only when the ledger's branch and `nsfw_level` agree, judged against the label's expectation at `nsfw.min_level` (from the gate's loaded config);
+  - a missing or unknown ledger level is a miss;
+  - a `suggestive-negative` row at or above `min_level` stops the gate with a fixed line/column error;
+  - the public form is unchanged (TST-008.D1, D6).
+- **Interim shim:** the integration test fills the ledger level from the branch until CLS-004.4 writes `files.nsfw_level`. Remove it then. The labels there stay 7-column, so it also covers a file without the optional column.
+- **Deferred:** TST-009.2.5, the `make gate-3` G1 run, on the lead's go after CLS-004.5. The PR says "Refs #134" until then.
+- **Status:** DONE for .2.1 to .2.4; the issue stays open for .2.5.
+- **Self-rating:** 9/10, proud: yes. Gap: the level logic is proved on synthetic ledger rows only, because the node on main doesn't write `nsfw_level` yet; the end-to-end check comes with CLS-004.4 and the G1 run.
 
 ### TST-009.1 — Results (#127)
 

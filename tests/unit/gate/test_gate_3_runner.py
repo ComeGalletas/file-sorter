@@ -42,11 +42,20 @@ def test_relative_name_strips_the_images_folder() -> None:
 
 def test_to_outcomes_maps_duplicates_and_rejects_foreign_paths() -> None:
     rows = [
-        ("/synthetic/images/a.png", ["/synthetic/images/d/a2.png"], "classified", "f", "t", "safe")
+        (
+            "/synthetic/images/a.png",
+            ["/synthetic/images/d/a2.png"],
+            "classified",
+            "f",
+            "t",
+            "safe",
+            "safe",
+        )
     ]
     (outcome,) = gate_3.to_outcomes(rows, IMAGES)
     assert outcome.names == ("a.png", "d/a2.png") and outcome.branch == "safe"
-    bad = [("/elsewhere/a.png", None, "classified", None, None, None)]
+    assert outcome.nsfw_level == "safe"
+    bad = [("/elsewhere/a.png", None, "classified", None, None, None, None)]
     with pytest.raises(gate_3.GateRunError) as caught:
         gate_3.to_outcomes(bad, IMAGES)
     assert "elsewhere" not in str(caught.value)
@@ -115,10 +124,10 @@ def test_main_prints_public_form_by_default_and_detail_on_request(
         topics={"plinth"},
     )
     outs = [
-        gate_3.Outcome(("a.png",), "classified", "zorbs", "plinth", "nsfw"),
-        gate_3.Outcome(("b.png",), "classified", "zorbs", "plinth", "safe"),
+        gate_3.Outcome(("a.png",), "classified", "zorbs", "plinth", "nsfw", "nudity"),
+        gate_3.Outcome(("b.png",), "classified", "zorbs", "plinth", "safe", "safe"),
     ]
-    monkeypatch.setattr(gate_3, "run_pipeline", lambda *_a: gate_3.evaluate(labels, outs))
+    monkeypatch.setattr(gate_3, "run_pipeline", lambda *_a: gate_3.evaluate(labels, outs, 2))
     registry = [node("ingest"), node("sanitize"), node("classify")]
     assert gate_3.main([], images=tmp_path, registry=registry) == 0
     plain = capsys.readouterr().out

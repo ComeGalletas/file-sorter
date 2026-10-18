@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 COLUMNS = ("file", "format", "topic", "adult", "reference", "subject", "tags")
+LEVEL_COLUMN = "nsfw_level"  # optional, trailing (TST-009.D1)
+# The NsfwLevel names in order (classifier/config.py); the loader stays free of `classifier`.
+LEVELS = ("safe", "suggestive", "nudity", "explicit")
 TAG_SUGGESTIVE_NEGATIVE = "suggestive-negative"
 TAG_CALIBRATION_ONLY = "calibration-only"
 TAGS = frozenset({TAG_SUGGESTIVE_NEGATIVE, TAG_CALIBRATION_ONLY})
@@ -22,6 +25,7 @@ _BAD_HEADER = "header is not the expected columns"
 _BAD_CELLS = "wrong number of cells"
 _BAD_CSV = "malformed CSV"
 _BAD_ADULT = "must be yes or no"
+_BAD_LEVEL = "must be blank, safe, suggestive, nudity or explicit"
 _BLANK_FILE = "must not be blank"
 _UNKNOWN_FORMAT = "not in the format vocabulary"
 _UNKNOWN_TOPIC = "not in the topic vocabulary"
@@ -47,6 +51,15 @@ class LabelRow:
     reference: str = field(repr=False)
     subject: str = field(repr=False)
     tags: frozenset[str] = field(repr=False)
+    nsfw_level: str | None = field(default=None, repr=False)  # TST-009.D1
+    line: int = field(default=0, repr=False)  # the physical CSV line, for gate errors
+
+    def expects_adult(self, min_level: int) -> bool:
+        """TST-009.D1: with a level the row is adult when its rank is >= `min_level`;
+        without one the `adult` column stands."""
+        if self.nsfw_level is None:
+            return self.adult
+        return LEVELS.index(self.nsfw_level) >= min_level
 
 
 @dataclass(frozen=True)
@@ -77,6 +90,7 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
     seen: set[str] = set()
     csv_broken_at = 0
     header_seen = False
+    width = len(COLUMNS)
     start = 1
     try:
         for cells in reader:
@@ -84,12 +98,14 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
             start = reader.line_num + 1
             if not header_seen:
                 header_seen = True
-                if tuple(c.strip() for c in cells) != COLUMNS:
+                head = tuple(c.strip() for c in cells)
+                if head not in (COLUMNS, (*COLUMNS, LEVEL_COLUMN)):
                     raise _fail(line, "header", _BAD_HEADER)
+                width = len(head)
                 continue
             if not cells:
                 continue
-            if len(cells) != len(COLUMNS):
+            if len(cells) != width:
                 raise _fail(line, "row", _BAD_CELLS)
             row = _row(line, cells, formats, topics)
             if row.file in seen:
@@ -108,11 +124,14 @@ def parse_labels(text: str, *, formats: Collection[str], topics: Collection[str]
 def _row(
     line: int, cells: list[str], formats: Collection[str], topics: Collection[str]
 ) -> LabelRow:
-    file, fmt, topic, adult, reference, subject, tags = (c.strip() for c in cells)
+    file, fmt, topic, adult, reference, subject, tags, *rest = (c.strip() for c in cells)
+    level = rest[0] if rest else ""
     if not file:
         raise _fail(line, "file", _BLANK_FILE)
     if adult not in ("yes", "no"):
         raise _fail(line, "adult", _BAD_ADULT)
+    if level and level not in LEVELS:
+        raise _fail(line, LEVEL_COLUMN, _BAD_LEVEL)
     if fmt and fmt not in formats:
         raise _fail(line, "format", _UNKNOWN_FORMAT)
     if topic and topic not in topics:
@@ -132,6 +151,8 @@ def _row(
         reference=reference,
         subject=subject,
         tags=tag_set,
+        nsfw_level=level or None,
+        line=line,
     )
 
 

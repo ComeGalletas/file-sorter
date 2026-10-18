@@ -11,8 +11,14 @@ classify scenario, never the tuned ones. The real fixtures only run at `make gat
 Labels are derived from what the node wrote on a first pass, so this test proves the wiring:
 vocabularies, label matching, the runner and the output. The measures themselves are proved on
 plain numbers in tests/unit/gate/.
+
+The node on main writes a branch but not yet `files.nsfw_level` (CLS-004.4 adds it), so the
+`levelled` fixture fills the level from the branch it wrote, as the VLM node will. It stops
+being needed when CLS-004.4 lands; the unit tests cover the level logic meanwhile (TST-009.2.3).
+The labels stay 7-column, which also covers a labels file without the optional level column.
 """
 
+import dataclasses
 import importlib.util
 import re
 from pathlib import Path
@@ -71,6 +77,20 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(gate_3, "CONFIG", config)
 
 
+@pytest.fixture(autouse=True)
+def levelled(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = gate_3.to_outcomes
+    level_of = {"nsfw": "nudity", "safe": "safe"}
+
+    def fill(rows, images):
+        return [
+            o if o.nsfw_level else dataclasses.replace(o, nsfw_level=level_of.get(o.branch or ""))
+            for o in real(rows, images)
+        ]
+
+    monkeypatch.setattr(gate_3, "to_outcomes", fill)
+
+
 @pytest.fixture
 def rules_path(tmp_path: Path) -> Path:
     path = tmp_path / "rules-secret.yaml"
@@ -110,9 +130,9 @@ def learn(tmp_path, images, rules, vision, monkeypatch) -> dict[str, tuple]:
     seen: list = []
     real = gate_3.evaluate
 
-    def spy(labels, outcomes):
+    def spy(labels, outcomes, min_level):
         seen.extend(outcomes)
-        return real(labels, outcomes)
+        return real(labels, outcomes, min_level)
 
     monkeypatch.setattr(gate_3, "evaluate", spy)
     probe = write_labels(tmp_path, [f"{n},,,no,,," for n in NAMES.values()])
