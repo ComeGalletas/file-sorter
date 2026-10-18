@@ -46,14 +46,17 @@ MAX_IMAGES = 8
 MAX_IMAGE_BYTES = 8 * 1024 * 1024  # decoded bytes of one image, as sent
 MAX_IMAGE_PIXELS = 16_000_000  # width x height, checked before any pixel is decoded
 IMAGE_REFUSED = "a request image is not a base64 image within the recording limits"
-# A stored request that carries image digests holds only these fields.
-IMAGE_REQUEST_FIELDS = {
+# TST-009.1.5: the only top-level fields a request may carry, live or stored. Anything else
+# would be written to disk unseen (a base64 value under a made-up key), so it is refused.
+REQUEST_FIELDS = {
     *KEYED_FIELDS,
     *OPTIONAL_KEYED_FIELDS,
     "keep_alive",
     "stream",
+    IMAGES_FIELD,
     DIGESTS_FIELD,
 }
+UNKNOWN_FIELD_REFUSED = "the request body holds a field an Ollama request may not have"
 RECORDING_FIELDS = {"request", "response"}
 # Ollama's token ids of the prompt: bulky, and unused by OllamaClient. Not recorded.
 UNRECORDED_RESPONSE_FIELDS = ("context",)
@@ -119,6 +122,9 @@ def canonical_request(body: object) -> dict[str, Any]:
     """The fields of an `/api/generate` body that the key covers (TST-005.D5, TST-009.D2)."""
     if not isinstance(body, Mapping):
         raise RecordingError("the request body is not a JSON object")
+    if not set(body) <= REQUEST_FIELDS:
+        # Fixed text: the field's name and value are never echoed.
+        raise RecordingError(UNKNOWN_FIELD_REFUSED)
     missing = [field for field in KEYED_FIELDS if field not in body]
     if missing:
         raise RecordingError(f"the request body lacks {', '.join(missing)}")
@@ -242,8 +248,6 @@ def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     if isinstance(request, Mapping):
         if IMAGES_FIELD in request:
             raise RecordingError(f"{where} carries images; store image_digests instead")
-        if DIGESTS_FIELD in request and not set(request) <= IMAGE_REQUEST_FIELDS:
-            raise RecordingError(f"{where} holds a field an image request may not have")
     try:
         key = recording_key(request)
     except RecordingError:

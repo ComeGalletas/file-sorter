@@ -539,7 +539,7 @@ references or host paths here. Use hashes.
   - [x] TST-009.1.2 — replay and record: the record writes the digest form, refuses before forwarding what the lint would refuse
   - [x] TST-009.1.3 — lint: `images` refused, `image_digests` shape, stray fields, the key
   - [x] TST-009.1.4 — README and Results (.1.1 to .1.3 are commit `24f40d4`)
-  - [ ] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording
+  - [x] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording
   - [x] TST-009.1.6 — review fix (PR #143): `image_digest` raises its refusal outside the `except`, so a truncated image leaves no `__context__`
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
 

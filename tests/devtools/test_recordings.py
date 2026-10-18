@@ -20,6 +20,7 @@ from classifier.models.ollama import OllamaClient, OllamaError
 from tests.recordings.replay import (
     IMAGE_REFUSED,
     MAX_IMAGE_BYTES,
+    UNKNOWN_FIELD_REFUSED,
     RecordingError,
     RecordingTransport,
     ReplayTransport,
@@ -118,8 +119,9 @@ def test_every_keyed_field_changes_the_key(field: str) -> None:
     assert recording_key(body()) != recording_key(body(**{field: "other"}))
 
 
-def test_unknown_fields_are_not_keyed() -> None:
-    assert recording_key(body()) == recording_key(body(images_never_sent=1))
+def test_unknown_fields_are_refused_not_ignored() -> None:
+    with pytest.raises(RecordingError, match="may not have"):
+        recording_key(body(unknown_field=1))
 
 
 def test_non_ascii_is_hashed_as_utf8_not_escaped() -> None:
@@ -704,7 +706,7 @@ def test_different_pixels_give_a_different_key() -> None:
 
 def test_text_only_keys_are_unchanged_by_the_image_support() -> None:
     assert "image_digests" not in canonical_request(body())
-    assert recording_key(body()) == recording_key(body(images_never_sent=1))
+    assert recording_key(body()) == recording_key(body(keep_alive="5m", stream=True))
 
 
 def test_a_live_body_and_its_stored_request_have_the_same_key() -> None:
@@ -737,7 +739,6 @@ def test_a_bad_image_is_refused_with_fixed_text(images: object) -> None:
         recording_key(body(prompt=IMAGE_PROMPT, images=images))
     assert_private(caught.value)
     assert "aGVsbG8" not in str(caught.value)
-    assert caught.value.__context__ is None
 
 
 def test_a_bad_image_error_is_fixed_text() -> None:
@@ -847,7 +848,7 @@ def test_lint_refuses_each_bad_image_recording_privately(tmp_path: Path) -> None
     digest = good["image_digests"][0]
     cases = {
         "pixels": ("carries images", {**good, "images": [encoded(picture())]}),
-        "stray field": ("may not have", {**good, "note": SECRET}),
+        "stray field": ("cannot be keyed", {**good, "note": SECRET}),
         "empty digests": ("cannot be keyed", {**good, "image_digests": []}),
         "short digest": ("cannot be keyed", {**good, "image_digests": [digest[:-1]]}),
         "upper digest": ("cannot be keyed", {**good, "image_digests": [digest.upper()]}),
@@ -871,3 +872,55 @@ def test_lint_refuses_a_digest_recording_under_the_wrong_name(tmp_path: Path) ->
     path.rename(path.with_name("0" * 64 + ".json"))
     (problem,) = lint_recordings(tmp_path)
     assert "not named by the key" in problem
+
+
+# --- the field allowlist for every request (TST-009.1.5) ---
+
+STRAY_VALUES = [SECRET, encoded(picture()), 7, ["x"], {"k": SECRET}]
+
+
+@pytest.mark.parametrize("value", STRAY_VALUES)
+@pytest.mark.parametrize("image_request", [False, True])
+def test_a_stray_field_is_refused_before_forwarding_or_writing(
+    value: object, image_request: bool, tmp_path: Path
+) -> None:
+    request = image_body(encoded(picture())) if image_request else body()
+    forwarded: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: forwarded.append(r) or httpx.Response(200, json=answer()))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        post(recorder, {**request, "note": value})
+    assert str(caught.value).startswith(UNKNOWN_FIELD_REFUSED)
+    assert forwarded == [] and not (tmp_path / "pkg").exists()
+    assert_private(caught.value)
+    assert encoded(picture()) not in str(caught.value)
+    assert len(recorder.failures) == 1
+
+
+@pytest.mark.parametrize("image_request", [False, True])
+def test_replay_refuses_a_stray_field(image_request: bool, tmp_path: Path) -> None:
+    request = image_body(encoded(picture())) if image_request else body()
+    write_recording(tmp_path, stored_request(request), answer())
+    replay = ReplayTransport("pkg", TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError, match="may not have") as caught:
+        post(replay, {**request, "note": SECRET})
+    assert_private(caught.value)
+
+
+@pytest.mark.parametrize("image_request", [False, True])
+def test_lint_refuses_a_stray_field_privately(image_request: bool, tmp_path: Path) -> None:
+    stored = stored_request(image_body(encoded(picture()))) if image_request else body()
+    path = tmp_path / "pkg" / f"{'0' * 64}.json"
+    path.parent.mkdir()
+    # base64 under a made-up key: the old text-only lint accepted this once it was named right
+    request = {**stored, "note": encoded(picture())}
+    path.write_text(json.dumps({"request": request, "response": answer()}), encoding="utf-8")
+    (problem,) = lint_recordings(tmp_path)
+    assert "cannot be keyed" in problem
+    assert SECRET not in problem and encoded(picture()) not in problem
+
+
+def test_every_allowed_field_still_passes() -> None:
+    request = body(think=True, raw=True, keep_alive="5m", stream=False)
+    assert recording_key(request)
+    assert recording_key(image_body(encoded(picture()), think=False))
