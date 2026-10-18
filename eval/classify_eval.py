@@ -1,23 +1,34 @@
-"""Calibrate the classify thresholds on the labelled fixtures (CLS-003.1; R-CLS-8, CLS-003.D1-D3).
+"""Evaluate the VLM classify path on the labelled fixtures (CLS-004.5; R-CLS-8, CLS-004.D11).
 
-Run in the `test` container, which has the throwaway Postgres and the read-only fixtures mount:
+Run in the `test` container, which has the throwaway Postgres, ollama and the read-only fixtures
+mount:
 
     docker compose --profile test run --rm test python eval/classify_eval.py
 
 It runs the real ingest and sanitize nodes over the images in a throwaway schema and a temporary
-results tree, scores each sanitized working copy once through `SiglipBackend` (P-2: the models
-never see a source path or a raw name), sweeps the thresholds with `eval/classify_sweep.py` and
-prints the proposed values. It edits no config, migration or prompt (CLAUDE.md §1.7): the human
-approves the values, and CLS-003.2 commits them.
+results tree. Then, for each sanitized working copy, it does what the classify node does: opens the
+copy with `open_working_frames`, calls `vlm_classify` with the sanitized name as the hint and the
+category names (P-2: the model never sees a source path or a raw name), takes the Falconsai score,
+and applies `decide` with `nsfw.min_level`. There is nothing to sweep: the thresholds are
+configuration, and this reports what the committed configuration achieves. It edits no config,
+migration or prompt (CLAUDE.md §1.7).
 
-Privacy (TST-008.D1, D6): the default output is the public form, safe to paste. `--detail` adds
-one-decimal figures and per-category detail for the box console, and is never pasted. Labels are
-matched to ledger rows by file name in memory only; the cache holds scores keyed by source hash.
+The measures are `scripts/gate_3.py`'s own (`evaluate` and `judge`), so the eval and the gate count
+the same thing. Nothing is copied from them.
+
+Privacy (TST-008.D1, D6): the default output is the public form, safe to paste: format, topic and
+unrecognized as a verdict and a whole percent, adult and suggestive-negative as ok or FAIL, and
+whether each prompt has a local addendum (present or absent, never its hash: the hash fingerprints
+private text). `--detail` adds one-decimal figures, per-category detail, the effective prompt
+versions with their addendum hashes and the Falconsai cross-check count for the box console, and is
+never pasted or committed. Labels are matched to ledger rows by file name in memory only; the
+cache holds answers keyed by source hash.
 Every error is fixed text.
 """
 
 import hashlib
 import json
+import math
 import os
 import stat
 import sys
@@ -30,58 +41,83 @@ for _path in (REPO, REPO / "eval", REPO / "scripts"):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
-import numpy as np  # noqa: E402
-from classify_sweep import Item  # noqa: E402
-from fixture_labels import TAG_CALIBRATION_ONLY, TAG_SUGGESTIVE_NEGATIVE, LabelSet  # noqa: E402
-from PIL import Image  # noqa: E402
+import fixture_labels  # noqa: E402
+import gate_3 as gate  # noqa: E402
 
-from classifier.models.vision import (  # noqa: E402
-    VisionBackend,
-    cosine_matrix,
-    max_over_prompts,
-    score_matrix,
+from classifier.config import NsfwLevel  # noqa: E402
+from classifier.models.classify_rules import (  # noqa: E402
+    CategoryRule,
+    ClassifyRulesError,
+    VlmAnswer,
+    decide,
+    validate_rules,
+)
+from classifier.models.prompts import PROMPTS_DIR, Prompt, load_effective_prompt  # noqa: E402
+from classifier.models.vlm_classify import (  # noqa: E402
+    CLASSIFY_PROMPT,
+    NSFW_PROMPT,
+    VlmImageError,
+    VlmUnanswered,
+    vlm_classify,
 )
 
 CONFIG = REPO / "config.yaml"
 IMAGES = REPO / "fixtures" / "images"
 LABELS = REPO / "fixtures" / "labels.csv"
-CACHE_DIR = REPO / "eval" / ".cache"
-BATCH = 16
+CACHE_DIR = REPO / "eval" / ".cache"  # git-ignored by eval/.gitignore
+NODES = ("ingest", "sanitize")
+PROMPT_NAMES = (CLASSIFY_PROMPT, NSFW_PROMPT)
+DISAGREEMENT = "nsfw_disagreement"  # classify_rules.decide's review reason for the cross-check
 
 
 class EvalError(Exception):
     """A step failed. The message is fixed text: no path, name, label or rule value."""
 
 
-_ERR_COVERAGE = "the labels and the images do not match exactly"
-_ERR_AMBIGUOUS = "two images share a file name, so the labels cannot be matched"
 _ERR_NOT_SANITIZED = "an image did not reach the sanitized status: check Ollama and the rules"
-_ERR_COPY = "a working copy is missing or is not a regular file"
-_ERR_DECODE = "a working copy could not be decoded"
-_ERR_NO_PROMPTS = "the categories carry no prompts"
+_ERR_PROMPT = "a prompt file cannot be read"
+_ERR_NO_CLIENT = "OLLAMA_HOST is not set: run it in the test container"
 
 
-# --- Scores ---------------------------------------------------------------------------------
+# --- Prompt versions ------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Scores:
-    """One image's scores; keyed by source hash, never by a name."""
+def prompt_file_digest(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
+    """SHA-256 of the committed prompt file: part of the cache key, never printed."""
+    data = None
+    try:
+        path = prompts_dir / f"{name}.md"
+        if stat.S_ISREG(path.lstat().st_mode):
+            data = path.read_bytes()
+    except OSError:
+        data = None
+    if data is None:  # raised outside the `except`, so it is unchained
+        raise EvalError(_ERR_PROMPT)
+    return hashlib.sha256(data).hexdigest()
 
-    format: Mapping[str, float] = field(repr=False)
-    topic: Mapping[str, float] = field(repr=False)
-    nsfw: float = field(repr=False)
+
+def effective_prompts(prompts_dir: Path = PROMPTS_DIR) -> tuple[Prompt, ...]:
+    """The prompts the VLM path uses, with their local addenda when present (CLS-004.6)."""
+    return tuple(load_effective_prompt(name, prompts_dir) for name in PROMPT_NAMES)
 
 
-@dataclass(frozen=True)
-class PromptSet:
-    """Every category prompt of both axes, in the order the scores are built (R-CLS-2)."""
+def addenda_lines(prompts: Sequence[Prompt]) -> list[str]:
+    """The publishable fact about the addenda: present or absent per prompt, never a hash.
 
-    texts: Mapping[str, tuple[str, ...]] = field(repr=False)  # axis -> prompts
-    categories: Mapping[str, tuple[str, ...]] = field(repr=False)  # axis -> a category per prompt
+    When any is present the report says so (CLS-004.D16: provisional, the human decides).
+    """
+    lines = [
+        "local addenda: "
+        + ", ".join(f"{p.version} {'present' if p.addendum_hash else 'absent'}" for p in prompts)
+    ]
+    if any(p.addendum_hash for p in prompts):
+        lines.append("with the provisional H8 addenda")
+    return lines
 
-    def digest(self) -> str:
-        return _digest({"texts": self.texts, "categories": self.categories})
+
+def versions_line(prompts: Sequence[Prompt]) -> str:
+    """Effective versions with their addendum hashes: the local console only (CLS-004.D16)."""
+    return "effective prompts (console only): " + ", ".join(p.effective_version for p in prompts)
 
 
 def _digest(value: object) -> str:
@@ -89,35 +125,62 @@ def _digest(value: object) -> str:
     return hashlib.sha256(text.encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
-def cache_key(backend: VisionBackend, mode: str, prompts: PromptSet) -> str:
-    """The cache file's name: the models, the score mode and the prompt set (no label in it)."""
-    return _digest([backend.classifier_id, backend.nsfw_id, mode, prompts.digest()])
+# --- The per-image cache --------------------------------------------------------------------
 
 
-def load_cache(folder: Path, key: str) -> dict[str, Scores]:
-    """The cached scores, or {} for anything unreadable: a cache is only a speed-up."""
-    out: dict[str, Scores] = {}
+@dataclass(frozen=True)
+class Answer:
+    """One image's VLM answer and Falconsai score; keyed by source hash, never by a name."""
+
+    format: str = field(repr=False)
+    topic: str | None = field(repr=False)
+    level: str = field(repr=False)  # an `NsfwLevel` name
+    nsfw: float | None = field(repr=False)
+
+    def vlm(self) -> VlmAnswer:
+        return VlmAnswer(self.format, self.topic, NsfwLevel[self.level])
+
+
+def cache_key(
+    model: str,
+    prompt_hashes: Sequence[str],
+    min_level: NsfwLevel,
+    formats: Sequence[str],
+    topics: Sequence[str],
+) -> str:
+    """The cache file's name: the VLM tag, the prompt and addendum digests, `min_level` and the
+    category names. No label, path or file name is in it."""
+    return _digest([model, list(prompt_hashes), min_level.name, list(formats), list(topics)])
+
+
+def load_cache(folder: Path, key: str) -> dict[str, Answer]:
+    """The cached answers, or {} for anything unreadable: a cache is only a speed-up."""
+    out: dict[str, Answer] = {}
     try:
         path = folder / f"{key}.json"
         if stat.S_ISREG(path.lstat().st_mode):
             data = json.loads(path.read_bytes().decode("utf-8", errors="surrogatepass"))
-            for digest, row in data["scores"].items():
-                out[str(digest)] = Scores(
-                    {str(k): float(v) for k, v in row["format"].items()},
-                    {str(k): float(v) for k, v in row["topic"].items()},
-                    float(row["nsfw"]),
+            for digest, row in data["answers"].items():
+                topic, score = row["topic"], row["nsfw"]
+                level = str(row["level"])
+                NsfwLevel[level]  # an unknown name drops the whole cache
+                out[str(digest)] = Answer(
+                    str(row["format"]),
+                    None if topic is None else str(topic),
+                    level,
+                    None if score is None else float(score),
                 )
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
     return out
 
 
-def save_cache(folder: Path, key: str, scores: Mapping[str, Scores]) -> bool:
+def save_cache(folder: Path, key: str, answers: Mapping[str, Answer]) -> bool:
     """Write the cache atomically. False when it cannot be written (never fatal)."""
     payload = {
-        "scores": {
-            digest: {"format": dict(s.format), "topic": dict(s.topic), "nsfw": s.nsfw}
-            for digest, s in sorted(scores.items())
+        "answers": {
+            digest: {"format": a.format, "topic": a.topic, "level": a.level, "nsfw": a.nsfw}
+            for digest, a in sorted(answers.items())
         }
     }
     data = json.dumps(payload, sort_keys=True).encode("utf-8", errors="surrogatepass")
@@ -132,177 +195,32 @@ def save_cache(folder: Path, key: str, scores: Mapping[str, Scores]) -> bool:
     return True
 
 
-def open_rgb(path: Path, short_hash: str) -> Image.Image:
-    """Decode one working copy to RGB. Refuses links and non-files; errors carry the hash."""
-    problem = ""
-    image = None
-    try:
-        if not stat.S_ISREG(path.lstat().st_mode):
-            problem = _ERR_COPY
-        else:
-            with Image.open(path) as opened:
-                image = opened.convert("RGB")
-    except OSError:
-        problem = _ERR_DECODE
-    except Exception:  # Pillow raises many types; none of their messages is shown
-        problem = _ERR_DECODE
-    if problem or image is None:
-        raise EvalError(f"{problem or _ERR_DECODE} ({short_hash})")
-    return image
-
-
-def score_copies(
-    backend: VisionBackend,
-    copies: Mapping[str, Path],
-    prompts: PromptSet,
-    mode: str,
-    cache_folder: Path | None,
-) -> dict[str, Scores]:
-    """Score every working copy once; a hash already in the cache is not scored again."""
-    if not any(prompts.texts.values()):
-        raise EvalError(_ERR_NO_PROMPTS)
-    key = cache_key(backend, mode, prompts)
-    scores = load_cache(cache_folder, key) if cache_folder is not None else {}
-    todo = [digest for digest in sorted(copies) if digest not in scores]
-    if todo:
-        text_embeddings = {
-            axis: backend.embed_texts(list(texts)) for axis, texts in prompts.texts.items()
-        }
-        for start in range(0, len(todo), BATCH):
-            batch = todo[start : start + BATCH]
-            images = [open_rgb(copies[d], d[:8]) for d in batch]
-            embedded = backend.embed_images(images)
-            nsfw = np.asarray(backend.nsfw_scores(images), dtype=np.float64)
-            per_axis = {}
-            for axis, texts in text_embeddings.items():
-                cosines = cosine_matrix(embedded, texts)
-                matrix = score_matrix(
-                    cosines,
-                    mode=mode,
-                    logit_scale=backend.logit_scale,
-                    logit_bias=backend.logit_bias,
-                )
-                per_axis[axis] = max_over_prompts(matrix, prompts.categories[axis])
-            for index, digest in enumerate(batch):
-                scores[digest] = Scores(
-                    per_axis["format"][index], per_axis["topic"][index], float(nsfw[index])
-                )
-            for image in images:
-                image.close()
-        if cache_folder is not None:
-            save_cache(cache_folder, key, scores)
-    return {digest: scores[digest] for digest in copies}
-
-
-# --- Matching the labels to the ledger (in memory only) -----------------------------------
-
-
-def match_labels(
-    ledger: Sequence[tuple[str, str, Sequence[str]]],
-    source_root: str,
-    labels: LabelSet,
-) -> list[tuple[object, str]]:
-    """Pair each label row with a source hash. Coverage must be exact, in both directions.
-
-    `ledger` rows are (source_hash, source_path, duplicate_paths). A label's `file` is a path
-    relative to `source_root`, or a bare file name that is unique among the images. Nothing
-    here is printed, logged or cached (TST-008.D4).
-    """
-    root = source_root.rstrip("/") + "/"
-    by_path: dict[str, str] = {}
-    by_name: dict[str, str | None] = {}
-    for digest, path, duplicates in ledger:
-        for one in (path, *duplicates):
-            relative = one[len(root) :] if one.startswith(root) else one
-            by_path[relative] = digest
-            name = relative.rsplit("/", 1)[-1]
-            by_name[name] = digest if by_name.get(name, digest) == digest else None
-    paired: list[tuple[object, str]] = []
-    failed = ""
-    for row in labels.rows:
-        digest = by_path.get(row.file)
-        if digest is None and row.file in by_name:
-            digest = by_name[row.file]
-            if digest is None:
-                failed = failed or _ERR_AMBIGUOUS
-        if digest is None:
-            failed = failed or _ERR_COVERAGE
-        else:
-            paired.append((row, digest))
-    if failed:
-        raise EvalError(failed)
-    if {digest for _, digest in paired} != {digest for digest, _, _ in ledger}:
-        raise EvalError(_ERR_COVERAGE)
-    return paired
-
-
-def build_items(paired: Sequence[tuple[object, str]], scores: Mapping[str, Scores]) -> list[Item]:
-    """The sweep's items: each labelled row with its image's scores."""
-    items = []
-    for row, digest in paired:
-        s = scores[digest]
-        items.append(
-            Item(
-                format_scores=s.format,
-                topic_scores=s.topic,
-                nsfw=s.nsfw,
-                format=row.format,  # type: ignore[attr-defined]
-                topic=row.topic,  # type: ignore[attr-defined]
-                adult=row.adult,  # type: ignore[attr-defined]
-                suggestive_negative=TAG_SUGGESTIVE_NEGATIVE in row.tags,  # type: ignore[attr-defined]
-                calibration_only=TAG_CALIBRATION_ONLY in row.tags,  # type: ignore[attr-defined]
-            )
-        )
-    return items
-
-
-# --- The run: ledger, categories, scoring ---------------------------------------------------
-
-NODES = ("ingest", "sanitize")
-FORMAT_GATE = 90  # DESIGN.md §11, gate 3
-TOPIC_GATE = 85
-UNRECOGNIZED_LIMIT = 10
+# --- The run: ledger, categories, the VLM ---------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Checks:
-    """The CLS-003.1.5 bug checks: three yes/no facts, public (ok or FAIL only)."""
+    """The CLS-003.1.5 bug checks that still apply: public (ok or FAIL only)."""
 
-    nsfw_label: bool = field(
-        repr=False
-    )  # the scorer reads the id2label entry named `nsfw`, not its complement
-    nsfw_input: bool = field(
-        repr=False
-    )  # the gate scores the sanitized working copy, decoded, first frame, RGB
-    coverage: bool = field(repr=False)  # every labelled row joined to exactly one ledger row
+    nsfw_label: bool = field(repr=False)  # the scorer reads the `nsfw` id2label entry
+    nsfw_input: bool = field(repr=False)  # each copy is a regular, sanitized file that decodes
+    coverage: bool = field(repr=False)  # labels and images match one to one
 
 
 @dataclass(frozen=True)
-class RunInfo:
+class Collected:
+    measures: gate.Measures = field(repr=False)
     checks: Checks = field(repr=False)
-    nsfw_threshold: float = field(repr=False)  # the config.yaml value: an input, not a change
+    prompts: tuple[Prompt, ...] = field(repr=False)  # their hashes are console-only
+    min_level: str = field(repr=False)
+    cross_checked: int = field(repr=False)  # rows the Falconsai cross-check flags: detail only
 
 
-def verify_copies(copies: Mapping[str, Path], work: Path, sanitized: set[str]) -> bool:
-    """CLS-003.1.8: every scored copy is a real input of the sanitize node.
-
-    Each one is a regular file (a link is refused), sits directly in the resolved `.work`, has a
-    ledger row whose status is `sanitized`, and decodes to RGB through `open_rgb`, the one
-    opener that feeds the models.
-    """
-    try:
-        root = work.resolve(strict=True)
-        for digest, path in copies.items():
-            if digest not in sanitized or not stat.S_ISREG(path.lstat().st_mode):
-                return False
-            if path.resolve(strict=True).parent != root:
-                return False
-            with open_rgb(path, digest[:8]) as image:
-                if image.mode != "RGB":
-                    return False
-    except (OSError, EvalError):
-        return False
-    return True
+@dataclass(frozen=True)
+class _Row:
+    source_hash: str = field(repr=False)
+    ext: str = field(repr=False)
+    hint: str | None = field(repr=False)  # `original_sanitized`: the only name a model may see
 
 
 def nsfw_label_ok(model_id: str) -> bool:
@@ -321,22 +239,8 @@ def nsfw_label_ok(model_id: str) -> bool:
     return ok
 
 
-def load_config(source: Path, results: str, dsn: str):
-    """config.yaml with the harness's roots and schema (as gate 2 does)."""
-    import yaml
-
-    from classifier.config import Config, check_roots
-
-    data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
-    data["paths"] = {"source_root": str(source), "results_root": results}
-    data["db"] = {"dsn": dsn}
-    config = Config.model_validate(data)
-    check_roots(config)  # R-FOP-9
-    return config
-
-
 def harness_nodes():
-    """The ingest and sanitize nodes, in that order: scoring never runs a later node."""
+    """The ingest and sanitize nodes, in that order: the eval never runs a later node."""
     from classifier.graph import nodes as graph_nodes
 
     picked = tuple(n for name in NODES for n in graph_nodes.REGISTRY if n.name == name)
@@ -345,18 +249,16 @@ def harness_nodes():
     return picked
 
 
-def read_categories(conn) -> tuple[list, PromptSet]:
-    """The category rules and the prompt set of the migrated schema (DB-003, R-CLS-0)."""
-    from classifier.models.classify_rules import CategoryRule
-
-    rules = [
+def read_rules(conn) -> list[CategoryRule]:
+    """The category rules of the migrated schema, as the classify node reads them."""
+    return [
         CategoryRule(
             id=int(i),
-            axis=axis,
-            name=name,
-            folder=folder,
+            axis=str(axis),
+            name=str(name),
+            folder=str(folder),
             min_score=None if min_score is None else float(min_score),
-            branch=branch,
+            branch=str(branch),
             parent_id=None if parent is None else int(parent),
         )
         for i, axis, name, folder, min_score, branch, parent in conn.execute(
@@ -364,232 +266,193 @@ def read_categories(conn) -> tuple[list, PromptSet]:
             "from categories order by id"
         ).fetchall()
     ]
-    texts: dict[str, list[str]] = {"format": [], "topic": []}
-    names: dict[str, list[str]] = {"format": [], "topic": []}
-    for axis, name, prompt in conn.execute(
-        "select c.axis, c.name, p.prompt from category_prompts p "
-        "join categories c on c.id = p.category_id order by c.id, p.position"
-    ).fetchall():
-        texts[axis].append(prompt)
-        names[axis].append(name)
-    prompts = PromptSet(
-        {axis: tuple(v) for axis, v in texts.items()},
-        {axis: tuple(v) for axis, v in names.items()},
-    )
-    return rules, prompts
 
 
-def find_copy(work: Path, digest: str) -> Path:
-    """The one working copy of `digest` under `.work/`, or a fixed error with the hash."""
-    found = []
+def verify_copies(rows: Sequence[_Row], work: Path) -> bool:
+    """CLS-003.1.8: every classified copy is a real input of the sanitize node.
+
+    Each one is a regular file (a link is refused) directly in the resolved `.work`, and opens
+    through `open_working_frames` and decodes to RGB, the way the node feeds the models.
+    """
+    from classifier.fileops.copy_move import working_copy_name
+    from classifier.graph.classify import WorkingCopyUnreadable, first_frame_rgb
+    from classifier.graph.classify import open_working_frames as open_frames
+
     try:
-        found = sorted(work.glob(f"{digest}.*"))
-    except OSError:
-        found = []
-    if len(found) != 1:
-        raise EvalError(f"{_ERR_COPY} ({digest[:8]})")
-    return found[0]
+        root = work.resolve(strict=True)
+        for row in rows:
+            path = work / working_copy_name(row.source_hash, row.ext)
+            if not stat.S_ISREG(path.lstat().st_mode) or path.resolve(strict=True).parent != root:
+                return False
+            with open_frames(work, row.source_hash, row.ext) as image:
+                if first_frame_rgb(image).mode != "RGB":
+                    return False
+    except (OSError, WorkingCopyUnreadable):
+        return False
+    return True
+
+
+def judge_image(
+    client,
+    model: str,
+    backend,
+    work: Path,
+    row: _Row,
+    formats: Sequence[str],
+    topics: Sequence[str],
+) -> Answer | None:
+    """One image's answer the way the classify node asks for it, or None when it has none.
+
+    `OllamaUnavailable` is not caught: it says nothing about this file, so it stops the run.
+    """
+    from classifier.graph.classify import (
+        WorkingCopyUnreadable,
+        first_frame_rgb,
+    )
+    from classifier.graph.classify import open_working_frames as open_frames
+
+    answer: Answer | None = None
+    try:
+        with open_frames(work, row.source_hash, row.ext) as frames:
+            rgb = first_frame_rgb(frames)
+            score = float(backend.nsfw_scores([rgb])[0])
+            rgb.close()
+            said = vlm_classify(
+                client, model, frames, hint=row.hint, formats=formats, topics=topics
+            )
+        answer = Answer(
+            said.format, said.topic, said.level.name, score if math.isfinite(score) else None
+        )
+    except (VlmUnanswered, VlmImageError, WorkingCopyUnreadable):
+        answer = None
+    return answer
 
 
 def collect(
     dsn: str,
     images: Path,
     labels_path: Path,
-    backend: VisionBackend,
+    client,
+    backend,
     cache_folder: Path | None,
     nodes=None,
     label_check=nsfw_label_ok,
-):
-    """Ingest, sanitize and score `images`; return (rules, classify config, items, info).
+    prompts_dir: Path = PROMPTS_DIR,
+) -> Collected:
+    """Ingest, sanitize and classify `images` on the VLM path; tally the labels against it.
 
     The schema and the results tree are removed when this returns (CLS-003.1: throwaway).
     """
     import tempfile
 
     import psycopg
-    from fixture_labels import load_labels
 
     from classifier.graph.run import run
-    from classifier.models.classify_rules import validate_rules
     from tests.integration.schema_support import migrated_schema
 
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
-        config = load_config(images, results, schema)
+        config = gate.load_config(images, results, schema)
         run(config, dry_run=True, nodes=tuple(nodes or harness_nodes()))
         with psycopg.connect(schema) as conn:
             ledger = conn.execute(
-                "select source_hash, source_path, duplicate_paths, status::text from files"
+                "select source_hash, ext, original_sanitized, source_path, duplicate_paths, "
+                "status::text from files order by created_at, source_hash"
             ).fetchall()
-            rules, prompts = read_categories(conn)
+            rules = read_rules(conn)
         if any(status not in ("sanitized", "skipped") for *_, status in ledger):
             raise EvalError(_ERR_NOT_SANITIZED)
-        kept = [(d, p, list(dup or [])) for d, p, dup, status in ledger if status == "sanitized"]
-        base = config.classify
-        defaults = {"default_min_score": 0.5}
-        validate_rules(
-            rules,
-            base.model_copy(
-                update=dict(
-                    format=base.format.model_copy(update=defaults),
-                    topic=base.topic.model_copy(update=defaults),
-                )
-            ),
-        )
-        formats = {r.name for r in rules if r.axis == "format"}
-        topics = {r.name for r in rules if r.axis == "topic"}
-        labels = load_labels(labels_path, formats=formats, topics=topics)
-        paired = match_labels(kept, str(images), labels)
+        validate_rules(rules, None)  # as the node does, before any row is judged
+        formats = [r.name for r in rules if r.axis == "format"]
+        topics = [r.name for r in rules if r.axis == "topic"]
+        labels = fixture_labels.load_labels(labels_path, formats=set(formats), topics=set(topics))
+        model = config.models.vlm_safe
+        min_level = config.nsfw.min_level
+        prompts = effective_prompts(prompts_dir)
+        hashes = [prompt_file_digest(name, prompts_dir) for name in PROMPT_NAMES]
+        hashes += [p.effective_version for p in prompts]
+        key = cache_key(model, hashes, min_level, formats, topics)
+        answers = load_cache(cache_folder, key) if cache_folder is not None else {}
+        cached = len(answers)
         work = Path(results) / ".work"
-        copies = {d: find_copy(work, d) for d, _, _ in kept}
-        scores = score_copies(backend, copies, prompts, base.score, cache_folder)
-        # CLS-003.1.5: scoring read only `.work/<hash>.<ext>` (open_rgb decodes the first frame
-        # to RGB); match_labels raised unless every label joined and every image was labelled.
+        kept = [
+            _Row(str(h), str(ext), None if hint is None else str(hint))
+            for h, ext, hint, _, _, status in ledger
+            if status == "sanitized"
+        ]
+        for row in kept:
+            if row.source_hash in answers:
+                continue
+            found = judge_image(client, model, backend, work, row, formats, topics)
+            if found is not None:  # an unanswered image is not cached: the next run asks again
+                answers[row.source_hash] = found
+        if cache_folder is not None and len(answers) != cached:
+            save_cache(cache_folder, key, answers)
+        outcomes, cross_checked = [], 0
+        for h, _, _, path, duplicates, status in ledger:
+            decided = None
+            if status == "sanitized":
+                decided = _decide(answers.get(h), rules, config.nsfw)
+                status = "classified" if decided is not None else "error"
+            if decided is None:
+                outcomes.append((path, duplicates, status, None, None, None, None))
+                continue
+            choice, level = decided
+            cross_checked += choice.review_reason == DISAGREEMENT
+            outcomes.append(
+                (path, duplicates, status, choice.format, choice.topic, choice.branch, level)
+            )
+        measures = gate.evaluate(
+            labels, gate.to_outcomes(outcomes, images), int(config.nsfw.min_level)
+        )
         checks = Checks(
             nsfw_label=label_check(backend.nsfw_id),
-            nsfw_input=verify_copies(copies, work, {d for d, _, _ in kept}),
-            coverage=True,
+            nsfw_input=verify_copies(kept, work),
+            coverage=measures.coverage_ok,
         )
-        info = RunInfo(checks, float(config.nsfw.threshold))
-    return rules, base, build_items(paired, scores), info
+    return Collected(measures, checks, prompts, min_level.name, cross_checked)
+
+
+def _decide(answer: Answer | None, rules: Sequence[CategoryRule], nsfw_config):
+    """`(choice, level name)`, or None when the image has no usable answer (a ledger `error`)."""
+    if answer is None:
+        return None
+    choice = None
+    try:
+        choice = decide(answer.vlm(), rules, answer.nsfw, nsfw_config)
+    except ClassifyRulesError:
+        choice = None
+    return None if choice is None else (choice, answer.level)
 
 
 # --- The report -----------------------------------------------------------------------------
-
-
-def _floor(part: int, whole: int) -> str:
-    return f"{100 * part // whole}%" if whole else "n/a"
-
-
-def _tenth(part: int, whole: int) -> str:
-    return f"{100.0 * part / whole:.1f}%" if whole else "n/a"
-
-
-def _verdict(passed: bool) -> str:
-    return "PASS" if passed else "FAIL"
 
 
 def _ok(passed: bool) -> str:
     return "ok" if passed else "FAIL"
 
 
-def _survive(value: bool | None) -> str:
-    if value is None:
-        return "none proposed"
-    return "ok" if value else "dropped (held-out agreement fell)"
+def render(collected: Collected, detail: bool = False) -> list[str]:
+    """The public form (TST-008.D6): gate 3's own verdict lines, then the prompt hashes.
 
-
-def _check_line(checks: Checks) -> str:
-    return (
-        f"bug checks: nsfw label {_ok(checks.nsfw_label)}, "
-        f"nsfw input {_ok(checks.nsfw_input)}, coverage {_ok(checks.coverage)}"
-    )
-
-
-def render(
-    result,
-    slack_points: float,
-    detail: Sequence[str] | None = None,
-    checks: Checks | None = None,
-) -> list[str]:
-    """The public form (TST-008.D6), plus `detail` lines when given (console only)."""
-    import classify_sweep as sweep
-
-    fit, held = result.fitted, result.held_out
-    lines = [f"classify calibration (CLS-003.1; slack {slack_points:g} points)"]
-    if checks is not None:
-        lines.append(_check_line(checks))
-    if not result.feasible:
-        lines += [
-            f"adult flagged and the rest safe: {_ok(fit.adult_ok)}",
-            f"suggestive-negative safe: {_ok(fit.suggestive_ok)}",
-            "no nsfw.threshold satisfies every labelled NSFW row: nothing else was swept",
-        ]
-        if detail is not None:
-            lines += ["", *detail]
-        return lines
-    f_ok = fit.format_correct * 100 >= FORMAT_GATE * fit.format_total
-    t_ok = fit.topic_correct * 100 >= TOPIC_GATE * fit.topic_total
-    u_ok = fit.unsorted * 100 < UNRECOGNIZED_LIMIT * fit.rows
-    concerns = sweep.has_concerns(fit, held)
-    lines += [
-        f"format agreement: {_verdict(f_ok)} {_floor(fit.format_correct, fit.format_total)}"
-        f" (gate >= {FORMAT_GATE}%)",
-        f"topic agreement: {_verdict(t_ok)} {_floor(fit.topic_correct, fit.topic_total)}"
-        f" (gate >= {TOPIC_GATE}%)",
-        f"unrecognized format: {_verdict(u_ok)} {_floor(fit.unsorted, fit.rows)}"
-        f" (gate < {UNRECOGNIZED_LIMIT}%)",
-        f"adult flagged and the rest safe: {_ok(fit.adult_ok)}",
-        f"suggestive-negative safe: {_ok(fit.suggestive_ok)}",
-        f"held-out ({sweep.FOLDS}-fold, seed {sweep.SEED}): "
-        f"format {_floor(held.format_correct, held.format_total)}, "
-        f"topic {_floor(held.topic_correct, held.topic_total)}, "
-        f"unrecognized {_floor(held.unsorted, held.rows)}, "
-        f"adult {_ok(held.adult_ok)}, suggestive-negative {_ok(held.suggestive_ok)}",
-        f"fitted vs held-out gap <= {sweep.GAP_POINTS:g} points: "
-        f"{'CONCERNS' if concerns else 'ok'}",
-        "overrides vs the held-out check: "
-        f"format {_survive(result.format_overrides_survive)}, "
-        f"topic {_survive(result.topic_overrides_survive)}",
-        *(
-            ["nsfw.threshold held at its config.yaml value, not swept (--hold-nsfw-threshold)"]
-            if result.nsfw_held
-            else []
-        ),
-        "proposed values (not applied; the human approves them first):",
-        f"  classify.format.default_min_score: {result.format.default_min_score:g}",
-        f"  classify.format.margin: {result.format.margin:g}",
-        f"  classify.topic.default_min_score: {result.topic.default_min_score:g}",
-        f"  classify.topic.margin: {result.topic.margin:g}",
-        *(
-            ["  nsfw.threshold: held, not proposed"]
-            if result.nsfw_held
-            else [f"  nsfw.threshold: {result.nsfw_threshold:g}"]
-        ),
+    `detail` adds the console-only block. The gate's final pass/fail line is dropped: this is a
+    report, not a gate.
+    """
+    checks = collected.checks
+    verdict = gate.judge(collected.measures, detail)
+    lines = [
+        f"classify eval, VLM path (CLS-004.5; judged at nsfw.min_level = {collected.min_level})",
+        *addenda_lines(collected.prompts),
+        f"bug checks: nsfw label {_ok(checks.nsfw_label)}, nsfw input {_ok(checks.nsfw_input)}, "
+        f"coverage {_ok(checks.coverage)}",
+        *verdict.lines[:-1],
     ]
-    pairs = [("format", n, v) for n, v in result.format.overrides] + [
-        ("topic", n, v) for n, v in result.topic.overrides
-    ]
-    lines.append("  min_score overrides (migration 0004): " + ("none" if not pairs else ""))
-    lines += [f"    {axis} {name}: {value:g}" for axis, name, value in sorted(pairs)]
-    if detail is not None:
-        gaps = sweep.gap_points(fit, held)
-        lines += ["", "DETAIL (box console only: never paste, commit or post)"]
+    if detail:
         lines += [
-            f"  fitted: format {_tenth(fit.format_correct, fit.format_total)}, "
-            f"topic {_tenth(fit.topic_correct, fit.topic_total)}, "
-            f"unrecognized {_tenth(fit.unsorted, fit.rows)}",
-            f"  held-out: format {_tenth(held.format_correct, held.format_total)}, "
-            f"topic {_tenth(held.topic_correct, held.topic_total)}, "
-            f"unrecognized {_tenth(held.unsorted, held.rows)}",
-            f"  gap (points): format {gaps[0]:.1f}, topic {gaps[1]:.1f}",
-            *detail,
+            versions_line(collected.prompts),
+            *verdict.detail,
+            f"Falconsai cross-check flags {collected.cross_checked} rows (needs_review)",
         ]
     return lines
-
-
-def nsfw_block(items) -> list[str]:
-    """CLS-003.1.6: how far from separable the NSFW rows are. Box console only."""
-    import classify_sweep as sweep
-
-    d = sweep.nsfw_diagnostic(items)
-    return [
-        "  NSFW (console only): best achievable threshold "
-        f"{d.threshold:.4f}; adult rows below it {d.adult_below}; safe rows above it "
-        f"{d.safe_above}"
-    ]
-
-
-def detail_lines(items, rules, base, result) -> list[str]:
-    """Per-category agreement of the proposed values, one decimal. Console only."""
-    import classify_sweep as sweep
-
-    applied, config = sweep.materialize(rules, base, result.format, result.topic)
-    table = sweep.per_category(items, applied, config, result.nsfw_threshold)
-    out = []
-    for axis in ("format", "topic"):
-        for label, (right, total) in sorted(table[axis].items()):
-            out.append(f"  {axis} {label}: {_tenth(right, total)} ({right}/{total})")
-    return out
 
 
 # --- Entry point ----------------------------------------------------------------------------
@@ -601,51 +464,35 @@ def run_eval(
     labels_path: Path,
     cache_folder: Path | None,
     detail: bool,
-    slack_points: float,
-    backend: VisionBackend | None = None,
-    hold_nsfw: bool = False,
+    client=None,
+    backend=None,
 ) -> list[str]:
-    import classify_sweep as sweep
-
     from classifier.config import load_config as load_app_config
+    from classifier.models.ollama import OllamaClient
     from classifier.models.siglip import SiglipBackend
 
     if backend is None:
         models = load_app_config().models
-        backend = SiglipBackend(models.classifier, models.nsfw)
-    rules, base, items, info = collect(dsn, images, labels_path, backend, cache_folder)
-    result = sweep.calibrate(
-        items,
-        rules,
-        base,
-        slack_points=slack_points,
-        hold_nsfw=info.nsfw_threshold if hold_nsfw else None,
-    )
-    extra = None
-    if detail:
-        extra = nsfw_block(items) + (
-            detail_lines(items, rules, base, result) if result.feasible else []
-        )
-    return render(result, slack_points, extra, info.checks)
+        backend = SiglipBackend(models.classifier, models.nsfw)  # only the NSFW gate is used
+    if client is not None:
+        collected = collect(dsn, images, labels_path, client, backend, cache_folder)
+    else:
+        if not os.environ.get("OLLAMA_HOST"):
+            raise EvalError(_ERR_NO_CLIENT)
+        with OllamaClient.from_env() as own:
+            collected = collect(dsn, images, labels_path, own, backend, cache_folder)
+    return render(collected, detail)
 
 
-def main(argv: Sequence[str] | None = None, backend: VisionBackend | None = None) -> int:
+def main(argv: Sequence[str] | None = None, client=None, backend=None) -> int:
     import argparse
 
-    import classify_sweep as sweep
-
-    parser = argparse.ArgumentParser(description="Calibrate the classify thresholds (CLS-003.1)")
+    parser = argparse.ArgumentParser(description="Evaluate the VLM classify path (CLS-004.5)")
     parser.add_argument("--images", type=Path, default=IMAGES)
     parser.add_argument("--labels", type=Path, default=LABELS)
     parser.add_argument("--cache-dir", type=Path, default=CACHE_DIR)
     parser.add_argument("--no-cache", action="store_true")
-    parser.add_argument("--slack-points", type=float, default=sweep.SLACK_POINTS)
     parser.add_argument("--detail", action="store_true", help="box console only; never paste")
-    parser.add_argument(
-        "--hold-nsfw-threshold",
-        action="store_true",
-        help="sweep format/topic with nsfw.threshold held at its config.yaml value",
-    )
     args = parser.parse_args(argv)
     dsn = os.environ.get("DB_DSN")
     if not dsn:
@@ -660,12 +507,11 @@ def main(argv: Sequence[str] | None = None, backend: VisionBackend | None = None
             args.labels,
             None if args.no_cache else args.cache_dir,
             args.detail,
-            args.slack_points,
+            client,
             backend,
-            args.hold_nsfw_threshold,
         )
-    except (EvalError, sweep.SweepError) as exc:  # fixed text by construction
-        print(f"classify_eval FAIL: {exc}", file=sys.stderr)
+    except (EvalError, gate.GateRunError, gate.GateSetupError, fixture_labels.LabelsError) as exc:
+        print(f"classify_eval FAIL: {exc}", file=sys.stderr)  # fixed text by construction
         return 1
     except Exception as exc:  # the type only: a message can carry a value, a path or the DSN
         print(f"classify_eval FAIL: run errored ({type(exc).__name__})", file=sys.stderr)

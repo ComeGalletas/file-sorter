@@ -493,6 +493,13 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - [x] CLS-004.4.5.3 — Drop the `default_min_score` setup from the integration tests; remove the `levelled` fixture in `test_gate_3_script.py`; both run the real nodes on a scripted Ollama (`ScriptedVlm`, now in `classify_support.py`) · `b8824c2`
     - [x] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`) (`90d2fd6`; PR #160, merged as `863a966`)
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`. The real run waits for CLS-004.6 and the human's local addenda (CLS-004.D16).
+  - [x] CLS-004.5.1 — Collect on the VLM path: real ingest and sanitize, `open_working_frames`, `vlm_classify`, `decide`; per-image cache keyed on the VLM tag, prompt and addendum digests, `min_level` and the category names (`83a40ca`)
+  - [x] CLS-004.5.2 — Public form at `min_level` through `gate_3.evaluate` and `judge`; effective prompt versions as hashes (`83a40ca`)
+  - [x] CLS-004.5.3 — No sweep: `eval/classify_sweep.py` and its tests deleted (`83a40ca`); the dead SigLIP functions in `classify_rules.py` stay for a follow-up
+  - [x] CLS-004.5.4 — `--detail` console-only (`83a40ca`)
+  - [x] CLS-004.5.5 — Unit tests on a scripted VLM client; `tests/gpu/models/test_classify_eval.py` re-pointed to the real `models.vlm_safe` on synthetic images
+  - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
+  - [ ] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (waits for the lead's go)
 - [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (hash in Results)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
