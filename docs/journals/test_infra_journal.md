@@ -455,7 +455,7 @@ references or host paths here. Use hashes.
   - **Model ids:** only the ids in the committed `config.yaml`'s `models` section that the vision backend uses. A test-only id must be `synthetic/<[a-z0-9-]{1,40}>`.
   - **Text inputs:** ASCII letters, digits, single spaces, `,` and `'` only, with at least one letter. No `.` at all, no word with 3 or more digits, and at most 256 characters.
   - **Not provable:** the lint cannot prove a phrase is synthetic. The privacy review of each committed recording covers that.
-- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; reported confirmed by the human through their own session: "keep config values public, currently these are standard nsfw conditions"). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
+- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; confirmed by the human through their own session: the config values may stay public, because they are standard NSFW conditions). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
 
 ## TST-008 — Tasks
 
