@@ -145,6 +145,9 @@ def canonical_request(body: object) -> dict[str, Any]:
         canonical[DIGESTS_FIELD] = digests
     elif "prompt_source" in body:
         raise RecordingError("a text-only request may not carry a prompt_source")
+    elif "system" in body:
+        # TST-010.1.5: a system text is checked only on an image request, so it is refused here.
+        raise RecordingError("a text-only request may not carry a system text")
     return canonical
 
 

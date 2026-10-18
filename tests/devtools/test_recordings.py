@@ -997,7 +997,30 @@ def test_a_d9_prompt_needs_no_source_and_system_is_keyed() -> None:
     plain = image_body()
     assert "prompt_source" not in stored_request(plain)
     assert recording_key(dict(plain, system="Be brief")) != recording_key(plain)
-    assert recording_key(body(system=SECRET)) != recording_key(body())  # text-only: free text
+
+
+def test_a_text_only_request_may_not_carry_a_system_text(tmp_path: Path) -> None:
+    request = body(system=f"Be brief. {SECRET}")
+    with pytest.raises(RecordingError, match="text-only") as caught:
+        recording_key(request)
+    assert_private(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    calls: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: calls.append(r) or httpx.Response(200, json=answer()))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError):
+        post(recorder, request)
+    assert calls == [] and not (tmp_path / "pkg").exists()
+    assert len(recorder.failures) == 1
+    replay = ReplayTransport("pkg", TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError):
+        post(replay, request)
+    assert len(replay.failures) == 1 and SECRET not in replay.failures[0]
+    path = tmp_path / "pkg" / ("0" * 64 + ".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dict(request=request, response=answer())), encoding="utf-8")
+    (problem,) = lint_recordings(tmp_path)
+    assert "cannot be keyed" in problem and SECRET not in problem
 
 
 def test_system_text_that_is_not_d9_or_committed_is_refused() -> None:
