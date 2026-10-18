@@ -38,7 +38,7 @@ RECORDINGS = Path(__file__).resolve().parent
 GENERATE_PATH = "/api/generate"
 # TST-005.D5: always keyed, and keyed only when the body carries them.
 KEYED_FIELDS = ("model", "prompt", "format", "options")
-OPTIONAL_KEYED_FIELDS = ("think", "raw")
+OPTIONAL_KEYED_FIELDS = ("think", "raw", "system")
 # TST-009.D2: a request with images is keyed by their digests, within these limits.
 IMAGES_FIELD = "images"
 DIGESTS_FIELD = "image_digests"
@@ -55,6 +55,7 @@ REQUEST_FIELDS = {
     "stream",
     IMAGES_FIELD,
     DIGESTS_FIELD,
+    "prompt_source",
 }
 UNKNOWN_FIELD_REFUSED = "the request body holds a field an Ollama request may not have"
 RECORDING_FIELDS = {"request", "response"}
@@ -71,6 +72,10 @@ class RecordingError(BaseException):
     A `BaseException`, like `pytest.fail`, so `OllamaClient`'s `httpx` error handling and a
     fail-closed `except Exception` in the code under test cannot turn it into a pass.
     """
+
+
+class PromptSourceError(RecordingError):
+    """A prompt_source problem (TST-010.1); `load_recording` prefixes the recording's label."""
 
 
 def _image_digest(encoded: object) -> str:
@@ -132,13 +137,14 @@ def canonical_request(body: object) -> dict[str, Any]:
     canonical.update({field: body[field] for field in OPTIONAL_KEYED_FIELDS if field in body})
     digests = _digest_list(body)
     if digests is not None:
-        from tests.recordings.vision import check_text_input
+        from tests.recordings.prompts import resolve
 
-        # TST-009.D2: the prompt of an image request is held to TST-008.D9's text rule.
-        if not isinstance(body["prompt"], str):
-            raise RecordingError("the prompt of an image request is not text")
-        check_text_input(body["prompt"])
+        # TST-009.D2, TST-010.1: the prompt and system of an image request are D9 text, or a
+        # checked rendering of a committed prompts/ file.
+        resolve(body)
         canonical[DIGESTS_FIELD] = digests
+    elif "prompt_source" in body:
+        raise RecordingError("a text-only request may not carry a prompt_source")
     return canonical
 
 
@@ -147,8 +153,13 @@ def stored_request(body: Mapping[str, Any]) -> dict[str, Any]:
     digests = _digest_list(body)
     if digests is None:
         return dict(body)
-    stored = {k: v for k, v in body.items() if k != IMAGES_FIELD}
+    from tests.recordings.prompts import resolve
+
+    stored = {k: v for k, v in body.items() if k not in (IMAGES_FIELD, "prompt_source")}
     stored[DIGESTS_FIELD] = digests
+    source = resolve(body)
+    if source is not None:
+        stored["prompt_source"] = source
     return stored
 
 
@@ -248,10 +259,15 @@ def load_recording(path: Path, root: Path | None = None) -> dict[str, Any]:
     if isinstance(request, Mapping):
         if IMAGES_FIELD in request:
             raise RecordingError(f"{where} carries images; store image_digests instead")
+    problem = None
     try:
         key = recording_key(request)
+    except PromptSourceError as exc:
+        key, problem = None, f"{where}: {exc}"  # TST-010.1: names the recording, never a text
     except RecordingError:
         key = None
+    if problem is not None:
+        raise RecordingError(problem)
     if key is None:
         raise RecordingError(f"{where} holds a request that cannot be keyed")
     if key != path.stem:

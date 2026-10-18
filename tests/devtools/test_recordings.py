@@ -9,6 +9,7 @@ import base64
 import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -17,10 +18,14 @@ import pytest
 from PIL import Image
 
 from classifier.models.ollama import OllamaClient, OllamaError
+from classifier.models.prompts import PROMPTS_DIR as COMMITTED_PROMPTS_DIR
+from classifier.models.prompts import load_prompt
+from tests.recordings import prompts as prompts_module
 from tests.recordings.replay import (
     IMAGE_REFUSED,
     MAX_IMAGE_BYTES,
     UNKNOWN_FIELD_REFUSED,
+    PromptSourceError,
     RecordingError,
     RecordingTransport,
     ReplayTransport,
@@ -655,7 +660,8 @@ def encoded(image: Image.Image, fmt: str = "PNG", **options: Any) -> str:
 
 
 def image_body(*images: str, **extra: Any) -> dict[str, Any]:
-    return body(prompt=IMAGE_PROMPT, images=list(images or [encoded(picture())]), **extra)
+    extra.setdefault("prompt", IMAGE_PROMPT)
+    return body(images=list(images or [encoded(picture())]), **extra)
 
 
 def post(transport: httpx.BaseTransport, request: dict[str, Any]) -> dict[str, Any]:
@@ -854,7 +860,7 @@ def test_lint_refuses_each_bad_image_recording_privately(tmp_path: Path) -> None
         "upper digest": ("cannot be keyed", {**good, "image_digests": [digest.upper()]}),
         "text digest": ("cannot be keyed", {**good, "image_digests": [SECRET]}),
         "too many": ("cannot be keyed", {**good, "image_digests": [digest] * 9}),
-        "bad prompt": ("cannot be keyed", {**good, "prompt": f"Say a word. {SECRET}"}),
+        "bad prompt": ("not a rendering of a committed", {**good, "prompt": f"Say. {SECRET}"}),
     }
     for index, (_, request) in enumerate(cases.values()):
         path = tmp_path / "pkg" / f"{index:064x}.json"
@@ -924,3 +930,254 @@ def test_every_allowed_field_still_passes() -> None:
     request = body(think=True, raw=True, keep_alive="5m", stream=False)
     assert recording_key(request)
     assert recording_key(image_body(encoded(picture()), think=False))
+
+
+# --- prompts rendered from a committed prompts/ file (TST-010.1) ---
+
+FORMATS = "photos, game-screenshots, coinzzo"
+TOPICS = "animals, none, xyzzyland"
+HINT = "quibble wibble"
+
+
+@pytest.fixture
+def prompts_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A temporary copy of the committed prompts, which the checker reads instead."""
+    folder = tmp_path / "prompts_copy"
+    shutil.copytree(COMMITTED_PROMPTS_DIR, folder)
+    monkeypatch.setattr(prompts_module, "PROMPTS_DIR", folder)
+    return folder
+
+
+def classify_body(hint: str | None = None, **slots: str) -> dict[str, Any]:
+    prompt = load_prompt("classify_v1", prompts_module.PROMPTS_DIR)
+    values = dict(formats=FORMATS, topics=TOPICS) | slots
+    user = prompt.render_user(alt=True, name=hint) if hint else prompt.render_user()
+    return image_body(system=prompt.render(**values), prompt=user)
+
+
+def classify_hinted() -> dict[str, Any]:
+    return classify_body(HINT)
+
+
+def level_body(alt: bool = False) -> dict[str, Any]:
+    prompt = load_prompt("nsfw_level_v1", prompts_module.PROMPTS_DIR)
+    return image_body(system=prompt.render(), prompt=prompt.render_user(alt=alt))
+
+
+def level_alt() -> dict[str, Any]:
+    return level_body(True)
+
+
+@pytest.mark.parametrize("make", [classify_body, classify_hinted, level_body, level_alt])
+def test_a_committed_prompt_rendering_is_recorded_and_replayed(
+    make: Any, tmp_path: Path, prompts_dir: Path
+) -> None:
+    request = make()
+    stored = stored_request(request)
+    source = stored["prompt_source"]
+    assert source["name"] in ("classify_v1", "nsfw_level_v1") and len(source["sha256"]) == 64
+    assert "images" not in stored and stored["system"] == request["system"]
+    assert recording_key(request) == recording_key(stored)
+    calls: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: calls.append(r) or httpx.Response(200, json=answer()))
+    assert post(RecordingTransport("pkg", spy, TEST_ID, root=tmp_path), request) == answer()
+    assert post(ReplayTransport("pkg", TEST_ID, root=tmp_path), request) == answer()
+    assert len(calls) == 1 and lint_recordings(tmp_path) == []
+
+
+def test_the_hinted_variant_stores_its_slot_and_alt_flag(prompts_dir: Path) -> None:
+    source = stored_request(classify_body(HINT))["prompt_source"]
+    assert source["prompt"] == dict(alt=True, slots=dict(name=HINT))
+    assert source["system"] == dict(slots=dict(formats=FORMATS, topics=TOPICS))
+    plain = stored_request(classify_body())["prompt_source"]
+    assert plain["prompt"] == dict(alt=False, slots=dict())
+
+
+def test_a_d9_prompt_needs_no_source_and_system_is_keyed() -> None:
+    plain = image_body()
+    assert "prompt_source" not in stored_request(plain)
+    assert recording_key(dict(plain, system="Be brief")) != recording_key(plain)
+    assert recording_key(body(system=SECRET)) != recording_key(body())  # text-only: free text
+
+
+def test_system_text_that_is_not_d9_or_committed_is_refused() -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(image_body(system=f"Be brief. {SECRET}"))
+    assert_private(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_one_changed_word_in_a_rendering_is_refused(prompts_dir: Path) -> None:
+    request = classify_body()
+    request["system"] = request["system"].replace("You classify", "You sort")
+    with pytest.raises(RecordingError, match="not a rendering"):
+        recording_key(request)
+
+
+@pytest.mark.parametrize(
+    "slots",
+    [
+        dict(formats="Photos, coinzzo"),
+        dict(formats="photos,coinzzo"),
+        dict(formats="photos\ncoinzzo"),
+        dict(formats="photos, photos"),
+        dict(formats="photos, -bad"),
+        dict(formats="x" * 41),
+        dict(formats=", ".join(f"n{i}" for i in range(65))),
+        dict(topics=""),
+        dict(topics=f"animals, {SECRET}."),
+    ],
+)
+def test_a_category_slot_outside_the_list_rule_is_refused(
+    slots: dict[str, str], prompts_dir: Path
+) -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(classify_body(**slots))
+    assert_private(caught.value)
+
+
+def test_a_category_list_at_the_limits_is_accepted(prompts_dir: Path) -> None:
+    names = ", ".join(f"n{i}" for i in range(64))
+    assert recording_key(classify_body(formats=names, topics="a" * 40))
+
+
+@pytest.mark.parametrize("hint", ["a.b", "name_with_underscore", "x" * 300, f"{SECRET}.jpg"])
+def test_the_name_slot_keeps_the_d9_rule(hint: str, prompts_dir: Path) -> None:
+    with pytest.raises(RecordingError) as caught:
+        recording_key(classify_body(hint))
+    assert_private(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def write_stored(root: Path, request: dict[str, Any]) -> str:
+    path = write_recording(root, stored_request(request), answer())
+    return path.name
+
+
+def edit_prompt(folder: Path, name: str, old: str, new: str) -> None:
+    target = folder / f"{name}.md"
+    text = target.read_text(encoding="utf-8")
+    assert old in text
+    target.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+
+def test_an_edited_prompt_file_fails_the_lint_naming_the_key(
+    tmp_path: Path, prompts_dir: Path
+) -> None:
+    name = write_stored(tmp_path, classify_body(HINT))
+    edit_prompt(prompts_dir, "classify_v1", "seed: 7", "seed: 8")
+    (problem,) = lint_recordings(tmp_path)
+    assert f"pkg/{name}" in problem and "prompt file changed" in problem
+    assert HINT not in problem and FORMATS not in problem
+
+
+def test_an_edited_prompt_body_fails_the_lint(tmp_path: Path, prompts_dir: Path) -> None:
+    name = write_stored(tmp_path, level_body())
+    edit_prompt(prompts_dir, "nsfw_level_v1", "Rate what", "Judge what")
+    (problem,) = lint_recordings(tmp_path)
+    assert f"pkg/{name}" in problem and "prompt file changed" in problem
+
+
+def test_a_renamed_prompt_file_fails_the_lint(tmp_path: Path, prompts_dir: Path) -> None:
+    name = write_stored(tmp_path, level_body())
+    (prompts_dir / "nsfw_level_v1.md").rename(prompts_dir / "nsfw_level_v2.md")
+    (problem,) = lint_recordings(tmp_path)
+    assert f"pkg/{name}" in problem and "missing or invalid" in problem
+
+
+def test_replay_of_a_stale_recording_fails_naming_it(tmp_path: Path, prompts_dir: Path) -> None:
+    request = classify_body()
+    write_stored(tmp_path, request)
+    edit_prompt(prompts_dir, "classify_v1", "seed: 7", "seed: 8")
+    replay = ReplayTransport("pkg", TEST_ID, root=tmp_path)
+    with pytest.raises(RecordingError) as caught:
+        post(replay, request)
+    assert "prompt file changed" in str(caught.value) and TEST_ID in str(caught.value)
+    assert len(replay.failures) == 1
+
+
+def test_a_recording_made_before_the_edit_is_not_matched_by_the_new_text(
+    tmp_path: Path, prompts_dir: Path
+) -> None:
+    request = level_body()
+    old_key = recording_key(request)
+    write_stored(tmp_path, request)
+    edit_prompt(prompts_dir, "nsfw_level_v1", "Rate what", "Judge what")
+    assert recording_key(level_body()) != old_key  # the new text misses the old recording
+    with pytest.raises(RecordingError, match="not a rendering"):
+        recording_key(request)  # and the old text is no longer a committed rendering
+
+
+def forged(request: dict[str, Any], **changes: Any) -> dict[str, Any]:
+    stored = stored_request(request)
+    return dict(stored, prompt_source=dict(stored["prompt_source"], **changes))
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        dict(name="classify_v2"),
+        dict(name="../prompts/classify_v1"),
+        dict(sha256="0" * 64),
+        dict(sha256="AB"),
+        dict(extra="x"),
+        dict(system=dict(slots=dict(formats=FORMATS))),
+        dict(system=dict(slots=dict(formats=FORMATS, topics=TOPICS, more="x"))),
+        dict(system=dict(slots=dict(formats=FORMATS, topics="animals"))),
+        dict(prompt=dict(alt=True, slots=dict(name=HINT))),
+        dict(prompt=dict(alt="yes", slots=dict())),
+        dict(prompt=dict(slots=dict(), extra=1)),
+        dict(system="text"),
+    ],
+)
+def test_a_forged_prompt_source_is_refused_everywhere(
+    changes: dict[str, Any], tmp_path: Path, prompts_dir: Path
+) -> None:
+    request = forged(classify_body(), **changes)
+    with pytest.raises(RecordingError) as caught:
+        recording_key(request)
+    assert_private(caught.value)
+    calls: list[httpx.Request] = []
+    spy = httpx.MockTransport(lambda r: calls.append(r) or httpx.Response(200, json=answer()))
+    recorder = RecordingTransport("pkg", spy, TEST_ID, root=tmp_path)
+    live = dict(request, images=[encoded(picture())])
+    live.pop("image_digests")
+    with pytest.raises(RecordingError):
+        post(recorder, live)
+    assert calls == [] and not (tmp_path / "pkg").exists()
+
+
+def test_a_source_that_leaves_a_non_d9_part_unexplained_is_refused(prompts_dir: Path) -> None:
+    stored = stored_request(classify_body())
+    del stored["prompt_source"]["system"]
+    with pytest.raises(RecordingError, match="not a rendering"):
+        recording_key(stored)
+
+
+def test_a_text_only_request_may_not_carry_a_prompt_source(prompts_dir: Path) -> None:
+    stored = stored_request(level_body())
+    with pytest.raises(RecordingError, match="text-only"):
+        recording_key(body(prompt_source=stored["prompt_source"]))
+
+
+def test_a_lint_of_a_planted_slot_secret_stays_private(tmp_path: Path, prompts_dir: Path) -> None:
+    stored = stored_request(classify_body(HINT))
+    path = write_recording(tmp_path, stored, answer())  # named by the valid request's key
+    stored["prompt_source"]["prompt"]["slots"]["name"] = f"{SECRET}.x"
+    path.write_text(json.dumps(dict(request=stored, response=answer())), encoding="utf-8")
+    (problem,) = lint_recordings(tmp_path)
+    assert SECRET not in problem and HINT not in problem
+
+
+def test_a_prompt_source_error_is_unchained_and_has_no_text(prompts_dir: Path) -> None:
+    stored = forged(classify_body(), sha256="1" * 64)
+    with pytest.raises(PromptSourceError) as caught:
+        recording_key(stored)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert FORMATS not in repr(caught.value) and "classify" not in repr(caught.value)
+
+
+def test_the_committed_prompts_pass_the_checker_without_a_copy() -> None:
+    """The real files: a prompt edit that breaks the checker shows here."""
+    for make in (classify_body, classify_hinted, level_body, level_alt):
+        assert stored_request(make())["prompt_source"]["sha256"]
