@@ -1,10 +1,11 @@
-"""CLS-002.2.4: the classify scenario shared by the acceptance test and the gpu recorder.
+"""CLS-004.4.5: the classify scenario shared by the acceptance test and the recorders.
 
-The integration test replays `tests/recordings/graph/`; the gpu recorder
-(`tests/gpu/graph/test_record_classify.py`) runs this same scenario with the real models under
-`--record-vision`, so the replay holds exactly the requests the node makes. Everything here is
-synthetic: flat and generated pictures built in code, hashes of made-up labels, and the DESIGN
-§4.3 prompts the migration seeds. No fixture, no name, no adult content.
+The integration test replays the recordings under `tests/recordings/` (SigLIP's under `graph/`,
+the VLM's under `models/`); the gpu recorders run this same scenario with the real models, so a
+replay holds exactly the requests the node makes. ML's CLS-004.2.6 imports `FORMATS`, `TOPICS`,
+`HINTS`, `make_image`, `make_animated` and `seed_scenario` from here, so there is one definition.
+Everything is synthetic: flat and generated pictures built in code, hashes of made-up labels,
+artificial category names and name hints. No fixture, no real name, no adult content.
 """
 
 import base64
@@ -24,10 +25,18 @@ from classifier.graph.nodes import NodeContext
 
 REPO = Path(__file__).resolve().parents[2]
 SIZE = 48
-LABELS = ("img-a", "img-b", "img-c", "img-d")  # internal labels of the synthetic pictures
-# Test-only thresholds, so the scenario is the same wherever it runs. They are not tuned
-# values (CLS-003 owns those) and never reach config.yaml.
-TEST_MIN_SCORE = 0.0001  # flat pictures score tiny sigmoids; margin 0 lets a winner show
+LABELS = ("img-a", "img-b", "img-c", "img-d")  # the four stills (gate 3's scenario uses these)
+ANIMATED = "img-e"  # three frames: img-a, img-b, img-c, in that order (an animated PNG)
+SCENARIO_LABELS = (*LABELS, ANIMATED)
+# What the node passes the client, in `categories` id order (CLS-004.4.5.2).
+FORMATS = ("qorvex", "zhyndel")
+TOPICS = ("vrelk", "xandoz")
+# `files.original_sanitized` per image, as stored; a missing label has no name.
+HINTS = {
+    "img-a": "xandoz notes",
+    "img-c": "qorvex sketch, draft 2",
+    ANIMATED: "zhyndel loop",
+}
 
 
 def source_hash(label: str) -> str:
@@ -51,36 +60,77 @@ def make_image(label: str) -> Image.Image:
     return image
 
 
+def make_animated() -> bytes:
+    """The animated picture as animated-PNG bytes: lossless, so frame digests are stable."""
+    frames = [make_image(label) for label in ("img-a", "img-b", "img-c")]
+    buffer = io.BytesIO()
+    frames[0].save(buffer, format="PNG", save_all=True, append_images=frames[1:])
+    return buffer.getvalue()
+
+
 def make_config() -> Config:
     data = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8"))
-    for axis in ("format", "topic"):
-        data["classify"][axis]["default_min_score"] = TEST_MIN_SCORE
-        data["classify"][axis]["margin"] = 0.0
     return Config.model_validate(data)
 
 
-def seed_rows(conn: psycopg.Connection, results: Path, labels: tuple[str, ...] = LABELS) -> None:
+def seed_categories(conn: psycopg.Connection) -> None:
+    """Replace the seeded categories with the scenario's four, in `FORMATS`, `TOPICS` order."""
+    conn.execute("delete from categories")
+    for axis, names in (("format", FORMATS), ("topic", TOPICS)):
+        for name in names:
+            conn.execute(
+                "insert into categories (axis, name, folder) values (%s, %s, %s)",
+                (axis, name, f"{name}-{axis}"),
+            )
+
+
+def seed_rows(
+    conn: psycopg.Connection, results: Path, labels: tuple[str, ...] = SCENARIO_LABELS
+) -> None:
     """`sanitized` rows with a working copy each; the source path is a placeholder."""
     (results / ".work").mkdir(parents=True, exist_ok=True)
     for label in labels:
         digest = source_hash(label)
-        make_image(label).save(results / ".work" / f"{digest}.png")
+        copy = results / ".work" / f"{digest}.png"
+        if label == ANIMATED:
+            copy.write_bytes(make_animated())
+        else:
+            make_image(label).save(copy)
         conn.execute(
             "insert into files (source_hash, short_hash, source_path, source_mtime, ext, status,"
             " original_sanitized) values (%s, %s, '/source/placeholder.png', now(), 'png',"
-            " 'sanitized', 'synthetic-stem')",
-            (digest, digest[:8]),
+            " 'sanitized', %s)",
+            (digest, digest[:8], HINTS.get(label)),
         )
 
 
-def run_classify(dsn: str, tmp_path: Path, vision: object) -> tuple[ClassifyResult, Config]:
-    """Seed the rows, run the node once on `vision` and commit."""
+def seed_scenario(conn: psycopg.Connection, results: Path) -> None:
+    """The categories and the five rows, in one call."""
+    seed_categories(conn)
+    seed_rows(conn, results)
+
+
+def run_classify(
+    dsn: str, tmp_path: Path, vision: object, ollama_transport: httpx.BaseTransport | None = None
+) -> tuple[ClassifyResult, Config]:
+    """Seed the scenario, run the node once and commit.
+
+    `ollama_transport` is the replay transport in the integration tier; None reaches the real
+    service, which only the gpu recorders do.
+    """
     source, results = tmp_path / "source", tmp_path / "results"
     source.mkdir(exist_ok=True)
     config = make_config()
     with psycopg.connect(dsn) as conn:
-        seed_rows(conn, results)
-        ctx = NodeContext(source, True, results, config, vision=vision)  # type: ignore[arg-type]
+        seed_scenario(conn, results)
+        ctx = NodeContext(
+            source,
+            True,
+            results,
+            config,
+            ollama_transport=ollama_transport,
+            vision=vision,  # type: ignore[arg-type]
+        )
         result = classify(conn, ctx)
         conn.commit()
     return result, config
