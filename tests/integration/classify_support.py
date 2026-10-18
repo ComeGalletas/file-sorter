@@ -119,7 +119,7 @@ def run_classify(
     service, which only the gpu recorders do.
     """
     source, results = tmp_path / "source", tmp_path / "results"
-    source.mkdir(exist_ok=True)
+    source.mkdir(parents=True, exist_ok=True)
     config = make_config()
     with psycopg.connect(dsn) as conn:
         seed_scenario(conn, results)

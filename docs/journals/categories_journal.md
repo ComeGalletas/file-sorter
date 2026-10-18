@@ -477,7 +477,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - [x] CLS-004.4.4.1 — `cli/categories.py` validates with `validate_rules(rules, None)`, `_structural` removed (this commit)
   - [ ] CLS-004.4.5 — Tests, Results, self-rating. The PR is held until CLS-004.2.6 is on the base branch (lead, #135)
     - [ ] CLS-004.4.5.1 — `tests/db/graph/test_classify_node.py` on the VLM path, with a scripted client fake behind the `NodeContext` seam
-    - [ ] CLS-004.4.5.2 — `tests/integration/test_classify_node.py` and `classify_support.py` replaying the CLS-004.2.6 recordings
+    - [x] CLS-004.4.5.2 — `tests/integration/test_classify_node.py` and `classify_support.py` replaying the CLS-004.2.6 recordings (this commit; `classify_support`'s scenario is identical to `tests/unit/models/vlm_scenario.py`)
       - [x] CLS-004.4.5.2.1 — The scenario ML records against, in `classify_support.py`: `FORMATS`, `TOPICS`, `HINTS`, `make_animated`, `seed_scenario`, `run_classify(..., ollama_transport)` (this commit)
     - [x] CLS-004.4.5.3 — Drop the `default_min_score` setup from the integration tests; remove the `levelled` fixture in `test_gate_3_script.py`; both run the real nodes on a scripted Ollama (`ScriptedVlm`, now in `classify_support.py`) (this commit)
     - [ ] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`)
