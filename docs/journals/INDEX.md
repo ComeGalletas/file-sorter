@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-003 · SAN-005 · CLS-006 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-001 · MOD-003 · PIPE-002 · CFG-004 · RUN-017 · DB-005 · CLI-006 · TST-010 · DOC-010
+**Next free:** ING-003 · SAN-005 · CLS-006 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-001 · MOD-003 · PIPE-002 · CFG-004 · RUN-017 · DB-005 · CLI-006 · TST-010 · DOC-011
 
 ## Work items
 
@@ -75,6 +75,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | RUN-015 | The guard refuses when its judge gives no verdict; `bs` quoting restored (#107's follow-ups) | RUN | bug | done (human-side) | m3 | PR #108 | [bootstrap_journal.md](bootstrap_journal.md) | `run-015-guard-fail-closed` | 2026-10-14 |
 | RUN-016 | One resident Ollama model (`OLLAMA_MAX_LOADED_MODELS=1`) and `make models` pulls `qwen3-vl:8b-instruct` | RUN, MOD | feature | proposed (human-side, M3 re-plan) | m3 | — | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-10-18 |
 | DOC-009 | M3 re-plan rule and spec changes: the VLM classifier in R-CLS-1 to 3a, §5, §6, §11 (format 85%), §13, §4.3 wording | DOC, CLS, TST, CFG | process | proposed (human-side) | m3 | — | [process_standard_journal.md](process_standard_journal.md) | — | 2026-10-18 |
+| DOC-010 | The triage block's `Branch:` line is repo-relative (CLAUDE.md §2.1, the PR template), after desks posted host paths | DOC | process | in progress (human-side) | m3 | PR #138 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-10-18 |
 
 ## Plans and designs
 
