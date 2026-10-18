@@ -445,13 +445,25 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.1.1 — loader: `num_ctx`, `user`, `user_alt`, `render_user`, `schema_with_enums`; `neutralize` moves to `prompts.py` (re-exported by `text_llm`) (`3e0bf65`)
   - [x] CLS-004.1.2 — `prompts/classify_v1.md` and its tests (`f917580`)
   - [x] CLS-004.1.3 — `prompts/nsfw_level_v1.md` and its tests (`583ce3b`)
-  - [x] CLS-004.1.4 — privacy test over both files (`583ce3b` is 1.3)
+  - [x] CLS-004.1.4 — privacy test over both files (`4f3b2d7`)
+  - [x] CLS-004.1.5 — the prompts in the strictly generic form: some operative clauses from the spike prompts are held back pending the human's decision H8; the work was re-cut on a fresh branch (the lead's review of the first PR)
 - [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
 ## CLS-004 — Results
+
+### CLS-004.1 (ML desk)
+
+- **Status:** DONE. Branch `cls-004.1-vlm-prompts`.
+- **Tests:** acceptance `tests/unit/models/test_vlm_prompts.py`: 18 passed. `tests/unit/models/test_prompts.py` and `test_text_llm.py`: 65 passed with the loader change. ruff check and format are clean. The default tiers and the `gpu` tier run at pre-push.
+- **No `eval/` run:** nothing calls the model until CLS-004.2; CLS-004.5 measures the prompts.
+- **Loader:** `num_ctx`, `user`, `user_alt` are optional, so `sanitize_entity_v1` loads unchanged. `num_predict` did not need to be in these files. `neutralize` moved to `prompts.py` and `text_llm` re-exports it.
+- **Privacy:** the committed prompts are strictly generic positive definitions per DESIGN section 4.3, and the nudity line is DESIGN's wording. Some operative clauses from the spike prompts are held back pending the human's decision H8. A structural test checks both files for paths, file names, URLs and undeclared slots.
+- **Deferred:** user-added categories appear in the lists and enums by name only, with no definition. A possible follow-up is a description column. Rejecting or repairing a repeated format/topic pair in code goes to CLS-004.2 or .4 (the reviewer's note).
+- **Self-rating:** 9/10, proud: yes. The gap is that prompt quality is unmeasured until CLS-004.5, and held-back clauses may cost accuracy until H8 is decided.
+- **Reviewer / Privacy auditor:** pending on the new PR.
 
 ---
 
