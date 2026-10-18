@@ -52,7 +52,7 @@ class FileStatus(enum.Enum):
 
 
 # "Unsorted" is a format, not a status: review is needs_review + review_reason (§5).
-REVIEW_REASONS = ("unsorted", "ambiguous_reference")
+REVIEW_REASONS = ("unsorted", "ambiguous_reference", "nsfw_disagreement")
 
 
 class File(Base):
@@ -61,7 +61,8 @@ class File(Base):
     __tablename__ = "files"
     __table_args__ = (
         CheckConstraint(
-            "review_reason in ('unsorted', 'ambiguous_reference')", name="files_review_reason"
+            "review_reason in ('unsorted', 'ambiguous_reference', 'nsfw_disagreement')",
+            name="files_review_reason",
         ),
         CheckConstraint(
             "nsfw_level in ('safe', 'suggestive', 'nudity', 'explicit')", name="files_nsfw_level"
