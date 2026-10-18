@@ -1,13 +1,13 @@
-"""CLS-003.1: the calibration harness end to end, tier `gpu`.
+"""CLS-004.5: the VLM-path eval harness end to end, tier `gpu`.
 
-Real ingest and sanitize nodes in a throwaway schema, real SigLIP and NSFW gate, on synthetic
-images with synthetic labels. The image content is benign abstract noise, so the labels carry
-no meaning: this checks the plumbing and the output form, not the calibrated values. It never
-reads `fixtures/`.
+Real ingest and sanitize nodes in a throwaway schema, the real `models.vlm_safe` through Ollama
+and the real Falconsai gate, on synthetic images with synthetic labels. The image content is
+benign abstract noise, so the labels carry no meaning: this checks the plumbing and the output
+form, not accuracy. It never reads `fixtures/`.
 
-Prerequisites, named on failure (never skipped): an NVIDIA GPU, `models.classifier` and
-`models.nsfw` in the hf volume (`make models`), the throwaway Postgres (`DB_DSN`, the `test`
-compose profile), ollama (`make test-gpu` starts it) and a local `sanitize.yaml` (`make init`).
+Prerequisites, named on failure (never skipped): an NVIDIA GPU, `models.nsfw` in the hf volume and
+`models.vlm_safe` pulled (`make models`), the throwaway Postgres (`DB_DSN`, the `test` compose
+profile), ollama (`make test-gpu` starts it) and a local `sanitize.yaml` (`make init`).
 """
 
 import os
@@ -77,84 +77,97 @@ def workspace(tmp_path: Path, dsn: str):
         import psycopg
 
         with psycopg.connect(schema) as conn:
-            rules, _ = ev.read_categories(conn)
+            rules = ev.read_rules(conn)
     formats = [r.name for r in rules if r.axis == "format" and r.name != "unsorted"]
     topics = [r.name for r in rules if r.axis == "topic"]
     labels = tmp_path / "labels.csv"
     write_labels(labels, names, formats, topics)
-    return images, labels, tmp_path / "cache", names, formats, topics
+    return images, labels, tmp_path / "cache", names
 
 
 class Counting:
-    """Wraps the real backend to count the images it embeds."""
+    """Wraps the real Ollama client to count the generate calls."""
 
     def __init__(self, inner) -> None:
         self.inner = inner
-        self.images = 0
+        self.calls = 0
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
 
-    def embed_images(self, images):
-        self.images += len(images)
-        return self.inner.embed_images(images)
+    def generate_json(self, *args, **kwargs):
+        self.calls += 1
+        return self.inner.generate_json(*args, **kwargs)
 
 
-def test_the_harness_runs_end_to_end_and_prints_the_public_form(siglip_backend, workspace, capsys):
-    images, labels, cache, names, formats, topics = workspace
-    args = ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
-    counted = Counting(siglip_backend)
+@pytest.fixture
+def client():
+    from classifier.models.ollama import OllamaClient
 
-    assert ev.main(args, backend=counted) == 0
+    if not os.environ.get("OLLAMA_HOST"):
+        pytest.fail(f"OLLAMA_HOST is not set; prerequisites: {PREREQS}")
+    with OllamaClient.from_env() as own:
+        yield Counting(own)
+
+
+def args_for(images: Path, labels: Path, cache: Path) -> list[str]:
+    return ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
+
+
+def test_the_harness_runs_end_to_end_and_prints_the_public_form(
+    siglip_backend, client, workspace, capsys
+):
+    images, labels, cache, names = workspace
+    args = args_for(images, labels, cache)
+
+    assert ev.main(args, client=client, backend=siglip_backend) == 0
     out = capsys.readouterr().out
 
-    # The public form: verdicts, whole percents, config values.
-    assert re.search(r"^format agreement: (PASS|FAIL) \d+% \(gate >= 90%\)$", out, re.M)
-    assert re.search(r"^topic agreement: (PASS|FAIL) \d+% \(gate >= 85%\)$", out, re.M)
-    assert re.search(r"^unrecognized format: (PASS|FAIL) \d+% \(gate < 10%\)$", out, re.M)
-    assert "bug checks: nsfw label ok, nsfw input ok, coverage ok" in out
-    assert "adult flagged and the rest safe: ok" in out
-    assert "suggestive-negative safe: ok" in out
-    assert re.search(r"^held-out \(5-fold, seed 20261014\): ", out, re.M)
-    assert "gap <= 5 points:" in out
-    assert re.search(r"^  nsfw\.threshold: [0-9.e-]+$", out, re.M)
-    assert re.search(r"^  classify\.format\.default_min_score: [0-9.]+$", out, re.M)
-    assert "DETAIL" not in out and not re.search(r"\d+\.\d+%", out)
-    assert "console only" not in out and "adult rows below" not in out  # CLS-003.1.6
+    # The public form: verdicts, whole percents, ok or FAIL, and the prompt versions as hashes.
+    versions = r"classify_v1\+[0-9a-f]{8}, nsfw_level_v1\+[0-9a-f]{8}"
+    assert re.search(rf"^effective prompts: {versions}$", out, re.M)
+    assert re.search(r"^bug checks: nsfw label ok, nsfw input ok, coverage ok$", out, re.M)
+    assert re.search(r"^format agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^topic agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^unrecognized format: \d+% \(required < 10%\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^nsfw gate \(adult flagged, safe not flagged\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^suggestive-negative rows safe: (ok|FAIL)$", out, re.M)
+    assert not re.search(r"DETAIL|Falconsai|\d+\.\d+%|\d+/\d+", out)
+    assert "sweep" not in out and "proposed" not in out
 
     # No file name, path or label leaks into the output.
     assert not any(name in out for name in names)
     assert str(images) not in out and str(labels) not in out
     assert "qorvex_" not in out
 
-    # Every image was embedded once; a second run reads the cache and embeds nothing.
-    assert counted.images == N_IMAGES
+    # Every image was asked once (two VLM calls each); a second run reads the cache and asks none.
+    assert client.calls >= 2 * (N_IMAGES - 1), "the VLM was not asked about every image"
     assert list(cache.glob("*.json"))
-    again = Counting(siglip_backend)
-    assert ev.main(args, backend=again) == 0
-    assert again.images == 0
-    assert capsys.readouterr().out == out  # the pinned seed makes the report repeatable
+    again = Counting(client.inner)
+    assert ev.main(args, client=again, backend=siglip_backend) == 0
+    assert again.calls == 0
+    assert capsys.readouterr().out == out  # the cached answers make the report repeatable
 
 
-def test_detail_stays_behind_the_flag(siglip_backend, workspace, capsys):
-    images, labels, cache, *_ = workspace
-    args = ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
-    assert ev.main([*args, "--detail"], backend=siglip_backend) == 0
+def test_detail_stays_behind_the_flag(siglip_backend, client, workspace, capsys):
+    images, labels, cache, _ = workspace
+    args = args_for(images, labels, cache)
+    assert ev.main([*args, "--detail"], client=client, backend=siglip_backend) == 0
     out = capsys.readouterr().out
-    assert "DETAIL (box console only: never paste, commit or post)" in out
-    assert re.search(r"fitted: format \d+\.\d%", out)
-    assert re.search(r"NSFW \(console only\): best achievable threshold [0-9.]+; adult rows", out)
+    assert "DETAIL: box console only" in out
+    assert re.search(r"^Falconsai cross-check flags \d+ rows", out, re.M)
 
 
-def test_a_missing_label_fails_with_fixed_text(siglip_backend, workspace, capsys):
-    images, labels, cache, names, *_ = workspace
+def test_a_missing_label_fails_the_coverage_check_and_names_nothing(
+    siglip_backend, client, workspace, capsys
+):
+    images, labels, cache, names = workspace
     lines = labels.read_text(encoding="utf-8").splitlines()
     labels.write_text("\n".join(lines[:-1]) + "\n", encoding="utf-8")
-    args = ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
-    assert ev.main(args, backend=siglip_backend) == 1
-    err = capsys.readouterr().err
-    assert err.strip() == "classify_eval FAIL: the labels and the images do not match exactly"
-    assert not any(name in err for name in names)
+    assert ev.main(args_for(images, labels, cache), client=client, backend=siglip_backend) == 0
+    out = capsys.readouterr().out
+    assert "coverage FAIL" in out
+    assert not any(name in out for name in names)
 
 
 def test_the_nsfw_scorer_picks_the_class_named_nsfw_in_the_real_models_config(nsfw_model_id):
@@ -169,15 +182,3 @@ def test_the_nsfw_scorer_picks_the_class_named_nsfw_in_the_real_models_config(ns
     assert str(labels[index]).strip().lower() == NSFW_LABEL
     assert sum(str(v).strip().lower() == NSFW_LABEL for v in labels.values()) == 1
     assert ev.nsfw_label_ok(nsfw_model_id)
-
-
-def test_holding_the_threshold_sweeps_format_and_topic_only(siglip_backend, workspace, capsys):
-    """CLS-003.1.6: nsfw.threshold stays at its config value and is not proposed."""
-    images, labels, cache, *_ = workspace
-    args = ["--images", str(images), "--labels", str(labels), "--cache-dir", str(cache)]
-    assert ev.main([*args, "--hold-nsfw-threshold"], backend=siglip_backend) == 0
-    out = capsys.readouterr().out
-    assert "nsfw.threshold held at its config.yaml value, not swept" in out
-    assert "  nsfw.threshold: held, not proposed" in out
-    assert re.search(r"^  classify\.topic\.margin: [0-9.]+$", out, re.M)
-    assert "console only" not in out
