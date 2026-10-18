@@ -45,8 +45,9 @@ log = logging.getLogger(__name__)
 
 WORKING_COPY_UNREADABLE = "classify_working_copy_unreadable"  # CLS-002.D7
 LEDGER_WRITE_FAILED = "classify_ledger_write_failed"  # CLS-002.2.5
+VLM_UNANSWERED = "classify_vlm_unanswered"  # CLS-004.D4
 register_reasons(
-    (WORKING_COPY_UNREADABLE, LEDGER_WRITE_FAILED)
+    (WORKING_COPY_UNREADABLE, LEDGER_WRITE_FAILED, VLM_UNANSWERED)
 )  # SAN-003.D2: mark_error stores only fixed reasons
 
 IMAGE_VEC_DIM = 1152  # files.image_vec is vector(1152), migration 0003 (CLS-002.D10)

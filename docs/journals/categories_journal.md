@@ -467,6 +467,11 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.3.3 — `decide` and `VlmChoice` (this commit)
   - [x] CLS-004.3.4 — Results, self-rating, PR (this commit)
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
+  - [x] CLS-004.4.1 — `classify_vlm_unanswered` registered for `mark_error` (this commit). The `NodeContext` VLM-client seam waits for #132's type
+  - [ ] CLS-004.4.2 — The node on the VLM path (hint, both calls, `decide`, `nsfw_level`, `image_vec`)
+  - [ ] CLS-004.4.3 — The `mark_error` path and the cross-check into `needs_review`
+  - [ ] CLS-004.4.4 — Re-point `cli/categories.py`; drop the SigLIP-scoring code the node no longer uses
+  - [ ] CLS-004.4.5 — Rewrite `tests/integration/test_classify_node.py`; Results, self-rating
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
 ## CLS-004 — Results
