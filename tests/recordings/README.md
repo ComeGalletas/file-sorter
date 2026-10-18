@@ -42,9 +42,20 @@ One file per request, `tests/recordings/<package>/<key>.json`:
 - it holds exactly `request` and `response`;
 - `response.response` is a string;
 - its name is its request's key;
-- the request has no `images`.
+- the request has no `images` (an image request carries `image_digests`, below).
 
 Whitespace and key order are free.
+
+## Requests with images (TST-009.1, TST-009.D2)
+
+A VLM call posts `images`, a list of base64 strings (1 to 8). A recording never holds them:
+
+- **Key.** The same key, plus `image_digests` when the body carries images: the `image_digest` of each image (TST-008.D8: SHA-256 of the **decoded first frame**, i.e. `mode`, `size` and `tobytes()`, length-prefixed), in order. So the key follows the pixels the client actually sends: the same pixels in another encoding give the same key, and a re-encoded JPEG is keyed by its own decode. A body without images keys exactly as before.
+- **Stored request.** The body as sent, with `images` replaced by `image_digests` (a list of 1 to 8 lowercase 64-hex digests, in order). Use `tests.recordings.replay.stored_request(body)`. A stored `images` field is a lint error. The key of the live body equals the key of its stored request.
+- **Prompt.** The `prompt` of an image request must pass TST-008.D9's text rule: ASCII letters, digits, single spaces, commas and apostrophes, at most 256 characters, no word of 3 or more digits, no `.` (`tests.recordings.vision.check_text_input`). Record mode and the replay refuse a prompt outside it, before anything is forwarded or written. Text-only recordings keep their old freedom.
+- **Limits.** At most 8 images per request, 8 MiB per decoded image and 16 million pixels (checked before any pixel is decoded). An image that is not strict base64 of a decodable image, or is over a limit, is refused with fixed text.
+- **Not provable.** The lint cannot show that the reply text, or the phrase in the prompt, is synthetic. The privacy review of each committed VLM recording covers it, so record only from synthetic pictures and invented prompts.
+- **In a test.** `OllamaClient.generate_json` has no `images` argument yet (CLS-004.2 adds it). Until then, post the body through `httpx` as the tests in `tests/devtools/test_recordings.py` do.
 
 ## Recording
 

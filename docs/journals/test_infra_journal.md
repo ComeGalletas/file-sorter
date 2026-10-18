@@ -538,7 +538,18 @@ references or host paths here. Use hashes.
   - [x] TST-009.1.1 — key: `image_digests` from decoded `images` (limits as module constants), prompt rule, `stored_request`
   - [x] TST-009.1.2 — replay and record: the record writes the digest form, refuses before forwarding what the lint would refuse
   - [x] TST-009.1.3 — lint: `images` refused, `image_digests` shape, stray fields, the key
-  - [ ] TST-009.1.4 — README and Results
+  - [x] TST-009.1.4 — README and Results (.1.1 to .1.3 are commit `24f40d4`)
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
 
 ## TST-009 — Results
+
+### TST-009.1 — Results (#127)
+
+- **Built:** `tests/recordings/replay.py` keys, serves, records and lints requests that carry `images`; `tests/recordings/README.md` documents the key and the file format for CLS-004.2 (#132).
+- **Reading of TST-009.D2 (lead-approved on #127):** the stored request holds a flat `image_digests` list (1 to 8 lowercase 64-hex TST-008.D8 digests, in order) in place of `images`. A stored `images` field is a lint error. The key adds `image_digests` only when the body carries images, so every text-only key is unchanged (pinned test).
+- **Digest of the decoded image:** the digest covers the decoded first frame of what the client actually sends, so the same pixels in another encoding give the same key.
+- **Prompt:** an image request's prompt must pass TST-008.D9's text rule, at replay, record and lint. The reply text can't be linted; the privacy review of each committed VLM recording covers it.
+- **Limits (module constants):** 8 images, 8 MiB decoded and 16M pixels each, strict base64. Record mode refuses what the lint would refuse before it forwards.
+- **Tests:** acceptance `tests/devtools/test_recordings.py` (unit tier); `tests/devtools` 399 passed; `make test` 1966 passed, 48 deselected; `make lint` clean. No `gpu` run (the recorder is tested on a fake upstream) and no `eval/` run (no prompt, threshold or model change). This task commits no recordings.
+- **Privacy:** all pictures are synthetic gradients generated in code; every error is fixed text and unchained (`__cause__` and `__context__` tested); no new type holds a prompt or digests, so no `repr` test was needed; no filesystem call was added outside the wrapped ones.
+- **Status:** DONE. **Self-rating:** 8/10, proud: yes. Gaps: `OllamaClient.generate_json` has no `images` argument, so the round trip is tested through a raw `httpx` post (CLS-004.2 adds the argument, then a test through the client belongs there); subtasks .1.1 to .1.3 share one commit because they edit one module and its tests together.
