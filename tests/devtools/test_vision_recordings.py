@@ -1006,3 +1006,28 @@ def test_vision_record_option_is_refused_when_other_tiers_are_selected(
     result = run_inner(inner, "--record-vision")
     assert result.ret == pytest.ExitCode.USAGE_ERROR
     result.stderr.fnmatch_lines(["*--record-vision is for the gpu tier only*"])
+
+
+def truncated_png() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (64, 64), (10, 200, 30)).save(buffer, format="PNG")
+    data = buffer.getvalue()
+    return data[: len(data) // 2]
+
+
+def test_a_truncated_image_digest_error_is_unchained() -> None:
+    # TST-009.1.6: a valid header with cut-off pixel data. The library error must be on
+    # neither __cause__ nor __context__ (it can embed a name).
+    with Image.open(io.BytesIO(truncated_png())) as image:
+        with pytest.raises(RecordingError) as caught:
+            image_digest(image)
+    assert str(caught.value) == "an image could not be decoded for a vision key"
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_a_truncated_request_image_is_refused_unchained() -> None:
+    cut = base64.b64encode(truncated_png()).decode("ascii")
+    request = dict(model="m", prompt="Name the colour", format=dict(), options=dict(), images=[cut])
+    with pytest.raises(RecordingError) as caught:
+        recording_key(request)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None

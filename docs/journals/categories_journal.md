@@ -444,10 +444,24 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [ ] CLS-004.1 — `prompts/classify_v1.md` and `prompts/nsfw_level_v1.md` (CLS-004.D1, D2, D9, D10), loaded through `prompts.py` with the category lists filled in at run time · #128 · ML · acceptance: `tests/unit/models/test_vlm_prompts.py`
 - [ ] CLS-004.2 — `classifier/models/vlm_classify.py`: the classify and NSFW-level calls on the Ollama client (JSON schema with enums, temperature 0, frames for animated images, one retry, the fenced name hint), with typed results and replay recordings · #132 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (replay) and `tests/gpu/models/test_vlm_classify.py`
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
+  - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
+  - [x] CLS-004.3.2 — `nsfw_cross_check` (this commit)
+  - [x] CLS-004.3.3 — `decide` and `VlmChoice` (this commit)
+  - [x] CLS-004.3.4 — Results, self-rating, PR (this commit)
 - [ ] CLS-004.4 — The classify node on the VLM path: the hint from `original_sanitized` (fail closed), both calls, `image_vec` still from SigLIP, `nsfw_level` written, the cross-check, `classify_vlm_unanswered` through `mark_error` · #135 · Pipeline · acceptance: `tests/integration/test_classify_node.py`
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
 ## CLS-004 — Results
+
+### CLS-004.3 (ML, #133)
+
+- **Status:** DONE.
+- **Tests:** `tests/unit/models/test_classify_rules.py` 115 passed (85 before this task, +30 for the VLM path); all of `tests/unit` 1397 passed; ruff check and format clean. No `eval/` run: no prompt, threshold or model changed.
+- **Delivered:** `VlmAnswer`, `VlmChoice`, `branch_for_level` (adult iff `level >= min_level`), `nsfw_cross_check` (a flag, never a branch), `decide` (branch eligibility and twin removal kept, no `min_score`/`margin`, unknown names fail closed with fixed text), and `validate_rules(rules, None)`. The SigLIP functions are untouched, so the node and `eval/` keep working until #135 and #136 re-point them.
+- **Decision applied:** `nsfw_disagreement` wins over `unsorted` as `review_reason` (lead, CLS-004.D13, provisional).
+- **Deferred:** removing the dead SigLIP functions (`nsfw_branch`, `choose`, `_judge`, `_pick_axis`, `top_scores`) after #135 and #136, under a new ID the lead allocates.
+- **Self-rating:** 9/10, proud: yes. Gap: the pre-push `gpu` tier and the Reviewer and Privacy auditor verdicts are not in yet, and the module carries both paths until the follow-up. Neither blocks the acceptance criteria.
+- **Reviewer / Privacy auditor:** pending.
 
 ---
 

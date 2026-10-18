@@ -3,6 +3,7 @@
 # In a linked worktree, .env and sanitize.yaml are copied from the main checkout,
 # because compose cannot parse without the .env values and worktrees only hold tracked files.
 # fixtures/labels.csv is copied too (RUN-009.D2); fixtures/images/ is mounted, not copied (D1).
+# So are the human's private prompt addenda, prompts/local/*.md (RUN-017.D1).
 set -euo pipefail
 main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 here="$(git rev-parse --show-toplevel)"
@@ -20,4 +21,16 @@ done
 f=fixtures/labels.csv
 if [ "$main" != "$here" ] && [ ! -f "$f" ] && [ -f "$main/$f" ]; then
   mkdir -p fixtures && cp "$main/$f" "$f"; echo "copied $f from the main checkout"
+fi
+# RUN-017.D1: the human's private prompt addenda (CLS-004.6). Each one that the worktree lacks is
+# copied; an existing file is never overwritten, and the committed *.example.md files are skipped.
+if [ "$main" != "$here" ] && [ -d "$main/prompts/local" ]; then
+  for src in "$main"/prompts/local/*.md; do
+    [ -f "$src" ] || continue
+    name="$(basename "$src")"
+    case "$name" in *.example.md) continue ;; esac
+    [ -f "prompts/local/$name" ] && continue
+    mkdir -p prompts/local && cp "$src" "prompts/local/$name"
+    echo "copied prompts/local/$name from the main checkout"
+  done
 fi

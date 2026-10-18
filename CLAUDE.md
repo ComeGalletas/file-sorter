@@ -10,7 +10,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
 5. **The human's changes come as PRs from the human's own session** (RUN-002.D16). That is the human, or Claude working in the human's session, from any branch or worktree. They may touch DESIGN.md, CLAUDE.md, `.claude/` and the hooks. The role guard doesn't apply to them, because it only acts on agent-office desks. Like every PR, they get the reviewer and the privacy auditor, and the lead merges them. They never edit `docs/journals/INDEX.md`: the lead reconciles the index (RUN-002.D13).
 
-**Current phase:** M3 (Classify) is at G0: its plan is `docs/plans/m3.md`. M1 and M2 are approved (`m1-approved`, `m2-approved`). Next: M3 runs once the human approves the plan, with a mid-milestone stop for the human to approve the calibrated thresholds (CLS-003). DESIGN.md §14 lists the open questions; ask the human, don't assume.
+**Current phase:** M3 (Classify) is in its **VLM re-plan** (2026-10-18): a local VLM classifies format and topic and rates the NSFW level (CLS-004; DESIGN §4.3, §13 C-25 to C-28). The plan, with its re-plan section, is `docs/plans/m3.md`. M1 and M2 are approved (`m1-approved`, `m2-approved`). Next: the re-plan's tasks run once the human approves it, with a checkpoint before G1 where the human sees CLS-004.5's real run (CLS-004.D11). DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
 ## Hard rules — never
 
