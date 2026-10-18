@@ -152,23 +152,6 @@ def _check_folder(folder: str) -> str | None:
     return problem
 
 
-def _structural(config: Config):
-    """The classify config with each null axis default filled in (CLI-004.D3).
-
-    Before calibration (CLS-003) both defaults are null, which would make every edit fail on the
-    seed's rows. The CLI checks the structure (names, parents, branches); the classify node's own
-    pre-flight still refuses a null default with a null `min_score` at run time.
-    """
-    classify = config.classify
-
-    def fill(axis):
-        return axis.model_copy(update={"default_min_score": axis.default_min_score or 0.0})
-
-    return classify.model_copy(
-        update={"format": fill(classify.format), "topic": fill(classify.topic)}
-    )
-
-
 def _rules(conn: psycopg.Connection) -> list[CategoryRule]:
     rows = conn.execute(
         "select id, axis, name, folder, min_score, branch, parent_id from categories"
@@ -285,7 +268,7 @@ def add_category(
         candidate = CategoryRule(-1, axis, clean_name, folder, min_score, branch, parent_id)
         rules_problem = None
         try:
-            validate_rules([*rules, candidate], _structural(config))
+            validate_rules([*rules, candidate], None)  # CLS-004.D7
         except ClassifyRulesError as error:  # fixed text, no value in it
             rules_problem = str(error)
         if rules_problem is not None:
@@ -366,7 +349,7 @@ def edit_category(
         others = [r for r in rules if r.id != current.id]
         rules_problem = None
         try:
-            validate_rules([*others, changed], _structural(config))
+            validate_rules([*others, changed], None)  # CLS-004.D7
         except ClassifyRulesError as error:  # fixed text, no value in it
             rules_problem = str(error)
         if rules_problem is not None:

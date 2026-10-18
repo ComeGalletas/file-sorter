@@ -471,6 +471,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [ ] CLS-004.4.2 — The node on the VLM path (hint, both calls, `decide`, `nsfw_level`, `image_vec`)
   - [ ] CLS-004.4.3 — The `mark_error` path and the cross-check into `needs_review`
   - [ ] CLS-004.4.4 — Re-point `cli/categories.py`; drop the SigLIP-scoring code the node no longer uses
+    - [x] CLS-004.4.4.1 — `cli/categories.py` validates with `validate_rules(rules, None)`, `_structural` removed (this commit)
   - [ ] CLS-004.4.5 — Rewrite `tests/integration/test_classify_node.py`; Results, self-rating
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`
 
