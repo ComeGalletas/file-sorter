@@ -537,8 +537,8 @@ references or host paths here. Use hashes.
 - [ ] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
 - [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
   - [x] TST-009.2.1 — Loader: the optional trailing `nsfw_level` column, `expects_adult(min_level)`, `labels.example.csv`
-  - [ ] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85%
-  - [ ] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
+  - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85%
+  - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
   - [ ] TST-009.2.4 — Results and self-rating
   - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5
 

@@ -28,8 +28,17 @@ def labels(rows: list[str]):
     )
 
 
-def out(name, fmt="zorbs", topic="plinth", branch="safe", status="classified"):
-    return gate_3.Outcome(names=(name,), status=status, format=fmt, topic=topic, branch=branch)
+MIN_LEVEL = 2  # nsfw.min_level = nudity (CLS-004.D3)
+_DEFAULT_LEVEL = {"nsfw": "nudity", "safe": "safe", None: None}
+
+
+def out(name, fmt="zorbs", topic="plinth", branch="safe", status="classified", level="auto"):
+    """A ledger row as the VLM node writes it: the level follows the branch unless given."""
+    if level == "auto":
+        level = _DEFAULT_LEVEL[branch]
+    return gate_3.Outcome(
+        names=(name,), status=status, format=fmt, topic=topic, branch=branch, nsfw_level=level
+    )
 
 
 def good_set(n: int):
@@ -39,7 +48,7 @@ def good_set(n: int):
 
 
 def measures(lset, outcomes):
-    return gate_3.evaluate(lset, outcomes)
+    return gate_3.evaluate(lset, outcomes, MIN_LEVEL)
 
 
 def test_all_matched_passes() -> None:
@@ -68,15 +77,15 @@ def _pass_rows(extra_rows: list[str], extra_outs: list):
 
 @pytest.mark.parametrize(
     ("hit", "total", "verdict_ok", "printed"),
-    [(8999, 10000, False, 89), (9000, 10000, True, 90), (9, 10, True, 90), (89, 100, False, 89)],
+    [(8499, 10000, False, 84), (8500, 10000, True, 85), (17, 20, True, 85), (84, 100, False, 84)],
 )
 def test_format_boundary_uses_exact_ratio_and_prints_floor(hit, total, verdict_ok, printed) -> None:
     tally = gate_3.Tally(hit, total)
-    assert tally.at_least(90) is verdict_ok
+    assert tally.at_least(85) is verdict_ok
     assert tally.floor_pct() == printed
 
 
-def test_format_boundary_line_89_99_fails_prints_89_and_90_0_passes_prints_90() -> None:
+def test_format_boundary_line_84_99_fails_prints_84_and_85_0_passes_prints_85() -> None:
     base = dict(
         topic=gate_3.Tally(100, 100),
         unrecognized=gate_3.Tally(0, 100),
@@ -88,10 +97,10 @@ def test_format_boundary_line_89_99_fails_prints_89_and_90_0_passes_prints_90() 
         by_format=(),
         by_topic=(),
     )
-    low = gate_3.judge(gate_3.Measures(format=gate_3.Tally(8999, 10000), **base))
-    high = gate_3.judge(gate_3.Measures(format=gate_3.Tally(9000, 10000), **base))
-    assert low.lines[0] == "format agreement: 89% (required >= 90%): FAIL" and not low.passed
-    assert high.lines[0] == "format agreement: 90% (required >= 90%): ok" and high.passed
+    low = gate_3.judge(gate_3.Measures(format=gate_3.Tally(8499, 10000), **base))
+    high = gate_3.judge(gate_3.Measures(format=gate_3.Tally(8500, 10000), **base))
+    assert low.lines[0] == "format agreement: 84% (required >= 85%): FAIL" and not low.passed
+    assert high.lines[0] == "format agreement: 85% (required >= 85%): ok" and high.passed
 
 
 def test_topic_boundary_is_85_inclusive() -> None:
@@ -213,7 +222,7 @@ def test_default_output_is_exactly_the_public_form() -> None:
     lset, outs = _pass_rows(["c.png,zorbs,plinth,no,,,"], [out("c.png")])
     verdict = gate_3.judge(measures(lset, outs))
     assert verdict.lines == (
-        "format agreement: 100% (required >= 90%): ok",
+        "format agreement: 100% (required >= 85%): ok",
         "topic agreement: 100% (required >= 85%): ok",
         "unrecognized format: 0% (required < 10%): ok",
         "nsfw gate (adult flagged, safe not flagged): ok",
@@ -240,7 +249,7 @@ def test_default_output_has_no_count_or_label_value() -> None:
     text = "\n".join(gate_3.judge(measures(lset, outs)).lines)
     for forbidden in ("zorbs", "plinth", "vexil", "a.png", "/"):
         assert forbidden not in text
-    assert re.findall(r"\d+", text) == ["100", "90", "100", "85", "0", "10", "3"]
+    assert re.findall(r"\d+", text) == ["100", "85", "100", "85", "0", "10", "3"]
 
 
 def test_detail_adds_lines_and_marks_them_box_only() -> None:
@@ -265,10 +274,15 @@ PLANTED = "Qzxv-Planted-Secret"
 
 def test_repr_and_str_hold_no_planted_value() -> None:
     row = gate_3.Outcome(
-        names=(PLANTED,), status=PLANTED, format=PLANTED, topic=PLANTED, branch=PLANTED
+        names=(PLANTED,),
+        status=PLANTED,
+        format=PLANTED,
+        topic=PLANTED,
+        branch=PLANTED,
+        nsfw_level=PLANTED,
     )
     lset = labels([f"{PLANTED}.png,zorbs,plinth,no,,,"])
-    m = gate_3.evaluate(lset, [row])
+    m = gate_3.evaluate(lset, [row], MIN_LEVEL)
     for obj in (row, m, m.format, gate_3.judge(m), gate_3.judge(m, detail=False)):
         assert PLANTED not in repr(obj) and PLANTED not in str(obj)
     assert repr(m.format) == "Tally()"
@@ -284,9 +298,150 @@ def test_a_detailed_verdict_hides_its_label_names_from_repr_and_str() -> None:
         topics={planted_topic},
     )
     outs = [gate_3.Outcome(("x.png",), "classified", PLANTED, planted_topic, "safe")]
-    m = gate_3.evaluate(lset, outs)
+    m = gate_3.evaluate(lset, outs, MIN_LEVEL)
     verdict = gate_3.judge(m, detail=True)
     assert any(PLANTED in line for line in verdict.detail)  # the detail really holds the names
     for text in (repr(verdict), str(verdict), repr(m), str(m)):
         assert PLANTED not in text and planted_topic not in text
     assert repr(verdict) == "Verdict(passed=False)"
+
+
+# --- TST-009.2.3: NSFW judged by level at min_level (TST-009.D1) ----------------------------
+
+LEVEL_HEADER = "file,format,topic,adult,reference,subject,tags,nsfw_level\n"
+LEVELS = ("safe", "suggestive", "nudity", "explicit")
+
+
+def level_labels(rows: list[str]):
+    return gate_3.fixture_labels.parse_labels(
+        LEVEL_HEADER + "\n".join(rows) + "\n", formats=FORMATS, topics=TOPICS
+    )
+
+
+def nsfw_line(lset, outs, min_level=MIN_LEVEL) -> str:
+    return gate_3.judge(gate_3.evaluate(lset, outs, min_level)).lines[3]
+
+
+@pytest.mark.parametrize("min_level", [1, 2, 3])
+@pytest.mark.parametrize("level", LEVELS)
+def test_a_row_is_adult_exactly_from_min_level_up(level, min_level) -> None:
+    """The label says `no`; the level alone decides. The ledger agrees when its branch follows
+    the level, and the row is a hit on either side of the boundary."""
+    adult = LEVELS.index(level) >= min_level
+    lset = level_labels([f"a.png,zorbs,plinth,no,,,,{level}"])
+    outs = [out("a.png", branch="nsfw" if adult else "safe", level=level)]
+    m = gate_3.evaluate(lset, outs, min_level)
+    side = m.adult if adult else m.safe
+    assert (side.hit, side.total) == (1, 1)
+    other = m.safe if adult else m.adult
+    assert other.total == 0
+
+
+def test_a_label_level_overrides_the_adult_column_and_none_falls_back() -> None:
+    lset = level_labels(
+        [
+            "a.png,zorbs,plinth,no,,,,explicit",  # level says adult, column says no
+            "b.png,zorbs,plinth,yes,,,,suggestive",  # level says safe, column says yes
+            "c.png,zorbs,plinth,yes,,,,",  # no level: the column stands
+            "d.png,zorbs,plinth,no,,,,",
+        ]
+    )
+    outs = [
+        out("a.png", branch="nsfw", level="explicit"),
+        out("b.png", branch="safe", level="suggestive"),
+        out("c.png", branch="nsfw", level="nudity"),
+        out("d.png"),
+    ]
+    m = gate_3.evaluate(lset, outs, MIN_LEVEL)
+    assert (m.adult.hit, m.adult.total) == (2, 2)
+    assert (m.safe.hit, m.safe.total) == (2, 2)
+
+
+def test_branch_and_level_must_agree() -> None:
+    lset = level_labels(["a.png,zorbs,plinth,no,,,,explicit", "b.png,zorbs,plinth,no,,,,safe"])
+    good = [out("a.png", branch="nsfw", level="explicit"), out("b.png")]
+    assert nsfw_line(lset, good).endswith(": ok")
+    # an adult-level row kept in the safe branch, and a safe-level row sent to nsfw
+    assert nsfw_line(lset, [out("a.png", branch="safe", level="explicit"), good[1]]).endswith(
+        "FAIL"
+    )
+    assert nsfw_line(lset, [good[0], out("b.png", branch="nsfw", level="safe")]).endswith("FAIL")
+
+
+@pytest.mark.parametrize("level", [None, "qorvex-level", ""])
+def test_a_missing_or_unknown_ledger_level_is_a_miss_on_either_side(level) -> None:
+    lset = level_labels(["a.png,zorbs,plinth,no,,,,explicit", "b.png,zorbs,plinth,no,,,,safe"])
+    outs = [out("a.png", branch="nsfw", level="explicit"), out("b.png", level=level)]
+    assert nsfw_line(lset, outs).endswith("FAIL")
+    outs = [out("a.png", branch="nsfw", level=level), out("b.png")]
+    assert nsfw_line(lset, outs).endswith("FAIL")
+
+
+def test_a_suggestive_negative_is_hit_only_by_a_safe_branch_below_min_level() -> None:
+    lset = level_labels(
+        [
+            "a.png,zorbs,plinth,yes,,,,explicit",
+            "b.png,zorbs,plinth,no,,suggestive-negative,suggestive-negative,suggestive",
+        ]
+    )
+    good = [out("a.png", branch="nsfw", level="explicit"), out("b.png", level="suggestive")]
+    m = gate_3.evaluate(lset, good, MIN_LEVEL)
+    assert (m.suggestive.hit, m.suggestive.total) == (1, 1)
+    assert gate_3.judge(m).passed
+    for bad in (out("b.png", branch="nsfw", level="suggestive"), out("b.png", level="nudity")):
+        m = gate_3.evaluate(lset, [good[0], bad], MIN_LEVEL)
+        assert m.suggestive.hit == 0
+        assert gate_3.judge(m).lines[4] == "suggestive-negative rows safe: FAIL"
+
+
+def test_a_suggestive_negative_at_min_level_is_a_labels_error() -> None:
+    lset = level_labels(["a.png,zorbs,plinth,no,,,suggestive-negative,nudity"])
+    with pytest.raises(gate_3.fixture_labels.LabelsError) as info:
+        gate_3.evaluate(lset, [out("a.png", level="nudity")], MIN_LEVEL)
+    assert str(info.value) == (
+        "labels line 2, column nsfw_level: suggestive-negative cannot be adult"
+    )
+    assert info.value.__cause__ is None and info.value.__context__ is None
+    # the same row is fine when min_level sits above its level
+    assert gate_3.evaluate(lset, [out("a.png", level="nudity")], 3).suggestive.total == 1
+
+
+def test_a_calibration_only_row_is_not_checked_for_the_contradiction() -> None:
+    lset = level_labels(
+        [
+            "a.png,zorbs,plinth,yes,,,,explicit",
+            "b.png,zorbs,plinth,no,,,suggestive-negative,suggestive",
+            "c.png,zorbs,plinth,no,,,suggestive-negative;calibration-only,explicit",
+        ]
+    )
+    outs = [
+        out("a.png", branch="nsfw", level="explicit"),
+        out("b.png", level="suggestive"),
+        out("c.png"),
+    ]
+    assert gate_3.evaluate(lset, outs, MIN_LEVEL).suggestive.total == 1
+
+
+def test_the_level_gate_keeps_the_public_form() -> None:
+    lset = level_labels(
+        [
+            "a.png,zorbs,plinth,no,,,,explicit",
+            "b.png,zorbs,plinth,no,,,suggestive-negative,suggestive",
+        ]
+    )
+    outs = [out("a.png", branch="nsfw", level="explicit"), out("b.png", level="suggestive")]
+    verdict = gate_3.judge(gate_3.evaluate(lset, outs, MIN_LEVEL))
+    assert verdict.passed
+    text = "\n".join(verdict.lines)
+    assert re.findall(r"\d+", text) == ["100", "85", "100", "85", "0", "10", "3"]
+    for word in ("nudity", "explicit"):  # "safe" and "suggestive" are in the fixed text
+        assert word not in text
+
+
+def test_a_planted_level_never_reaches_repr_or_the_default_output() -> None:
+    row = gate_3.Outcome(("x.png",), "classified", "zorbs", "plinth", "safe", PLANTED)
+    assert PLANTED not in repr(row) and PLANTED not in str(row)
+    lset = level_labels(["x.png,zorbs,plinth,no,,,,"])
+    m = gate_3.evaluate(lset, [row], MIN_LEVEL)  # an unknown level is a miss, never quoted
+    assert m.safe.hit == 0
+    assert PLANTED not in "\n".join(gate_3.judge(m, detail=True).lines)

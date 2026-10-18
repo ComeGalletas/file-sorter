@@ -1,9 +1,9 @@
 """Milestone 3 gate: Classify (DESIGN.md §11).
 
-Criterion: On every real image labelled in fixtures/labels.csv: format agreement >= 90% on rows
+Criterion: On every real image labelled in fixtures/labels.csv: format agreement >= 85% on rows
 with a format; topic agreement >= 85% on rows with a topic (blank = undecided, not scored); every
-adult image flagged and every suggestive-negative row safe; unrecognized format < 10%.
-(CLS-001.D5, D11, D12)
+adult image flagged and every safe image safe, judged by NSFW level at nsfw.min_level; every
+suggestive-negative row safe; unrecognized format < 10%. (CLS-001.D5, D11, D12; CLS-004.D3, D12)
 
 Runs inside the `test` container (`make gate-3`): ingest -> sanitize -> classify as a dry run on
 fixtures/images/, in a fresh schema of the throwaway Postgres and a temp results tree that is
@@ -18,8 +18,12 @@ through the category CLI are not measured.
 Measures (TST-008.D4; the figures come from exact integer ratios, only the printed one is rounded):
   - format: rows with a format whose ledger format equals it; `unsorted` or none is a miss;
   - topic: rows with a topic whose ledger topic equals it; none is a miss;
-  - nsfw: every `adult = yes` row is `nsfw`, every `adult = no` row is `safe`; the
-    `suggestive-negative` rows are their own line, all `safe`. Neither set may be empty;
+  - nsfw (TST-009.D1): a row expects adult when its `nsfw_level` is >= `nsfw.min_level` (read from
+    the gate's loaded config), or, with no level, when its `adult` column says yes. An adult row
+    is hit when the ledger's branch is `nsfw` and its level is >= min_level; any other row is hit
+    when the branch is `safe` and the level is below it. A branch that contradicts its level, or
+    a missing level, is a miss. The `suggestive-negative` rows are their own line, all safe.
+    Neither set may be empty;
   - unrecognized: the share of rows whose format is `unsorted`, strictly below 10%;
   - any ledger row in `error`, or labels and images that do not match one to one, fail.
 Rows tagged `calibration-only` are left out of every measure (TST-008.D2).
@@ -53,13 +57,14 @@ for _path in (str(REPO), str(SCRIPTS)):
 import fixture_labels  # noqa: E402  (needs SCRIPTS on sys.path)
 
 CRITERION = (
-    "On every real image labelled in fixtures/labels.csv: format agreement >= 90% on rows "
+    "On every real image labelled in fixtures/labels.csv: format agreement >= 85% on rows "
     "with a format; topic agreement >= 85% on rows with a topic (blank = undecided, not "
-    "scored); every adult image flagged and every suggestive-negative row safe; "
-    "unrecognized format < 10%. (CLS-001.D5, D11, D12)"
+    "scored); every adult image flagged and every safe image safe, judged by NSFW level at "
+    "nsfw.min_level; every suggestive-negative row safe; unrecognized format < 10%. "
+    "(CLS-001.D5, D11, D12; CLS-004.D3, D12)"
 )
 
-FORMAT_MIN = 90  # percent, inclusive (CLS-001.D5)
+FORMAT_MIN = 85  # percent, inclusive (CLS-004.D12)
 TOPIC_MIN = 85  # percent, inclusive
 UNRECOGNIZED_BELOW = 10  # percent, strict
 
@@ -91,6 +96,7 @@ class Outcome:
     format: str | None = field(repr=False)
     topic: str | None = field(repr=False)
     branch: str | None = field(repr=False)
+    nsfw_level: str | None = field(default=None, repr=False)  # files.nsfw_level (DB-004.1)
 
 
 @dataclass(frozen=True)
@@ -121,8 +127,8 @@ class Measures:
     format: Tally = field(repr=False)
     topic: Tally = field(repr=False)
     unrecognized: Tally = field(repr=False)
-    adult: Tally = field(repr=False)  # adult = yes rows that are nsfw
-    safe: Tally = field(repr=False)  # adult = no rows that are safe
+    adult: Tally = field(repr=False)  # rows expected adult that the ledger flags
+    safe: Tally = field(repr=False)  # rows expected safe that the ledger keeps safe
     suggestive: Tally = field(repr=False)  # suggestive-negative rows that are safe
     errors: int = field(repr=False)
     coverage_ok: bool = field(repr=False)
@@ -178,8 +184,30 @@ def _by_category(
     )
 
 
-def evaluate(labels: "fixture_labels.LabelSet", outcomes: Sequence[Outcome]) -> Measures:
-    """Match the labels to the ledger rows and tally every measure (TST-008.D4)."""
+def _rank(level: str | None) -> int | None:
+    """The ledger level's order, or None when it is missing or not a level name."""
+    return fixture_labels.LEVELS.index(level) if level in fixture_labels.LEVELS else None
+
+
+def _flagged(outcome: Outcome | None, min_level: int) -> bool | None:
+    """Whether the ledger calls the row adult: branch and level must agree (TST-009.2.2).
+    None means they disagree or the level is missing: a miss on either side."""
+    if outcome is None:
+        return None
+    rank = _rank(outcome.nsfw_level)
+    if rank is None:
+        return None
+    adult = rank >= min_level
+    if outcome.branch == (NSFW if adult else SAFE):
+        return adult
+    return None
+
+
+def evaluate(
+    labels: "fixture_labels.LabelSet", outcomes: Sequence[Outcome], min_level: int
+) -> Measures:
+    """Match the labels to the ledger rows and tally every measure (TST-008.D4). `min_level` is
+    the rank of `nsfw.min_level` in the gate's loaded config (TST-009.D1)."""
     index, unique = _index(outcomes)
     coverage_ok = _coverage(labels.rows, outcomes, unique)
     gate_rows = labels.gate_rows()
@@ -192,7 +220,12 @@ def evaluate(labels: "fixture_labels.LabelSet", outcomes: Sequence[Outcome]) -> 
     unsorted = [0, 0]
     for row in gate_rows:
         outcome = index.get(row.file)
-        branch = outcome.branch if outcome else None
+        flagged = _flagged(outcome, min_level)
+        expects_adult = row.expects_adult(min_level)
+        if id(row) in suggestive and expects_adult:
+            raise fixture_labels.LabelsError(
+                f"labels line {row.line}, column nsfw_level: suggestive-negative cannot be adult"
+            )  # CLS-001.D12: only the gate knows min_level
         got_format = outcome.format if outcome else None
         unsorted[1] += 1
         unsorted[0] += got_format == UNSORTED
@@ -200,12 +233,12 @@ def evaluate(labels: "fixture_labels.LabelSet", outcomes: Sequence[Outcome]) -> 
             fmt_pairs.append((row.format, got_format == row.format))
         if row.topic:
             topic_pairs.append((row.topic, bool(outcome) and outcome.topic == row.topic))
-        side = adult if row.adult else safe
+        side = adult if expects_adult else safe
         side[1] += 1
-        side[0] += branch == (NSFW if row.adult else SAFE)
+        side[0] += flagged is expects_adult
         if id(row) in suggestive:
             sugg[1] += 1
-            sugg[0] += branch == SAFE
+            sugg[0] += flagged is False
     return Measures(
         format=Tally(sum(hit for _, hit in fmt_pairs), len(fmt_pairs)),
         topic=Tally(sum(hit for _, hit in topic_pairs), len(topic_pairs)),
@@ -316,13 +349,13 @@ def relative_name(path: str, images: Path) -> str | None:
 
 
 def to_outcomes(rows: Sequence[Sequence[Any]], images: Path) -> list[Outcome]:
-    """Ledger rows `(source_path, duplicate_paths, status, format, topic, branch)`."""
+    """Ledger rows `(source_path, duplicate_paths, status, format, topic, branch, nsfw_level)`."""
     outcomes: list[Outcome] = []
-    for path, duplicates, status, fmt, topic, branch in rows:
+    for path, duplicates, status, fmt, topic, branch, level in rows:
         names = [relative_name(p, images) for p in (path, *(duplicates or ()))]
         if None in names:
             raise GateRunError("a ledger path is outside the images folder (source_root mismatch)")
-        outcomes.append(Outcome(tuple(n for n in names if n), status, fmt, topic, branch))
+        outcomes.append(Outcome(tuple(n for n in names if n), status, fmt, topic, branch, level))
     return outcomes
 
 
@@ -374,18 +407,20 @@ def run_pipeline(
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
         formats, topics = read_vocabularies(schema)
         labels = fixture_labels.load_labels(labels_path, formats=formats, topics=topics)
+        config = load_config(images, results, schema, rules_path)
         run(
-            load_config(images, results, schema, rules_path),
+            config,
             dry_run=True,
             nodes=tuple(nodes),
             vision=vision,
         )
         with psycopg.connect(schema) as conn:
             rows = conn.execute(
-                "select source_path, duplicate_paths, status::text, format, topic, branch "
+                "select source_path, duplicate_paths, status::text, format, topic, branch, "
+                "nsfw_level "
                 "from files"
             ).fetchall()
-    return evaluate(labels, to_outcomes(rows, images))
+    return evaluate(labels, to_outcomes(rows, images), int(config.nsfw.min_level))
 
 
 def main(
