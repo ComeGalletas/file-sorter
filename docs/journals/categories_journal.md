@@ -472,6 +472,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - [x] CLS-004.4.2.1 — `open_working_frames` and `first_frame_rgb`: one read per working copy, every frame kept (lead-approved refinement) · `ae40fd8`
     - [x] CLS-004.4.2.2 — The node on the VLM path: hint from `original_sanitized`, `vlm_classify` per image, `decide`, `nsfw_level` written, `image_vec` and the Falconsai score kept, no SigLIP scoring, `format_scores`/`topic_scores` null (this commit; db tests rewritten as CLS-004.4.5.1)
   - [ ] CLS-004.4.3 — The `mark_error` path and the cross-check into `needs_review`
+    - [x] CLS-004.4.3.1 — `VlmUnanswered` and `ClassifyRulesError` → `error` with `classify_vlm_unanswered`; `VlmImageError` → `classify_working_copy_unreadable`; `OllamaUnavailable` propagates (this commit). The cross-check's db test waits on the `review_reason` constraint (see #135)
   - [ ] CLS-004.4.4 — Re-point `cli/categories.py`; drop the SigLIP-scoring code the node no longer uses
     - [x] CLS-004.4.4.1 — `cli/categories.py` validates with `validate_rules(rules, None)`, `_structural` removed (this commit)
   - [ ] CLS-004.4.5 — Tests, Results, self-rating. The PR is held until CLS-004.2.6 is on the base branch (lead, #135)

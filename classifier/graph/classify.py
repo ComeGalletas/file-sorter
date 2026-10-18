@@ -32,11 +32,23 @@ from classifier.config import Config
 from classifier.fileops.copy_move import working_copy_name
 from classifier.graph.errors import mark_error, register_reasons
 from classifier.graph.sanitize import check_work_dir
-from classifier.models.classify_rules import CategoryRule, decide, validate_rules
+from classifier.models.classify_rules import (
+    CategoryRule,
+    ClassifyRulesError,
+    VlmAnswer,
+    VlmChoice,
+    decide,
+    validate_rules,
+)
 from classifier.models.ollama import OllamaClient
 from classifier.models.siglip import BATCH_SIZE, SiglipBackend
 from classifier.models.vision import VisionBackend, VisionError
-from classifier.models.vlm_classify import UNANSWERED_REASON, vlm_classify
+from classifier.models.vlm_classify import (
+    UNANSWERED_REASON,
+    VlmImageError,
+    VlmUnanswered,
+    vlm_classify,
+)
 
 if TYPE_CHECKING:
     from classifier.graph.nodes import NodeContext
@@ -244,6 +256,39 @@ def _open(work: Path, row: _Row) -> tuple[Image.Image, Image.Image] | None:
         return None
 
 
+def _judge(
+    client: OllamaClient,
+    config: Config,
+    rules: Sequence[CategoryRule],
+    row: _Row,
+    frames: Image.Image,
+    formats: Sequence[str],
+    topics: Sequence[str],
+    score: float | None,
+) -> tuple[VlmAnswer, VlmChoice] | str:
+    """One image's answer and choice, or the fixed reason it can't have one (CLS-004.D4).
+
+    `OllamaUnavailable` is not caught: it says nothing about this file, so it stops the node and
+    `run` rolls it back. A name `decide` doesn't know counts as an unanswered call.
+    """
+    failure = None
+    try:
+        answer = vlm_classify(
+            client,
+            config.models.vlm_safe,
+            frames,
+            hint=row.hint,
+            formats=formats,
+            topics=topics,
+        )
+        return answer, decide(answer, rules, score, config.nsfw)
+    except (VlmUnanswered, ClassifyRulesError):
+        failure = VLM_UNANSWERED
+    except VlmImageError:
+        failure = WORKING_COPY_UNREADABLE  # a later frame won't decode: the copy is unreadable
+    return failure
+
+
 def _batches(
     conn: psycopg.Connection,
     rows: Sequence[_Row],
@@ -278,15 +323,13 @@ def _batches(
             raise VisionError(_BAD_SHAPE)
         for (row, frames, _), vector, nsfw_score in zip(opened, vectors, nsfw, strict=True):
             score = float(nsfw_score) if math.isfinite(float(nsfw_score)) else None
-            answer = vlm_classify(
-                client,
-                config.models.vlm_safe,
-                frames,
-                hint=row.hint,
-                formats=formats,
-                topics=topics,
-            )
-            choice = decide(answer, rules, score, config.nsfw)
+            judged = _judge(client, config, rules, row, frames, formats, topics, score)
+            if isinstance(judged, str):  # a fixed reason: this file errors, the batch goes on
+                mark_error(conn, row.source_hash, judged, from_statuses=(_SANITIZED,))
+                reasons[judged] += 1
+                log.warning("classify: %s error %s", row.short_hash, judged)
+                continue
+            answer, choice = judged
             write = (
                 choice.branch,
                 score,

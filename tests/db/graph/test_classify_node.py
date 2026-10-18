@@ -27,6 +27,7 @@ from PIL import Image
 from classifier.config import Config, NsfwLevel
 from classifier.graph.classify import (
     LEDGER_WRITE_FAILED,
+    VLM_UNANSWERED,
     WORKING_COPY_UNREADABLE,
     ClassifyConfigError,
     ClassifyResult,
@@ -34,8 +35,11 @@ from classifier.graph.classify import (
 )
 from classifier.graph.nodes import NodeContext
 from classifier.graph.sanitize import WorkDirError
+from classifier.models.classify_rules import VlmAnswer
+from classifier.models.ollama import OllamaUnavailable
 from classifier.models.siglip import BATCH_SIZE
 from classifier.models.vision import VisionError
+from classifier.models.vlm_classify import VlmImageError
 
 REPO = Path(__file__).resolve().parents[3]
 DIM = 1152
@@ -88,6 +92,7 @@ class Script:
     format: str = "Qorvex"
     topic: str = "none"
     level: str = "safe"
+    fail: str | None = None  # "http": every call gets a 500; "down": Ollama is unreachable
 
 
 class FakeOllama:
@@ -107,6 +112,10 @@ class FakeOllama:
         red = first.getpixel((0, 0))[0]
         key = min(self.scripts or {0: Script()}, key=lambda k: abs(k - red))
         script = self.scripts.get(key, Script())
+        if script.fail == "down":
+            raise httpx.ConnectError("synthetic outage", request=request)
+        if script.fail == "http":
+            return httpx.Response(500)
         if "nsfw_level" in body["format"]["properties"]:
             answer = {"observation": "synthetic cues", "nsfw_level": script.level}
         else:
@@ -485,3 +494,93 @@ def test_one_rejected_write_errors_only_that_row(
     assert _row(db, first)["status"] == _row(db, last)["status"] == "classified"
     assert (_row(db, bad)["status"], _row(db, bad)["error"]) == ("error", LEDGER_WRITE_FAILED)
     assert bad[:8] in caplog.text and "t_refuse" not in caplog.text
+
+
+# --- a failed answer, the Falconsai cross-check (CLS-004.4.3, CLS-004.D4, D5) ----------------
+
+
+@pytest.mark.usefixtures("categories")
+def test_an_unanswered_file_errors_after_one_retry_and_the_batch_goes_on(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    mute, fine = _add(db, folders[1], 30, red=0), _add(db, folders[1], 31, red=200)
+    db.execute(
+        "insert into sanitize_log (source_hash, rule_id, field, before_hash, after_value)"
+        " values (%s, 'r1', 'filename', %s, 'x')",
+        (mute, "e" * 64),
+    )
+    ollama = FakeOllama({0: Script(fail="http"), 200: Script("Zhyndel")})
+    with caplog.at_level(logging.INFO):
+        result = classify(db, _ctx(folders, config, FakeVision(), ollama))
+    assert (result.classified, result.errored) == (1, 1)
+    assert dict(result.by_reason) == {VLM_UNANSWERED: 1}
+    row = _row(db, mute)
+    assert (row["status"], row["error"], row["format"]) == ("error", VLM_UNANSWERED, None)
+    assert _row(db, fine)["status"] == "classified"
+    assert len(ollama.calls("classify")) == 3 and len(ollama.calls("nsfw")) == 1  # 2 tries + 1
+    assert db.execute("select count(*) from sanitize_log").fetchone()[0] == 0
+    assert db.execute(
+        "select original_sanitized from files where source_hash = %s", (mute,)
+    ).fetchone() == (None,)
+    assert mute[:8] in caplog.text and VLM_UNANSWERED in caplog.text
+    assert HINT not in caplog.text and PATH_SECRET not in caplog.text
+
+
+@pytest.mark.usefixtures("categories")
+def test_a_name_the_rules_do_not_know_counts_as_unanswered(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _add(db, folders[1], 32)
+
+    def stray(*_args: object, **_kwargs: object) -> VlmAnswer:
+        return VlmAnswer(format="Nonexistent", topic=None, level=NsfwLevel.safe)
+
+    monkeypatch.setattr("classifier.graph.classify.vlm_classify", stray)
+    result = classify(db, _ctx(folders, config, FakeVision(), FakeOllama()))
+    assert dict(result.by_reason) == {VLM_UNANSWERED: 1}
+    assert (_row(db, h)["status"], _row(db, h)["error"]) == ("error", VLM_UNANSWERED)
+
+
+@pytest.mark.usefixtures("categories")
+def test_an_undecodable_frame_is_an_unreadable_copy(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    h = _add(db, folders[1], 33)
+
+    def broken(*_args: object, **_kwargs: object) -> VlmAnswer:
+        raise VlmImageError("fixed text")
+
+    monkeypatch.setattr("classifier.graph.classify.vlm_classify", broken)
+    result = classify(db, _ctx(folders, config, FakeVision(), FakeOllama()))
+    assert dict(result.by_reason) == {WORKING_COPY_UNREADABLE: 1}
+    assert _row(db, h)["error"] == WORKING_COPY_UNREADABLE
+
+
+@pytest.mark.usefixtures("categories")
+def test_ollama_being_unreachable_stops_the_node_instead_of_erroring_files(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:  # run rolls the node back: nothing says this file is at fault
+    h = _add(db, folders[1], 34)
+    ollama = FakeOllama({0: Script(fail="down")})
+    with pytest.raises(OllamaUnavailable) as caught:
+        classify(db, _ctx(folders, config, FakeVision(), ollama))
+    assert HINT not in str(caught.value) and PATH_SECRET not in str(caught.value)
+    assert _row(db, h)["status"] == "sanitized"  # never marked `error`
+
+
+@pytest.mark.usefixtures("categories")
+def test_no_thresholds_means_no_cross_check(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:  # both null: the cross-check is off
+    h = _add(db, folders[1], 43, red=0, green=255)
+    classify(db, _ctx(folders, config, FakeVision(), FakeOllama({0: Script(level="safe")})))
+    assert _row(db, h)["needs_review"] is False
