@@ -459,7 +459,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.2.8 — `OllamaUnavailable` raised unchained with fixed text, with a test (this commit, with .2.9: one edit of the same block)
   - [x] CLS-004.2.9 — `httpx.DecodingError` wrapped as an answer failure (`OllamaError`), with tests (this commit)
   - [x] CLS-004.2.10 — the planted `OSError` text in the tests is a coinage, not a path (this commit, with .2.7: both edit the same test)
-  - [ ] CLS-004.2.11 — journal: hashes for CLS-004.2.1 to .5 and the duplicate-subject note
+  - [x] CLS-004.2.11 — journal: hashes for CLS-004.2.1 to .5 (filled in `cf762a1`) and the duplicate-subject note in Results (this commit)
   - [ ] CLS-004.2.12 — Results, self-rating, PR
 - [ ] CLS-004.3 — `classify_rules` on the VLM path: level against `min_level`, branch eligibility and twin removal kept, the Falconsai cross-check, no `min_score`/`margin` (CLS-004.D3, D5, D7) · #133 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
   - [x] CLS-004.3.1 — `VlmAnswer`, `branch_for_level`, `validate_rules(rules, None)` (this commit)
@@ -493,6 +493,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - Frames converted to RGB, scaled down to 1024 px, sent as JPEG 90. Slot lists joined with ', '.
   - A topic equal to the format becomes `None` with no retry. Out-of-enum or missing fields are rejected, then retried once at `retry_temperature`, then `VlmUnanswered` (`classify_vlm_unanswered`, unchained). `OllamaUnavailable` propagates.
 - **Deferred:** CLS-004.2.6, the recordings of the real request shapes, after #153 (TST-010.1).
+- **Commit subjects:** `1cf48e7` and `124ba67` both carry the subject CLS-004.2.3 (the second only changed how the slot lists are joined). History is not rewritten; the journal lists both under .2.3.
 - **Self-rating:** 9/10, proud: yes. Gap: no recordings yet (.2.6), and the Reviewer and Privacy auditor verdicts are pending.
 - **Reviewer / Privacy auditor:** pending.
 
