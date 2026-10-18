@@ -17,6 +17,8 @@ from classifier.models.prompts import (
 from tests.recordings import prompts as recording_prompts
 from tests.recordings.replay import RecordingError
 
+pytestmark = pytest.mark.prompts_local_on  # TST-011.1: this module tests the addendum loader
+
 GOOD = """---
 version: demo_v1
 temperature: 0
