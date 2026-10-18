@@ -4,9 +4,11 @@ These tests read the committed prompt files and check their structure only. No m
 called and no image is read; category names are synthetic coinages.
 """
 
+import re
+
 import pytest
 
-from classifier.models.prompts import PromptError, load_prompt
+from classifier.models.prompts import PROMPTS_DIR, PromptError, load_prompt
 
 FORMATS = ["Qorvex", "Zhyndel", "unsorted"]
 TOPICS = ["Vrellik", "Xandoz", "none"]
@@ -116,3 +118,35 @@ def test_nsfw_text_never_raises_the_level(nsfw) -> None:
     assert "without graphic wording" in out
     for level in ("safe", "suggestive", "nudity", "explicit"):
         assert f"\n- {level}: " in out
+
+
+# CLS-004.1.4: the files are public, so they hold generic definitions only (DOC-008.D2).
+PROMPT_FILES = ["classify_v1", "nsfw_level_v1"]
+SLOTS = {"classify_v1": {"formats", "topics"}, "nsfw_level_v1": set()}
+USER_SLOTS = {"classify_v1": {"name"}, "nsfw_level_v1": set()}
+
+
+@pytest.mark.parametrize("name", PROMPT_FILES)
+def test_prompt_file_is_ascii_and_free_of_paths_and_file_names(name: str) -> None:
+    text = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+    assert text.isascii()
+    assert not re.search(r"[A-Za-z]:\\", text)  # a Windows path; YAML's own `\n` is fine
+    lowered = text.lower()
+    for marker in ("/source", "/results", "/app/", "c:/", "d:/", "http://", "https://"):
+        assert marker not in lowered
+    for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp4"):
+        assert ext not in lowered
+
+
+@pytest.mark.parametrize("name", PROMPT_FILES)
+def test_prompt_file_declares_only_the_known_slots(name: str) -> None:
+    prompt = load_prompt(name)
+    assert prompt.slots == SLOTS[name]
+    for text in (prompt.user, prompt.user_alt):
+        assert set(re.findall(r"\{([a-z_]+)\}", text or "")) <= USER_SLOTS[name]
+
+
+@pytest.mark.parametrize("name", PROMPT_FILES)
+def test_prompt_file_is_short_enough_to_review(name: str) -> None:
+    lines = (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8").splitlines()
+    assert len(lines) < 80
