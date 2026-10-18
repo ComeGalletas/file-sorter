@@ -200,4 +200,26 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 ## DOC-009 — Tasks
 
-- [ ] DOC-009.1 — The human's PR with the DESIGN and CLAUDE.md edits above · human-side · acceptance: review only
+- [x] DOC-009.1 — The human's PR with the DESIGN and CLAUDE.md edits above · human-side · acceptance: review only
+
+## DOC-009 — Confirmed reading
+
+- **DOC-009.D1 (= CLS-004.D1–D7):** DESIGN §4.3 is rewritten for the VLM classifier.
+  - **R-CLS-1:** scale A and `nsfw.min_level`, with Falconsai as the cross-check.
+  - **R-CLS-2:** the classify call, the sanitized-name hint, and the retry-then-`error` rule.
+  - **R-CLS-3 and 3a:** the answer is used as given; `unsorted` and `none` are enum entries.
+  - **R-CLS-3b:** a topic that repeats its format is dropped.
+  - **R-CLS-4:** a nested category is its own enum entry.
+  - **R-CLS-8:** the prompts and settings are versioned and approved by the human. No SigLIP thresholds are committed.
+  - **The category tables** carry the classify prompt's descriptions (the human's wording: `memes` is a joke, and game images are `videogames`), and say where they live (CLS-004.1). (human, 2026-10-17)
+- **DOC-009.D2:** §5 adds `files.nsfw_level`. `nsfw_score` is the cross-check, `format_scores` and `topic_scores` are SigLIP-era, and `review_reason` gains `nsfw_disagreement`. §3's pipeline line and stage table follow. (human, 2026-10-17)
+- **DOC-009.D3 (= CLS-004.D7, the open part):** the §6 sketch **keeps** the SigLIP-era keys (`classify.score`, the per-axis `default_min_score`/`margin`, `nsfw.threshold`), marked as ignored on the VLM path, rather than dropping them. That's the reversible choice: nothing that reads them breaks, and dropping them later is a one-line DESIGN edit plus CFG work. **Provisional:** taken in the human's session under the human's standing instruction for easily reversible choices, 2026-10-18. The human confirms it or reverts it. The sketch also adds `nsfw.min_level: nudity` and `nsfw.cross_check` (values left to the human), and sets `models.vlm_safe` to `qwen3-vl:8b-instruct` (CLS-004.D8).
+- **DOC-009.D4 (= CLS-004.D8, D9, RUN-016):** §8 adds R-MOD-1 (one resident model, one `num_ctx`) and R-MOD-1a (use the instruct builds: the thinking build's empty answers, and the one CUDA runner crash under memory pressure). The model table and the throughput line follow. (human, 2026-10-17)
+- **DOC-009.D5 (= CLS-004.D12):** §11's M3 row moves to format ≥ 85%, with the NSFW criteria judged by level at `nsfw.min_level`. **CLS-001.D5 is amended to match** (the lead notes this in CLS-001's own block). §14 Q-8 follows. (human, 2026-10-17)
+- **DOC-009.D6:** §13 marks C-5 and C-6 superseded, and adds **C-25** (the VLM classifier), **C-26** (scale A and `min_level`), **C-27** (one model, one `num_ctx`, the instruct builds) and **C-28** (the 85% format target). CLAUDE.md's "Current phase" names the re-plan. (human, 2026-10-17)
+
+## DOC-009 — Results
+
+- **Status:** DONE.
+- **Triage:** medium. Spec and rule text across DESIGN §3, §4.3, §5, §6, §8, §11, §13 and §14, and CLAUDE.md; no code.
+- **Privacy:** no counts, file names or per-category figures. The spike appears only as "passed every gate 3 criterion", per TST-008.D1.

@@ -44,14 +44,14 @@ The source folder is **read-only**: the bot never moves, modifies or deletes an 
 The plan numbers stages by topic. **Execution order differs:** naming consumes `{reference}`, so retrieval runs before naming.
 
 ```
-ingest → sanitize → classify (embed + NSFW gate + score) → caption → retrieve → name → fileops
+ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Falconsai cross-check) → caption → retrieve → name → fileops
 ```
 
 | Node | Plan stage | Writes |
 | --- | --- | --- |
 | `ingest` | — | hash, source path, mtime, ext, `animated` flag, thumbnail; skip known hashes and non-images |
 | `sanitize` | 1 | sanitized working copy, sanitized original name, `sanitize_log` |
-| `classify` | 2 | SigLIP vector, NSFW score, branch, format and topic scores, chosen format (or unsorted) and topic (or none) |
+| `classify` | 2 | SigLIP vector, NSFW level and branch, Falconsai score (cross-check), chosen format (or unsorted) and topic (or none) |
 | `caption` | 3 (input) | subject, detail, caption, tags (safe or adult VLM by branch) |
 | `retrieve` | 4 | reference id / name, verdict, `retrieval_log` |
 | `name` | 3 | rendered filename |
@@ -89,48 +89,56 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 ### 4.3 Classify
 
 - **R-CLS-0** **Two axes (CLS-001).** Every image gets exactly one **format** (what kind of image it is) and at most one **topic** (what it is about). The two axes are scored independently. The adult flag (R-CLS-1) and the reference (R-RAG) sit on top of both.
-- **R-CLS-1** NSFW gate (`Falconsai/nsfw_image_detection`): `branch = nsfw` if score ≥ `nsfw.threshold` (0.70), else `safe`. **Adult means explicit sexual imagery** (CLS-001.D12). Suggestive images without explicit content (covered bodies, innuendo, joke ads) are `safe`, and must not be flagged.
-- **R-CLS-2** SigLIP zero-shot: each prompt is scored as a **sigmoid probability** (`sigmoid(logit_scale·cos + logit_bias)`), and a category's score is the **max** over its prompts (see §13 C-5). One image embedding is scored against both axes' prompts.
-- **R-CLS-3** **Format** is required. The top format wins only if its score ≥ its `min_score` **and** it beats the runner-up by `classify.format.margin`. Otherwise the image goes to `Unsorted/` with `needs_review = true, review_reason = unsorted`. The best topic is still recorded.
-- **R-CLS-3a** **Topic** is optional. The top topic wins only if it clears its `min_score` and `classify.topic.margin`. Otherwise the image has **no topic**: it goes to `General/<Format>/`, and this is *not* a review case.
-- **R-CLS-3b** **A topic never repeats its format** (CLS-001.D10). `memes` and `documents` exist on both axes. As a topic they mean the image's meaning (a real photo with a joke meaning → `Memes/Photos/`; a screenshot showing a document → `Documents/Screenshots/`). If the top topic equals the chosen format, the next topic that clears its threshold is used, or no topic.
-- **R-CLS-4** **Nested categories:** within one axis, if the top two are ancestor and descendant by folder (e.g. a user-added `videogames/racing` under `videogames`), the margin check is skipped and the deeper one wins if it clears its own `min_score`.
+- **R-CLS-1** **NSFW level (CLS-004.D2, D3).** A dedicated VLM call (`models.vlm_safe`) rates every image on **scale A**, picking the **highest** level that applies, in any art style (photo, anime, cartoon, chibi):
+  - `safe`: nothing sexualized.
+  - `suggestive`: sexualized but not nude. Swimwear, underwear, lingerie, cleavage, partial exposure through cutouts or breast windows, tight or revealing clothing, sexualized poses or products, innuendo, joke ads. Skin showing through clothing openings stays suggestive when no nipple is visible.
+  - `nudity`: visible nipples, fully bare breasts, or bare buttocks, without genitals and without sexual activity. A bare male chest is not nudity.
+  - `explicit`: visible genitals in any style, including stylized or cute drawings, or a depicted sexual act.
+
+  **Text in the image never raises the level.** Captions, chat text and descriptions don't count; only what the picture shows. An animated image is rated on its first, middle and last frames too, and the highest level wins. The NSFW call never sees the file name. `branch = nsfw` when the level ≥ **`nsfw.min_level`** (`suggestive | nudity | explicit`; the human's value is `nudity`), else `safe`. The level is stored on the ledger (`files.nsfw_level`), so changing `min_level` re-files through `reclassify` without re-running the model.
+  - **Falconsai is a cross-check only (CLS-004.D5).** `Falconsai/nsfw_image_detection` still scores every image (`files.nsfw_score`) but never decides the branch. A strong disagreement sets `needs_review = true, review_reason = nsfw_disagreement`: the level is `safe` while the score is ≥ `nsfw.cross_check.safe_above`, or the level is ≥ `min_level` while the score is ≤ `nsfw.cross_check.adult_below`. Both values are hand-tuned (CLAUDE.md §1.7).
+- **R-CLS-2** **VLM classification (CLS-004.D1, D6).** One structured VLM call per image (`models.vlm_safe`, temperature 0) returns the format and the topic. A JSON schema built from the `categories` table at run time constrains the answer: the format enum ends with `unsorted` ("none of these fits"), and the topic enum with `none`. The call gets the pixels of the sanitized working copy (P-2) and, as a hint, the **sanitized** file name (`files.original_sanitized`), fenced like the entity prompt's input. A missing or failed name gives no hint (fail closed), and the raw name and `source_path` never reach a model. An answer that fails or doesn't parse is retried once; then the row goes to `error` with `classify_vlm_unanswered` (CLS-004.D4). It is never filed as `safe` or `unsorted` silently.
+  - **SigLIP is no longer the classifier (CLS-004.D7).** It still writes `files.image_vec` (CLS-002.D10) for `reclassify` and M6. The SigLIP scoring keys (`classify.score`, the per-axis `default_min_score` and `margin`, `categories.min_score`) don't decide anything on the VLM path.
+- **R-CLS-3** **Format** is required. The VLM's format answer is used as given. `unsorted` sends the image to `Unsorted/` with `needs_review = true, review_reason = unsorted`. The topic is still recorded.
+- **R-CLS-3a** **Topic** is optional. A `none` answer means **no topic**: the image goes to `General/<Format>/`, and this is *not* a review case.
+- **R-CLS-3b** **A topic never repeats its format** (CLS-001.D10). `memes` and `documents` exist on both axes. As a topic they mean the image's meaning (a real photo with a joke meaning → `Memes/Photos/`; a screenshot showing a document → `Documents/Screenshots/`). The classify prompt says so. If the answer's topic still equals its format, the image gets no topic (CLS-002.D3).
+- **R-CLS-4** **Nested categories:** a user-added category under another (e.g. `videogames/racing` under `videogames`) is its own entry in the schema's enum. The VLM picks one entry, and its pick stands. The margin rule this replaced belonged to SigLIP's ranked scores.
 - **R-CLS-5** **Folder layout `<Topic>/<Format>/` (CLS-001.D2):** e.g. `Videogames/Screenshots/`, `Anime/Memes/`. With no topic, the image goes to `General/<Format>/`. With no format, it goes to `Unsorted/`.
   - Mirror mode: the branch changes only the root (`Adult/<Topic>/<Format>/`, `Adult/Unsorted/`) and the VLM used. Prompts, thresholds and templates are identical.
   - With `folders.animated_subfolder: true`, animated images (R-ING-9) go one level deeper (`…/<Format>/Animated/`). The default is `false`.
 - **R-CLS-6** Per-category `branch`, on both axes: `any` (default, mirrored), `safe` (adult images fall through: a format to `Adult/Unsorted/`, a topic to no topic), or `nsfw` (adult-only).
 - **R-CLS-7** Category CLI: `list`, `add --axis format|topic`, `edit`, `remove`, `sync-folders`. Removing a category never deletes folders or files. `sync-folders` creates the `<Topic>/<Format>` grid lazily (only for pairs that are actually filed) plus `General/<Format>/`. It runs before every sort unless `folders.auto_create: false`.
-- **R-CLS-8** Defaults: thresholds are **provisional until calibrated in M3** against `fixtures/labels.csv`, per axis. The calibrated values are committed once the human approves them (CLAUDE.md §1.7): per-axis defaults in `config.yaml`, and per-category overrides and any prompt edits in a seed-data migration after `0003`, so `0003` stays this section's seed (CLS-003.D2).
+- **R-CLS-8** **Prompts and settings.** The classify and NSFW prompts are versioned files (`prompts/classify_v1.md`, `prompts/nsfw_level_v1.md`; R-CAP-3 style), and every Ollama call pins the same `num_ctx` (4096) in its prompt file (CLS-004.D9, D10). They are measured against `fixtures/labels.csv` (CLS-004.5) and committed once the human approves them (CLAUDE.md §1.7). M3's SigLIP threshold calibration (CLS-003) found no values that reach gate 3, so none are committed (CLS-003.2 dropped).
 
 **Default formats** (required; folder = second level). `game-screenshots` is a capture taken **inside** a game, on PC, console or any source. `screenshots` is a computer or phone capture of an app, website or chat, even when its content is about games (CLS-001.D9):
 
-| Format | Folder | Default prompts (SigLIP) |
+| Format | Folder | Description (the classify prompt, CLS-004) |
 | --- | --- | --- |
-| photos | `Photos/` | a photo taken with a camera, a portrait, a photo of an object |
-| game-screenshots | `Game Screenshots/` | a screenshot taken inside a video game, a video game scene with a game HUD, a video game character in a 3D game world |
-| screenshots | `Screenshots/` | a screenshot of a phone, a screenshot of a desktop app or website, a cropped screen capture of part of a window, a snippet of a webpage, chat or app |
-| memes | `Memes/` | a meme with text, a reaction image |
-| artwork | `Artwork/` | a digital illustration, a drawing, concept art, an animated abstract graphic |
-| documents | `Documents/` | a scanned document, a receipt, a form |
+| photos | `Photos/` | a real-world photograph taken with a camera or phone camera, not a capture of a screen |
+| game-screenshots | `Game Screenshots/` | a capture taken **inside** a video game: the game world, a game HUD, or a menu rendered by the game, on any platform |
+| screenshots | `Screenshots/` | a capture of a computer or phone screen showing an app, website, chat, social media post or OS interface, even when its content is about games |
+| memes | `Memes/` | **a joke**: any image made or shared as a joke, in any style (a captioned picture, a meme template, a funny drawing, a funny photo or an edited image). If the image is a joke, `memes` wins over its style. |
+| artwork | `Artwork/` | a drawing, digital illustration, anime or cartoon art, concept art, 3D render or abstract graphic that is not a game capture and not a joke |
+| documents | `Documents/` | a scanned or photographed document, receipt or form |
 
 **Default topics** (optional; folder = first level). The vocabulary comes from the human's labels (DOC-002 Q-8 sample):
 
-| Topic | Folder | Default prompts (SigLIP) |
+| Topic | Folder | Description (the classify prompt, CLS-004) |
 | --- | --- | --- |
-| videogames | `Videogames/` | a video game screenshot, a video game character, a game user interface |
-| anime | `Anime/` | an anime character, manga style art |
-| cartoons | `Cartoons/` | a western cartoon character, a comic drawing |
-| pc-equipment | `PC Equipment/` | a computer case, PC hardware components |
-| animals | `Animals/` | a photo of a cat, a photo of a dog, an animal |
-| people | `People/` | a photo of people, a person's face |
-| landscapes | `Landscapes/` | a landscape, a beach, a cityscape, a view from a high floor |
-| music | `Music/` | a list of song names, a music player |
-| tv-shows | `TV Shows/` | a still from a TV show |
-| software | `Software/` | a code editor, a mobile app screen |
-| memes | `Memes/` | a joke or humorous image, an image with an ironic meaning |
-| documents | `Documents/` | a document, a receipt, a form, a list of text |
+| videogames | `Videogames/` | video games: game scenes, characters, game interfaces. **An image from a video game (a game capture or a game character) takes this topic, even in an anime art style.** |
+| anime | `Anime/` | anime characters or manga-style art |
+| cartoons | `Cartoons/` | western cartoon characters or comics |
+| pc-equipment | `PC Equipment/` | computer cases, PC hardware and components |
+| animals | `Animals/` | animals, pets |
+| people | `People/` | real people, faces, groups of people |
+| landscapes | `Landscapes/` | landscapes, beaches, cityscapes, views |
+| music | `Music/` | music: song lists, music players, artists' albums |
+| tv-shows | `TV Shows/` | stills or scenes from TV shows or films |
+| software | `Software/` | software: code editors, app screens, programs |
+| memes | `Memes/` | **a joke**: the image's meaning is a joke, humor or irony (its meaning, not its form) |
+| documents | `Documents/` | documents, receipts, forms, lists of text, as its subject |
 
-`unsorted` is the fallback format (`Unsorted/`, no prompts). The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` was dropped (it can be re-added with the CLI). The original filename (after sanitization) is passed to the caption step as a hint, since Windows screen captures are named `Screenshot <date>` by default.
+`unsorted` is the fallback format (`Unsorted/`, the format enum's "none of these fits"), and `none` is the topic enum's "no topic". The plan's `products` and `landscapes` formats are gone: `landscapes` is now a topic, and `products` was dropped (it can be re-added with the CLI). The sanitized file name is passed as a hint to the classify call (R-CLS-2) and to the caption step, since Windows screen captures are named `Screenshot <date>` by default. The descriptions above live in the classify prompt file (`prompts/classify_v1.md`), keyed by category name. The prompt's run-time slots list every category in the `categories` table, so a user-added category appears by name alone; describing user-added categories is a possible follow-up after M3 (CLS-004.1). The SigLIP prompts that migration `0003` seeded into `category_prompts` no longer score anything (CLS-004.D7).
 
 ### 4.4 Caption
 
@@ -198,9 +206,9 @@ ingest → sanitize → classify (embed + NSFW gate + score) → caption → ret
 
 **Tables:** `categories` (with `axis ∈ {format, topic}`, `folder`, `min_score`, `branch`, `parent_id`), `category_prompts`, `naming_templates`, `template_assignments`, `files` (ledger), `sanitize_log`, `references`, `reference_embeddings`, `retrieval_log`, `deletions`, `runs`, `schema_version` (Alembic).
 
-**`files` key columns:** `source_hash` (PK), `short_hash`, `source_path`, `duplicate_paths[]`, `source_mtime`, `ext`, `image_vec vector(1152)` (the SigLIP image embedding of the sanitized copy, written by classify and reused by `reclassify` and M6; CLS-002.D10), `status`, `branch`, `nsfw_score`, `animated`, `format`, `topic`, `format_scores`, `topic_scores` (jsonb, top-k each), `caption` (jsonb), `prompt_version`, `reference_id`, `template`, `proposed_path`, `output_path`, `output_hash`, `needs_review`, `review_reason`, `has_sensitive_text`, `error`, timestamps. `source_path` and `duplicate_paths` hold the container path (`/source/...`) for good, because every later step finds the original through them; no model receives them, and the API and UI (M4) never show them, only the sanitized name and hashes (ING-001.D2).
+**`files` key columns:** `source_hash` (PK), `short_hash`, `source_path`, `duplicate_paths[]`, `source_mtime`, `ext`, `image_vec vector(1152)` (the SigLIP image embedding of the sanitized copy, written by classify and reused by `reclassify` and M6; CLS-002.D10), `status`, `branch`, `nsfw_level` (`safe | suggestive | nudity | explicit`, the VLM's scale-A level; R-CLS-1, DB-004), `nsfw_score` (Falconsai's score, now the cross-check; CLS-004.D5), `animated`, `format`, `topic`, `format_scores`, `topic_scores` (jsonb, top-k each; SigLIP-era, and not written on the VLM path, which has no scores), `caption` (jsonb), `prompt_version`, `reference_id`, `template`, `proposed_path`, `output_path`, `output_hash`, `needs_review`, `review_reason`, `has_sensitive_text`, `error`, timestamps. `source_path` and `duplicate_paths` hold the container path (`/source/...`) for good, because every later step finds the original through them; no model receives them, and the API and UI (M4) never show them, only the sanitized name and hashes (ING-001.D2).
 
-**`files.status` enum:** `queued → sanitized → classified → captioned → resolved → named → proposed | filed`, plus `skipped`, `error` and `deleted`. "Unsorted" is the fallback **format**, not a status. A missing topic is `topic = null`. Review is the `needs_review` flag with a `review_reason ∈ {unsorted, ambiguous_reference}`.
+**`files.status` enum:** `queued → sanitized → classified → captioned → resolved → named → proposed | filed`, plus `skipped`, `error` and `deleted`. "Unsorted" is the fallback **format**, not a status. A missing topic is `topic = null`. Review is the `needs_review` flag with a `review_reason ∈ {unsorted, ambiguous_reference, nsfw_disagreement}` (`nsfw_disagreement`: R-CLS-1's Falconsai cross-check).
 
 **`references`:** `id, name, kind ∈ {character, franchise, product, artwork, place, person-public}, aliases[], summary, source_url, confidence, created_from ∈ {seed, web, manual}, hit_count`.
 
@@ -220,20 +228,24 @@ folders:
 models:
   classifier: google/siglip-so400m-patch14-384
   nsfw: Falconsai/nsfw_image_detection
-  vlm_safe: qwen3-vl:8b
+  vlm_safe: qwen3-vl:8b-instruct     # classify + NSFW level (CLS-004.D8); the instruct build: no thinking mode
   vlm_nsfw: <OPEN Q-1>
-  text_llm: qwen3-vl:8b              # MVP shortcut: one model for caption + judge + sanitizer
+  text_llm: qwen3-vl:8b              # sanitizer, judge; moves to qwen3-vl:8b-instruct once gate 2 passes on it (SAN-004)
   text_embed: bge-m3
-classify:
+classify:                            # SigLIP-era scoring keys: ignored on the VLM path (CLS-004.D7)
   score: sigmoid                     # sigmoid | cosine
   format:                            # required axis (R-CLS-3)
-    default_min_score: <calibrated in M3>
+    default_min_score: null
     margin: 0.05
   topic:                             # optional axis (R-CLS-3a)
-    default_min_score: <calibrated in M3>
+    default_min_score: null
     margin: 0.05
 nsfw:
-  threshold: 0.70
+  min_level: nudity                  # suggestive | nudity | explicit; Adult = VLM level >= this (R-CLS-1, CLS-004.D3)
+  cross_check:                       # Falconsai disagreement -> needs_review, never the branch (CLS-004.D5)
+    safe_above: <the human sets>     # VLM says safe, Falconsai score >= this
+    adult_below: <the human sets>    # VLM says Adult, Falconsai score <= this
+  threshold: 0.70                    # SigLIP-era gate: ignored on the VLM path
   mode: mirror                       # mirror | separate
   root: Adult
 naming:
@@ -280,17 +292,19 @@ db:
 
 | Role | Model | VRAM | Residency |
 | --- | --- | --- | --- |
-| Category scoring + image vectors | SigLIP so400m-patch14-384 | ~1.5 GB | resident (PyTorch, app container) |
-| NSFW gate | Falconsai/nsfw_image_detection | ~0.4 GB | resident (CPU fallback) |
-| Safe VLM, judge, local sanitizer (MVP) | `qwen3-vl:8b` (fallbacks `minicpm-v:4.5`, `llama3.2-vision:11b`) | 6–8 GB | Ollama, one at a time |
+| Image vectors (`image_vec`) | SigLIP so400m-patch14-384 | ~1.5 GB | resident (PyTorch, app container) |
+| NSFW cross-check | Falconsai/nsfw_image_detection | ~0.4 GB | resident (CPU fallback) |
+| Classify + NSFW level, safe captions (`vlm_safe`) | `qwen3-vl:8b-instruct` | ~6 GB at `num_ctx` 4096 | Ollama, the one resident model |
+| Judge, local sanitizer (`text_llm`) | `qwen3-vl:8b`, moving to `qwen3-vl:8b-instruct` once gate 2 passes on it (SAN-004) | 6–8 GB | Ollama, one at a time |
 | Adult VLM | candidate `huihui_ai/qwen3-vl-abliterated:8b-instruct` (Q-1, final at M5) | ~6.1 GB weights + KV cache | Ollama, one at a time |
 | Text embeddings | `bge-m3` | <1 GB | Ollama |
 | Remote sanitizer (opt-in) | Claude API, text-only | 0 | — |
 
-- **R-MOD-1** Ollama `keep_alive` is set per stage so that only one 6–9 GB model is loaded at a time.
+- **R-MOD-1** **One resident model.** `OLLAMA_MAX_LOADED_MODELS=1` on the `ollama` service (RUN-016), and `keep_alive` is set per stage, so only one 6–9 GB model is loaded at a time. Every prompt file pins the same `num_ctx` (4096): Ollama reloads a model whenever the context size changes between calls, which made each image about 3.5× slower in the M3 spike (CLS-004.D9).
+- **R-MOD-1a** **Use the instruct builds.** `qwen3-vl:8b` (the default tag) is a thinking model, and on Ollama 0.35.1 it ignores `think: false` on some images: it spends its whole output budget thinking and returns an empty answer. The `-instruct` build has no thinking mode and gave no empty answers in the spike. One Ollama runner crash ("CUDA error: unknown error") happened in the spike under heavy memory pressure; if it recurs, suspect the 0.35.1 CUDA 13 build on this GPU.
 - **R-MOD-2** `make models` pulls **both** the Ollama tags and the Hugging Face weights (SigLIP, NSFW) into volumes. At runtime the app sets `HF_HUB_OFFLINE=1`.
 - **R-MOD-3** A dedicated text LLM (`qwen3:14b`) is a later split, made only if the M6 judge quality is weak.
-- **Throughput target:** gate and score at 20–40 img/s. Captioning (1–3 s/img) is the bottleneck.
+- **Throughput:** classification is the VLM's two calls, about 3 s per image warm (about 45 minutes per 1,000 new images in the M3 spike). Already-sorted images are never reprocessed (ledger dedup by hash). SigLIP and Falconsai stay at 20–40 img/s. Captioning (1–3 s/img) comes on top in M5.
 
 ## 9. Runtime (Docker Compose)
 
@@ -380,7 +394,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | --- | --- | --- |
 | 1 | Skeleton + ledger: compose, `files`, hashing, ingest, `dry-run` CSV | Re-running on the same folder skips 100% of files, with no new ledger rows. |
 | 2 | Sanitize: EXIF strip, literal/regex, `sanitize_log`, entity rule via local LLM | 50 seeded names come out with 0 residual sensitive values. EXIF on outputs contains only the allow-list. |
-| 3 | Classify: SigLIP + NSFW, default formats and topics, `<Topic>/<Format>` folders, mirror, thresholds per axis, unsorted, category CLI; **threshold calibration** | Measured on **every real image labelled in `fixtures/labels.csv`**. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 90% **format** agreement on rows with a format; ≥ 85% **topic** agreement on rows with a topic (CLS-001.D5); every row tagged `suggestive-negative` must stay `safe`; the NSFW gate flags **every** labelled adult image and **0** safe ones; unrecognized < 10%. Rows tagged `calibration-only` in `fixtures/labels.csv` may be used for threshold calibration but don't count toward the gate (TST-008.D2). **Published results (TST-008.D1):** in public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**. No breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. |
+| 3 | Classify: a local VLM classifies format and topic and rates the NSFW level (CLS-004; SigLIP keeps `image_vec`, Falconsai is the cross-check), default formats and topics, `<Topic>/<Format>` folders, mirror, unsorted, category CLI; **the prompts measured on the labelled fixtures** | Measured on **every real image labelled in `fixtures/labels.csv`**. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 85% **format** agreement on rows with a format (CLS-004.D12: lowered from 90%, since `memes` is ambiguous by nature); ≥ 85% **topic** agreement on rows with a topic (CLS-001.D5, amended); every row tagged `suggestive-negative` must stay `safe`; **every** labelled adult image is flagged and **0** safe ones, judged by NSFW level at `nsfw.min_level` (R-CLS-1); unrecognized < 10%. Rows tagged `calibration-only` in `fixtures/labels.csv` may be used for threshold calibration but don't count toward the gate (TST-008.D2). **Published results (TST-008.D1):** in public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**. No breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. |
 | 4 | Status UI read-only: `/api/status`, `/api/files`, dashboard, `report` | A dry run of the whole real folder is reviewable end to end without a terminal. |
 | 5 | Name: built-in and user templates, captions from both VLMs, collisions | 0 sensitive values in 500 names. A readability spot-check of names passes human review at G1. |
 | 6 | RAG + web: pgvector, judge, SearXNG, write-back, `refs` CLI | A franchise searched once resolves locally on the second image (`web_called = false`). |
@@ -432,8 +446,8 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | C-2 | `naming.nsfw_template: reference` | `nsfw_template: null` (category template) **plus** `nsfw_prefix: "nsfw_"` on every adult name, configurable (R-NAME-8) | Human decision, 2026-10-05. | **changed** |
 | C-3 | Sources moved to `done/`; `source_root/inbox` | Source folder is **read-only** (mounted `:ro`, never moved or modified); outputs go to a separate `results_root`; no `inbox/` or `done/`; `purge-done` becomes `purge-sources` (disabled by default) | Human decision, 2026-10-05. | **changed** |
 | C-4 | `reference_embeddings.image_vec` is 768-d; text is "bge-m3 or nomic, 1024-d" | 1152-d (SigLIP so400m), 1024-d (bge-m3 only) | so400m outputs 1152-d. nomic-embed is 768-d, so one model must be fixed for the column type. | **accepted** |
-| C-5 | `min_score` default 0.25 **cosine** | Sigmoid probability, max over prompts; defaults calibrated in M3 | Raw SigLIP image–text cosines for true matches sit well below 0.25, so the plan's default would send almost everything to Unsorted. | **accepted** |
-| C-6 | (unspecified) | Nested-category rule R-CLS-4 | `anime` and `artwork` prompts overlap. Without the rule, the 0.05 margin pushes most anime images to Unsorted. | **accepted** |
+| C-5 | `min_score` default 0.25 **cosine** | Sigmoid probability, max over prompts; defaults calibrated in M3 | Raw SigLIP image–text cosines for true matches sit well below 0.25, so the plan's default would send almost everything to Unsorted. | **superseded** by C-25 (2026-10-18) |
+| C-6 | (unspecified) | Nested-category rule R-CLS-4 | `anime` and `artwork` prompts overlap. Without the rule, the 0.05 margin pushes most anime images to Unsorted. | **superseded** by C-25: the VLM picks one enum entry, so R-CLS-4 now says a nested category is its own entry (2026-10-18) |
 | C-7 | Stage order Name (3) then Retrieve (4) | Execution order caption → retrieve → name | Naming consumes `{reference}`. | **accepted** |
 | C-8 | Per-file LangGraph flow plus per-stage batching | Batch nodes with the ledger status as checkpoint; fileops per file | The two models conflict. Batching is what makes VRAM swapping work. | **accepted** |
 | C-9 | Separate `review` and `needs_review` flags; `status=unsorted` | One `needs_review` + `review_reason`; unsorted is a category | One status model for the UI and API. | **accepted** |
@@ -452,6 +466,10 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | C-22 | R-PIPE-2: a dry run "ends at status `proposed`" | **In M3 a dry run stops at `classified`**, the last node built, as M1 and M2 stopped at theirs (`queued`, `sanitized`). `proposed` becomes reachable when `name` lands in M5. | `proposed` is written by `name`, which doesn't exist before M5; a stub would mark rows proposed with nothing proposed (CLS-002.D12). | **accepted** (human, 2026-10-12) |
 | C-23 | R-CLS-6: an adult image "falls through" a `safe`-only category | **Fall-through never picks the runner-up:** an ineligible format winner goes to `Adult/Unsorted/`, an ineligible topic winner to no topic. | The runner-up was not chosen by the scores; filing there would invent a category (CLS-002.D2). | **accepted** (human, 2026-10-12) |
 | C-24 | §6 lists `nsfw.mode: separate` beside `mirror` | **`separate` fails fast** with a message naming the key, until a milestone specifies it. | §6 names the value but no section defines its behaviour (CLS-002.D9). | **accepted** (human, 2026-10-12) |
+| C-25 | SigLIP zero-shot scores format and topic; Falconsai gates NSFW | **A local VLM classifies** (`qwen3-vl:8b-instruct` through Ollama): one structured call for format and topic, with the sanitized file name as a hint, and a dedicated call for the NSFW level. SigLIP keeps `image_vec`, and Falconsai becomes a review cross-check (R-CLS-1, R-CLS-2; CLS-004). | CLS-003.1 showed thresholds can't reach gate 3 with SigLIP, and the client was verified against the reference model. The human's spike with the VLM passed every gate 3 criterion. | **changed** (human, 2026-10-17) |
+| C-26 | "Adult means explicit sexual imagery" with a Falconsai score threshold (CLS-001.D12) | **NSFW scale A** (`safe < suggestive < nudity < explicit`) with a strictness setting, `nsfw.min_level`, at `nudity`. Text alone never raises the level; a bare male chest is not nudity (R-CLS-1; CLS-004.D2, D3). | Falconsai scores every sexualized image near the top of its range, so its threshold can't act as a strictness knob, and the human wanted one. | **changed** (human, 2026-10-14) |
+| C-27 | R-MOD-1: `keep_alive` per stage | **One resident Ollama model** (`OLLAMA_MAX_LOADED_MODELS=1`), **one `num_ctx` (4096) in every prompt file**, and the instruct builds (R-MOD-1, R-MOD-1a; RUN-016, CLS-004.D8, D9) | In the spike, two models at once filled the GPU and host RAM; a context-size mismatch reloaded the model on every call; the thinking build returned empty answers. | **changed** (human, 2026-10-17) |
+| C-28 | Gate 3: ≥ 90% format agreement (CLS-001.D5) | **≥ 85% format agreement** (§11; CLS-004.D12). Topic stays at 85%. | `memes` is ambiguous by nature: whether an image is a joke depends on the person. It needs another solution later, such as the personal exemplars (CLS-005), not a stricter target. | **changed** (human, 2026-10-17) |
 
 ## 14. Open questions (human)
 
@@ -464,4 +482,4 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | Q-5 | ~~Repo location~~ | **Answered (2026-10-05):** Windows-native, no WSL repo. The workspace is `file-sorter-full\` and the repo is fixed at `file-sorter-full\file-sorter` (§9a). |
 | Q-6 | ~~Metadata loss~~ | **Answered:** the source is read-only and never deleted by sorting. Deletion stays as a separate function, disabled by default (P-1, R-FOP-0, R-FOP-8). |
 | Q-7 | ~~Public fixtures~~ | **Answered:** `fixtures/labels.csv` is git-ignored, and a 5-row synthetic `labels.example.csv` is committed. |
-| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. Every real image is labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic); the NSFW gate catches every adult image with 0 false positives (§11, M3). |
+| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. Every real image is labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic; amended again by CLS-004.D12: ≥ 85% format); the NSFW gate catches every adult image with 0 false positives, judged by level at `nsfw.min_level` (§11, M3). |
