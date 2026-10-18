@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from classifier.models.prompts import PROMPTS_DIR, load_effective_prompt, load_prompt
+
 pytest_plugins = ["pytester"]
 
 REPO_TESTS = Path(__file__).resolve().parents[1]
@@ -94,3 +96,34 @@ def test_a_subprocess_inherits_the_switch(inner: pytest.Pytester) -> None:
 
 def test_the_real_tiers_of_this_repo_run_with_it_off() -> None:
     assert os.environ.get(ENV) == "off"
+
+
+PLACEHOLDER = "Placeholder addendum text, planted by a test."
+
+
+@pytest.fixture
+def planted(tmp_path: Path) -> Path:
+    """A prompts dir holding a copy of `classify_v1` and a placeholder local addendum."""
+    (tmp_path / "classify_v1.md").write_bytes((PROMPTS_DIR / "classify_v1.md").read_bytes())
+    (tmp_path / "local").mkdir()
+    (tmp_path / "local" / "classify_v1.md").write_text(PLACEHOLDER, encoding="utf-8")
+    return tmp_path
+
+
+def test_a_planted_addendum_changes_nothing_in_the_default_tiers(planted: Path) -> None:
+    prompt = load_effective_prompt("classify_v1", prompts_dir=planted)
+    assert prompt == load_prompt("classify_v1", planted)
+    assert prompt.addendum is None
+    assert prompt.addendum_hash is None
+    assert prompt.effective_version == prompt.version == "classify_v1"
+    assert PLACEHOLDER not in prompt.template
+
+
+def test_the_same_addendum_applies_once_the_switch_is_not_off(
+    planted: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The control: the planted file is live, so the test above is not vacuous."""
+    monkeypatch.delenv(ENV)
+    prompt = load_effective_prompt("classify_v1", prompts_dir=planted)
+    assert prompt.addendum == PLACEHOLDER
+    assert prompt.effective_version.startswith("classify_v1+")
