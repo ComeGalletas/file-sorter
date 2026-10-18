@@ -119,8 +119,20 @@ references or host paths here. Use hashes.
 ## CFG-003 — Tasks
 
 - [ ] CFG-003.1 — The schema in `classifier/config.py` (with typed enums for `min_level`, validated cross-check bounds, and fixed-text errors naming the key) and the human's values in `config.yaml` · #130 · Pipeline · acceptance: `tests/unit/test_config.py`
-  - [x] CFG-003.1.1 — The schema: ordered `NsfwLevel`, `nsfw.min_level` (refuses `safe`), `nsfw.cross_check` bounds and order check, the obsolete SigLIP keys optional. `min_level` is optional here so `config.yaml` still loads until .2 sets it · hash: next commit
-  - [x] CFG-003.1.2 — `config.yaml`: the human's values (type `balance`): `nsfw.min_level: nudity`, both cross-check values null, `models.vlm_safe: qwen3-vl:8b-instruct` · hash: next commit
-  - [x] CFG-003.1.3 — `min_level` becomes required, now that the file sets it · hash: next commit
+  - [x] CFG-003.1.1 — The schema: ordered `NsfwLevel`, `nsfw.min_level` (refuses `safe`), `nsfw.cross_check` bounds and order check, the obsolete SigLIP keys optional. `min_level` is optional here so `config.yaml` still loads until .2 sets it · hash: c5e9a2c
+  - [x] CFG-003.1.2 — `config.yaml`: the human's values (type `balance`): `nsfw.min_level: nudity`, both cross-check values null, `models.vlm_safe: qwen3-vl:8b-instruct` · hash: e95b8bb
+  - [x] CFG-003.1.3 — `min_level` becomes required, now that the file sets it · hash: 3066d47
+  - [x] CFG-003.1.4 — Results and the self-rating · this commit
 
 ## CFG-003 — Results
+
+### CFG-003.1 (Pipeline, PR for #130)
+
+- **Tests:** `tests/unit/config/test_config.py` (the acceptance test; the issue named `tests/unit/test_config.py`, the lead corrected it): 92 tests pass. Default tiers (`make test`): 1968 passed at CFG-003.1.2, and unit + integration passed again at CFG-003.1.3. No `db`-specific change, no `gpu`, no `eval/` run: no model, prompt or threshold is calibrated here. `make lint` clean.
+- **Schema:** ordered `NsfwLevel` (`safe < suggestive < nudity < explicit`); `nsfw.min_level` is required and refuses `safe`, numbers and other names; `nsfw.cross_check.safe_above` / `adult_below` are in [0, 1], finite, not bool, and `adult_below` must be below `safe_above`; both null (or the section absent) turns the cross-check off. The obsolete keys (`nsfw.threshold`, `classify.*`) are optional with no defaults and still parse (CLS-004.D7).
+- **Values (`config.yaml`, type balance, CFG-003.1.2):** only `nsfw.min_level: nudity`, the two null cross-check keys and `models.vlm_safe: qwen3-vl:8b-instruct`. `vlm_nsfw` stays null (Q-1), `text_llm` unchanged (SAN-004.2).
+- **Commit order:** `min_level` landed optional first and became required after the value commit (CFG-003.1.3), so every commit loads the repo's `config.yaml`.
+- **Privacy:** errors carry the key location and the pydantic error type only; tests plant a string and a number in the new keys and check `str`, `repr`, `__cause__` and `__context__`. No new field holds a path, name or label, so no `repr=False` is needed.
+- **Consumers now seeing `None` (other roles' files, not touched):** `graph/classify.py` (`config.classify.score`, `config.nsfw.threshold`, `validate_rules(... config.classify)`), `models/classify_rules.py` (`default_min_score`, `margin`), `cli/categories.py` (`config.classify`). CLS-004.3 and .4 re-point them.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. The gap: the old SigLIP path now sees `None` in its keys and would fail at run time rather than at load; CLS-004.4 owns that.
+- **Reviewer / Privacy auditor:** pending.
