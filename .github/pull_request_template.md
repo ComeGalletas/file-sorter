@@ -8,7 +8,7 @@ Closes #<issue> · **Implements:** R-… · **Journal:** `docs/journals/<feature
 Size: small | medium | large — why
 Tests: which tiers / paths — why
 Agents: solo | subagents (which, on what) — why
-Branch: <branch> in <worktree path>
+Branch: <branch> in <repo-relative worktree path, e.g. .agent-office/worktrees/<desk>>
 ```
 
 ## What changed
