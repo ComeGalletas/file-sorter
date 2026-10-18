@@ -8,13 +8,15 @@ No error raised by `load_config` repeats a value from the file or the environmen
 name the file, the key location and the error type only (CFG-002).
 """
 
+import math
 import os
 import posixpath
+from enum import IntEnum
 from pathlib import Path, PurePosixPath
-from typing import Literal
+from typing import Literal, Self
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 CONFIG_ENV = "CLASSIFIER_CONFIG"
 DSN_ENV = "DB_DSN"
@@ -49,21 +51,79 @@ class ModelsConfig(_Section):
     text_embed: str
 
 
+class NsfwLevel(IntEnum):
+    """The VLM's NSFW level, ordered: adult means `level >= nsfw.min_level` (CLS-004.D3)."""
+
+    safe = 0
+    suggestive = 1
+    nudity = 2
+    explicit = 3
+
+
+# CFG-003.1: the SigLIP keys below no longer decide anything (CLS-004.D7). They stay
+# parseable, and optional, until DOC-009 decides whether DESIGN drops them.
 class AxisConfig(_Section):
     default_min_score: float | None = None  # calibrated in M3 (R-CLS-8)
-    margin: float
+    margin: float | None = None
 
 
 class ClassifyConfig(_Section):
-    score: Literal["sigmoid", "cosine"]
-    format: AxisConfig
-    topic: AxisConfig
+    score: Literal["sigmoid", "cosine"] | None = None
+    format: AxisConfig = AxisConfig()
+    topic: AxisConfig = AxisConfig()
+
+
+class CrossCheckConfig(_Section):
+    """The Falconsai cross-check (CLS-004.D5): both null turns it off.
+
+    Errors name the key and the error type only, never the value (CFG-002).
+    """
+
+    safe_above: float | None = None
+    adult_below: float | None = None
+
+    @field_validator("safe_above", "adult_below", mode="before")
+    @classmethod
+    def _real_number(cls, value: object) -> object:
+        # A bool is an int to Python; a YAML `true` here is a mistake, not 1.0.
+        if isinstance(value, bool):
+            raise ValueError("must be a number")
+        return value
+
+    @field_validator("safe_above", "adult_below")
+    @classmethod
+    def _unit_interval(cls, value: float | None) -> float | None:
+        if value is not None and not (math.isfinite(value) and 0.0 <= value <= 1.0):
+            raise ValueError("must be within [0, 1]")
+        return value
+
+    @model_validator(mode="after")
+    def _ordered(self) -> Self:
+        if (
+            self.safe_above is not None
+            and self.adult_below is not None
+            and self.adult_below >= self.safe_above
+        ):
+            raise ValueError("adult_below must be below safe_above")
+        return self
 
 
 class NsfwConfig(_Section):
-    threshold: float
+    threshold: float | None = None  # obsolete (CLS-004.D3): replaced by min_level
+    min_level: NsfwLevel | None = None
+    cross_check: CrossCheckConfig = CrossCheckConfig()
     mode: Literal["mirror", "separate"]
     root: str
+
+    @field_validator("min_level", mode="before")
+    @classmethod
+    def _level_by_name(cls, value: object) -> object:
+        # `suggestive | nudity | explicit` only: not `safe`, and not a number (CLS-004.D3).
+        if value is None:
+            return None
+        if isinstance(value, str) and value in ("suggestive", "nudity", "explicit"):
+            return NsfwLevel[value]
+        raise ValueError("must be suggestive, nudity or explicit")
 
 
 class NamingConfig(_Section):
@@ -120,7 +180,7 @@ class Config(_Section):
     paths: PathsConfig
     folders: FoldersConfig
     models: ModelsConfig
-    classify: ClassifyConfig
+    classify: ClassifyConfig = ClassifyConfig()
     nsfw: NsfwConfig
     naming: NamingConfig
     rag: RagConfig

@@ -119,5 +119,8 @@ references or host paths here. Use hashes.
 ## CFG-003 — Tasks
 
 - [ ] CFG-003.1 — The schema in `classifier/config.py` (with typed enums for `min_level`, validated cross-check bounds, and fixed-text errors naming the key) and the human's values in `config.yaml` · #130 · Pipeline · acceptance: `tests/unit/test_config.py`
+  - [x] CFG-003.1.1 — The schema: ordered `NsfwLevel`, `nsfw.min_level` (refuses `safe`), `nsfw.cross_check` bounds and order check, the obsolete SigLIP keys optional. `min_level` is optional here so `config.yaml` still loads until .2 sets it · hash: next commit
+  - [ ] CFG-003.1.2 — `config.yaml`: the human's values (type `balance`)
+  - [ ] CFG-003.1.3 — `min_level` becomes required, now that the file sets it
 
 ## CFG-003 — Results

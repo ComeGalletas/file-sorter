@@ -6,7 +6,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from classifier.config import Config, ConfigError, check_roots, load_config
+from classifier.config import Config, ConfigError, NsfwLevel, check_roots, load_config
 
 REPO = Path(__file__).resolve().parents[3]
 REAL_CONFIG = REPO / "config.yaml"
@@ -327,3 +327,116 @@ def test_dsn_is_not_in_the_config_repr(monkeypatch: pytest.MonkeyPatch) -> None:
     assert PLANTED not in repr(config)
     assert PLANTED not in str(config)
     assert PLANTED not in repr(config.db)
+
+
+# CFG-003.1: the VLM classifier settings (CLS-004.D3, D5, D7)
+
+
+def with_nsfw(**changes: object) -> dict:
+    data = real_data()
+    data["nsfw"].update(changes)
+    return data
+
+
+def cross_check(**values: object) -> dict:
+    return with_nsfw(cross_check=values)
+
+
+def test_level_enum_is_ordered_with_safe_below_all() -> None:
+    assert NsfwLevel.safe < NsfwLevel.suggestive < NsfwLevel.nudity < NsfwLevel.explicit
+
+
+@pytest.mark.parametrize("name", ["suggestive", "nudity", "explicit"])
+def test_min_level_accepts_the_three_adult_levels(name: str) -> None:
+    config = Config.model_validate(with_nsfw(min_level=name))
+    assert config.nsfw.min_level is NsfwLevel[name]
+
+
+@pytest.mark.parametrize("value", ["safe", "Nudity", "", "adult", 2, 0, True, 1.5, ["nudity"]])
+def test_min_level_refuses_anything_else(value: object) -> None:
+    with pytest.raises(ValidationError):
+        Config.model_validate(with_nsfw(min_level=value))
+
+
+def test_cross_check_defaults_to_off() -> None:
+    data = real_data()
+    data["nsfw"].pop("cross_check", None)
+    check = Config.model_validate(data).nsfw.cross_check
+    assert check.safe_above is None
+    assert check.adult_below is None
+
+
+def test_cross_check_accepts_the_bounds_and_null() -> None:
+    both = Config.model_validate(cross_check(safe_above=1, adult_below=0)).nsfw.cross_check
+    assert (both.safe_above, both.adult_below) == (1.0, 0.0)
+    only_one = Config.model_validate(cross_check(safe_above=0.5)).nsfw.cross_check
+    assert only_one.adult_below is None
+
+
+@pytest.mark.parametrize("key", ["safe_above", "adult_below"])
+@pytest.mark.parametrize(
+    "value", [-0.01, 1.01, float("nan"), float("inf"), -float("inf"), "high", True, False, [0.5]]
+)
+def test_cross_check_refuses_a_bad_value(key: str, value: object) -> None:
+    with pytest.raises(ValidationError):
+        Config.model_validate(cross_check(**{key: value}))
+
+
+@pytest.mark.parametrize("pair", [(0.5, 0.5), (0.3, 0.6)])
+def test_cross_check_refuses_adult_below_not_under_safe_above(pair: tuple[float, float]) -> None:
+    with pytest.raises(ValidationError):
+        Config.model_validate(cross_check(safe_above=pair[0], adult_below=pair[1]))
+
+
+def test_cross_check_accepts_adult_below_under_safe_above() -> None:
+    config = Config.model_validate(cross_check(safe_above=0.75, adult_below=0.25))
+    assert config.nsfw.cross_check.safe_above == 0.75
+
+
+def test_obsolete_siglip_keys_are_not_required() -> None:
+    data = real_data()
+    del data["classify"]
+    del data["nsfw"]["threshold"]
+    config = Config.model_validate(data)
+    assert config.nsfw.threshold is None
+    assert config.classify.score is None
+    assert config.classify.format.margin is None
+
+
+def test_obsolete_siglip_keys_still_parse() -> None:
+    data = real_data()
+    data["nsfw"]["threshold"] = 0.5
+    data["classify"] = dict(
+        score="cosine",
+        format=dict(default_min_score=0.4, margin=0.1),
+        topic=dict(margin=0.2),
+    )
+    config = Config.model_validate(data)
+    assert config.nsfw.threshold == 0.5
+    assert config.classify.format.margin == 0.1
+    assert config.classify.topic.default_min_score is None
+
+
+def test_cross_check_errors_name_the_key_and_never_the_value(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = with_nsfw(min_level=PLANTED, cross_check=dict(safe_above=7.77123, adult_below=PLANTED))
+    error = load_error(write_config(tmp_path, data))
+    assert "nsfw.min_level: value_error" in str(error)
+    assert "nsfw.cross_check.safe_above: value_error" in str(error)
+    assert "nsfw.cross_check.adult_below: float_parsing" in str(error)
+    assert "7.77123" not in str(error)
+    assert_value_free(error)
+
+
+def test_inverted_cross_check_error_is_value_free(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    error = load_error(write_config(tmp_path, cross_check(safe_above=0.1234, adult_below=0.9876)))
+    assert "nsfw.cross_check: value_error" in str(error)
+    for text in (str(error), repr(error)):
+        assert "0.1234" not in text
+        assert "0.9876" not in text
+    assert_value_free(error)
