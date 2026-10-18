@@ -449,6 +449,13 @@ references or host paths here. Use hashes.
   - **Any node `error` fails the gate** (as TST-005.D7). So does labels-to-images coverage that isn't exact, reported as `ok` or `FAIL` with no count.
   - Rows are matched to labels by file name **in memory only**.
 - **TST-008.D5** — **Loader errors** (lead, 2026-10-12). A bad header, an unknown format or topic, topic = format, an `adult` other than `yes`/`no`, or an unknown tag stops the load. The fixed text names the line number and the column, never a value.
+- **TST-008.D7** — **`logit_scale` and `logit_bias` are recorded** (lead, 2026-10-14, the #96 plan). They form a fourth kind, `param`, keyed `{model, "param", "logit_scale"|"logit_bias"}`, with shape `[]`. That way, replayed scores are what the recorded model gives.
+- **TST-008.D8** — **The image digest is length-prefixed** (lead, 2026-10-14, the #113 review; it refines D3's wording). The digest hashes the mode, the `<QQ` size and the pixels, each length-prefixed, so a concatenation can't collide.
+- **TST-008.D9** — **What a vision recording may hold** (lead, 2026-10-14, after #113's privacy rounds):
+  - **Model ids:** only the ids in the committed `config.yaml`'s `models` section that the vision backend uses. A test-only id must be `synthetic/<[a-z0-9-]{1,40}>`.
+  - **Text inputs:** ASCII letters, digits, single spaces, `,` and `'` only, with at least one letter. No `.` at all, no word with 3 or more digits, and at most 256 characters.
+  - **Not provable:** the lint cannot prove a phrase is synthetic. The privacy review of each committed recording covers that.
+- **TST-008.D10** — **A proposed config value may be public** (the lead's reading, 2026-10-14, PR #120; reported confirmed by the human through their watch session, to be confirmed in the lead session). A setting such as `nsfw.threshold` or a `min_score`, printed as a proposal, is configuration that would be committed to `config.yaml`. It is not a figure about the human's rows. D1's "verdict only" still covers the measures.
 
 ## TST-008 — Tasks
 
@@ -464,8 +471,27 @@ references or host paths here. Use hashes.
   - [x] TST-008.2.1 — parser, typed rows, fixed-text errors (a14ebe5)
   - [x] TST-008.2.2 — vocabulary, topic ≠ format, tags, duplicates, file-level read (11048a4)
 - [ ] TST-008.3 — `scripts/gate_3.py`: the CLS-001.D5 measures (TST-008.D1, D4, D6; adult and `suggestive-negative` print a verdict only); the G1 run · #103 · acceptance: `scripts/gate_3.py`
+  - [x] TST-008.3.1 — pure measures: `Outcome`, `Tally`, `evaluate` (exact integer ratios, calibration-only left out, coverage and error checks); unit tests (commit with .3.2)
+  - [x] TST-008.3.2 — `judge`: the TST-008.D6 public form and `--detail` text; boundary tests (89.99 → `89%` FAIL, 90.0 → `90%` PASS) (commit with .3.1)
+  - [x] TST-008.3.3 — runner: vocabularies from the throwaway schema, ingest → sanitize → classify through the graph registry (real `classify`, CLS-002.2), outcomes, `main`/`--detail` (32bcebe, then wired to the real node in the commit that ticks .3.6)
+  - [x] TST-008.3.4 — `tests/integration/test_gate_3_script.py` on synthetic images and labels, real ingest and sanitize nodes, a classify stand-in until #99 (swap in the real node over replayed vision then; follow-up .3.6)
+  - [x] TST-008.3.6 — the integration test runs the real classify node over replayed vision (the classify scenario's four synthetic pictures, an NSFW-score double), the stand-in is gone
+  - [x] TST-008.3.5 — Results written; the real G1 run (`make gate-3`) is a separate step after #102 and the lead's go
+  - [x] TST-008.3.7 — privacy round 1: `repr=False` on `Verdict.lines` and `Verdict.detail`, and a planted-secret test on `judge(m, detail=True)`
 
 ## TST-008 — Results
+
+### TST-008.3 — Results (#103)
+
+- **Built:** `scripts/gate_3.py`: pure measures (`Outcome`, `Tally`, `evaluate`), `judge` (the TST-008.D6 public form, `--detail` text kept apart), and the runner (ingest → sanitize → classify through the graph registry in a fresh migrated schema and a removed temp results tree).
+- **Vocabularies:** the `categories` table of the gate's own migrated schema, so the gate measures the committed configuration, not categories added locally through the category CLI.
+- **Verdicts from exact values:** integer ratios decide; only the printed figure is rounded down. Tested at 89.99% (prints `89%`, FAIL) and 90.0% (prints `90%`, PASS); unrecognized is strictly below 10%.
+- **Choice beyond TST-008.D4:** a criterion with no rows to measure (no adult row, no `suggestive-negative` row, no format or topic label) fails rather than passing vacuously.
+- **Tests (acceptance for this branch: `tests/integration/test_gate_3_script.py`, as TST-005.D9 in M2):** 42 passed in the three gate 3 modules: `unit` (measures, public form, repr hygiene, runner pieces with fakes) and `integration` (real ingest, sanitize and classify nodes over replayed vision on the classify scenario's synthetic pictures, an NSFW-score double with no content). A wider run over `tests/unit/gate`, `tests/devtools` and the integration module: 506 passed. `make lint` clean. No `gpu` or `gate` tier run.
+- **Privacy:** default output is the public form only (no counts, denominators, splits, names or values; no digit on the adult and `suggestive-negative` lines); `--detail` is console-only and marked; every field holding label or ledger values is `repr=False` with a planted-secret test; errors are fixed text and an unexpected error prints its type only.
+- **Not yet run:** the real `make gate-3` on the real fixtures is the G1 step, after CLS-003.2 (#102) merges and the lead's go. Its default output goes into the plan's Results as printed.
+- **Status:** DONE_WITH_CONCERNS. Concern (low): the gate has not run on the real fixtures or real models yet, by design; follow-up is the G1 run. **Self-rating:** 8/10, proud: yes. Gaps against the acceptance test: the integration labels are derived from the node's first pass, so the wiring is proved but not the agreement itself (the unit tests prove that on plain numbers); the real-model run is G1.
+- **Privacy round 1 (PR #126):** FAIL on one point, `Verdict.lines` and `Verdict.detail` lacked `repr=False` (TST-008.3.7, fixed with a planted-secret test on `judge(m, detail=True)`). Reviewer: APPROVE.
 
 ### TST-008.2 — Results (#95)
 
@@ -486,3 +512,29 @@ references or host paths here. Use hashes.
 - **Tests:** acceptance `tests/devtools/test_vision_recordings.py` (unit). `make test`: 1442 passed, 31 deselected. `make lint` clean. No `gpu` run: the recorder is tested on a fake backend, and the real recording belongs to MOD-002.D6.
 - **Privacy:** the text inputs and arrays are `repr=False` (planted-secret repr test); every error is fixed text, unchained; every filesystem call is wrapped; the lint refuses links, a model that is not `models.classifier` or `models.nsfw` in `config.yaml`, text outside ASCII letters, digits, single spaces, commas and apostrophes (no `.`, no leading or trailing space, at least one letter, no word of 3 or more digits), non-hash image inputs and extra keys (TST-008.1.5, TST-008.1.6, TST-008.1.7, TST-008.D9). A test may register an extra model id only as `synthetic/<name>` (`<name>` of 1 to 40 of `a-z`, `0-9`, `-`). Every probe string of both privacy rounds is a refused test case. This task commits no recordings.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gaps: the lint cannot prove a text input is synthetic, so it allows only the text characters above and the review checks the rest; the fixture's `upstream` wiring is exercised against a stub, not the ML desk's real gpu fixture.
+
+---
+
+## TST-009 — Requirement (human, the M3 VLM re-plan, 2026-10-18)
+
+- **Objective:** test infrastructure for the VLM classifier (CLS-004), and gate 3 judged by NSFW level.
+- **Details:**
+  - **TST-009.1:** the Ollama recordings (TST-005.D5) gain image inputs. A request that carries images is keyed with each image's TST-008.D8 digest in place of its bytes, so the default tiers replay VLM calls exactly, from synthetic images only.
+  - **TST-009.2:** gate 3's NSFW lines are judged by level at `nsfw.min_level` (CLS-004.D3). The loader takes an optional `nsfw_level` column (TST-009.D1). Format's target moves to 85% (CLS-004.D12, DOC-009).
+- **Constraint:** TST-008.D1/D6's public form is unchanged. Recordings stay synthetic (TST-008.D9's text rule applies to prompt text in VLM recordings too).
+- **Implements:** §11 M3 gate (as amended by DOC-009), CLAUDE.md §3; CLS-004.
+
+## TST-009 — Confirmed reading
+
+- **TST-009.D1** — **An optional `nsfw_level` column in `fixtures/labels.csv`** (the lead's recommendation from the human's write-up, item 4; **to confirm**).
+  - When a row has a level, the gate expects `adult = (level >= min_level)`.
+  - When it has none, the row's `adult` column stands, as today.
+  - The level values are the human's. QA changes only the loader and `labels.example.csv`.
+- **TST-009.D2** — **The recording key for a VLM call** (lead). It is TST-005.D5's key, with `images` replaced by the list of TST-008.D8 digests in order. No pixel or base64 data is ever written to a recording.
+
+## TST-009 — Tasks
+
+- [ ] TST-009.1 — Image-aware Ollama recordings: key, replay and lint (TST-009.D2) · #127 · QA · acceptance: `tests/devtools/test_recordings.py`
+- [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
+
+## TST-009 — Results

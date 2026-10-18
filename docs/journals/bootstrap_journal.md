@@ -856,3 +856,18 @@ and then (PR #43 review round 2):
 - **Triage:** small. A fail-closed fix in the guard, with its test.
 - **Tests:** the default tiers, 1120 passed; `make lint` clean.
 - **Regression check:** against `main`'s guard, the new failing-`awk` test fails, because `main` allowed the command.
+
+---
+
+## RUN-016 — Requirement (human-side, the M3 VLM re-plan, 2026-10-18; 3.5)
+
+- **Objective:** one resident Ollama model, and the instruct model available on the box.
+- **Details:**
+  - `OLLAMA_MAX_LOADED_MODELS=1` on the `ollama` service in `docker-compose.yml`.
+  - `make models` pulls `qwen3-vl:8b-instruct` (Ollama model pulls are a designed runtime exception).
+- **Constraint:** human-side (RUN-002.D16): it touches Compose and the Makefile. No new network route, since the pull goes through the existing `ollama` service.
+- **Implements:** CLS-004.D8, D9; R-MOD-*.
+
+## RUN-016 — Tasks
+
+- [ ] RUN-016.1 — The `ollama` service setting and the model pull · human-side · acceptance: `make models` and `make test-gpu`
