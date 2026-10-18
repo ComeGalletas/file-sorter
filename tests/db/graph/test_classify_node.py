@@ -577,6 +577,38 @@ def test_ollama_being_unreachable_stops_the_node_instead_of_erroring_files(
     assert _row(db, h)["status"] == "sanitized"  # never marked `error`
 
 
+@pytest.fixture
+def cross_checked(config: Config) -> Config:
+    config.nsfw.cross_check.safe_above = 0.9
+    config.nsfw.cross_check.adult_below = 0.1
+    return config
+
+
+@pytest.mark.usefixtures("categories")
+def test_a_strong_disagreement_sets_review_and_never_the_branch(
+    db: psycopg.Connection, folders: tuple[Path, Path], cross_checked: Config
+) -> None:
+    says_safe = _add(db, folders[1], 40, red=0, green=255)  # VLM safe, Falconsai 1.0
+    says_adult = _add(db, folders[1], 41, red=100, green=0)  # VLM explicit, Falconsai 0.0
+    agrees = _add(db, folders[1], 42, red=200, green=0)  # VLM safe, Falconsai 0.0
+    ollama = FakeOllama(
+        {0: Script(level="safe"), 100: Script(level="explicit"), 200: Script(level="safe")}
+    )
+    classify(db, _ctx(folders, cross_checked, FakeVision(), ollama))
+    one, two, three = (_row(db, h) for h in (says_safe, says_adult, agrees))
+    assert (one["branch"], one["needs_review"], one["review_reason"]) == (
+        "safe",
+        True,
+        "nsfw_disagreement",
+    )
+    assert (two["branch"], two["needs_review"], two["review_reason"]) == (
+        "nsfw",
+        True,
+        "nsfw_disagreement",
+    )
+    assert (three["branch"], three["needs_review"]) == ("safe", False)
+
+
 @pytest.mark.usefixtures("categories")
 def test_no_thresholds_means_no_cross_check(
     db: psycopg.Connection, folders: tuple[Path, Path], config: Config
