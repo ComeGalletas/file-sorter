@@ -456,8 +456,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.2.5 — gpu test, Results, self-rating, PR (`d130ea2`)
   - [ ] CLS-004.2.6 — recordings of the classify and NSFW requests, after #153 (TST-010.1)
   - [x] CLS-004.2.7 — `encode_frame` raises outside the `except`, so `__context__` is None too; test on `encode_frame` directly (this commit)
-  - [ ] CLS-004.2.8 — `OllamaUnavailable` raised unchained with fixed text, with a test
-  - [ ] CLS-004.2.9 — `httpx.DecodingError` wrapped as an answer failure (`OllamaError`), with tests
+  - [x] CLS-004.2.8 — `OllamaUnavailable` raised unchained with fixed text, with a test (this commit, with .2.9: one edit of the same block)
+  - [x] CLS-004.2.9 — `httpx.DecodingError` wrapped as an answer failure (`OllamaError`), with tests (this commit)
   - [x] CLS-004.2.10 — the planted `OSError` text in the tests is a coinage, not a path (this commit, with .2.7: both edit the same test)
   - [ ] CLS-004.2.11 — journal: hashes for CLS-004.2.1 to .5 and the duplicate-subject note
   - [ ] CLS-004.2.12 — Results, self-rating, PR

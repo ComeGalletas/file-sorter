@@ -243,6 +243,16 @@ def test_unavailable_propagates_without_a_retry(exc_type: type[httpx.TransportEr
     assert len(seen) == 1
 
 
+def test_an_undecodable_body_is_a_failed_answer_retried_once() -> None:
+    client, seen = scripted(httpx.DecodingError, classify_reply())
+    assert classify(client) == ClassifyAnswer(format="Qorvex", topic="Vrellik")
+    assert len(seen) == 2
+    client, seen = scripted(httpx.DecodingError, httpx.DecodingError)
+    with pytest.raises(VlmUnanswered):
+        classify(client)
+    assert len(seen) == 2
+
+
 def test_unavailable_on_the_retry_propagates_too() -> None:
     client, seen = scripted(httpx.Response(500), httpx.ConnectError)
     with pytest.raises(OllamaUnavailable):
