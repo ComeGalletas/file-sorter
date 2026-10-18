@@ -13,7 +13,7 @@ folders:
 models:
   classifier: google/siglip-so400m-patch14-384
   nsfw: Falconsai/nsfw_image_detection
-  vlm_safe: qwen3-vl:8b
+  vlm_safe: qwen3-vl:8b-instruct     # classify model (CLS-004.D8, CFG-003.1)
   vlm_nsfw: null                     # Q-1: kept open until M5 planning; never picked by an agent
   text_llm: qwen3-vl:8b              # MVP: one model for caption, judge and local sanitizer (C-1)
   text_embed: bge-m3
@@ -29,6 +29,10 @@ classify:
 
 nsfw:
   threshold: 0.70                    # adult = explicit sexual imagery (CLS-001.D12)
+  min_level: nudity                  # adult = VLM level >= this: suggestive | nudity | explicit (CLS-004.D3)
+  cross_check:                       # Falconsai disagreement -> needs_review; null/null = off (CLS-004.D5)
+    safe_above: null                 # VLM says safe but the score is >= this
+    adult_below: null                # VLM says adult but the score is <= this
   mode: mirror                       # mirror | separate
   root: Adult
 
