@@ -13,7 +13,10 @@ bind-mounted and the package installed editable). No config key holds it (MOD-00
 """
 
 import copy
+import hashlib
+import os
 import re
+import stat
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Self
@@ -29,6 +32,11 @@ _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
 # tag or a fence marker (`<<<`, `>>>`) and close the turn or the data region. These patterns
 # are broken up before rendering.
 _INJECTION = re.compile(r"<\||\|>|</?think>|<{3,}|>{3,}", re.IGNORECASE)
+# CLS-004.D16 / CLS-004.6: the git-ignored local addendum. `PROMPTS_LOCAL=off` turns it off;
+# any other value, or none, leaves it on.
+LOCAL_DIR = "local"
+LOCAL_ENV = "PROMPTS_LOCAL"
+MAX_ADDENDUM_BYTES = 4096
 
 
 def neutralize(text: str) -> str:
@@ -72,6 +80,10 @@ class Prompt(BaseModel):
     user_alt: str | None = Field(default=None, repr=False)
     output_schema: dict[str, Any] = Field(alias="schema")
     template: str
+    # CLS-004.6: set only by `load_effective_prompt`, never by a prompt file. The text is the
+    # human's local wording, so it stays out of every repr; the hash is what gets recorded.
+    addendum_hash: str | None = None
+    addendum: str | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def _raw_needs_wrap(self) -> Self:
@@ -82,6 +94,13 @@ class Prompt(BaseModel):
         if self.user_alt is not None and self.user is None:
             raise ValueError("`user_alt` needs `user`")
         return self
+
+    @property
+    def effective_version(self) -> str:
+        """`version`, plus `+<8 hex>` of the local addendum when one is appended (CLS-004.6)."""
+        if self.addendum_hash is None:
+            return self.version
+        return f"{self.version}+{self.addendum_hash}"
 
     @property
     def options(self) -> dict[str, Any]:
@@ -112,6 +131,8 @@ class Prompt(BaseModel):
                 f"prompt {self.version} takes slots {sorted(self.slots)}, got {sorted(values)}"
             )
         body = _SLOT.sub(lambda m: values[m.group(1)], self.template)
+        if self.addendum is not None:  # after the body, one blank line, no heading (CLS-004.6)
+            body = f"{body.rstrip()}\n\n{self.addendum}\n"
         # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.
         return self.wrap.replace("{prompt}", body) if self.wrap is not None else body
 
@@ -162,8 +183,8 @@ def load_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
         raise PromptError(f"prompt {name} front matter is not YAML: {exc}") from None
     if not isinstance(meta, Mapping):
         raise PromptError(f"prompt {name} front matter is not a mapping")
-    if "template" in meta:
-        raise PromptError(f"prompt {name} front matter must not set 'template'")
+    if {"template", "addendum", "addendum_hash"} & set(meta):
+        raise PromptError(f"prompt {name} front matter must not set 'template' or an addendum")
     try:
         prompt = Prompt.model_validate({**meta, "template": match.group(2)})
     except ValidationError as exc:
@@ -171,3 +192,59 @@ def load_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
     if prompt.version != name:
         raise PromptError(f"prompt {name} declares version {prompt.version!r}")
     return prompt
+
+
+def _read_addendum(path: Path, name: str) -> str | None:
+    """The text of the local addendum at `path`, or None when absent, off or blank.
+
+    Refuses a symlink, a non-regular file, a file over `MAX_ADDENDUM_BYTES` and bytes that are not
+    UTF-8. Every refusal is fixed text raised outside any `except`, so it carries no cause or
+    context and never quotes the path or the text (CLS-004.6).
+    """
+    if os.environ.get(LOCAL_ENV) == "off":
+        return None
+    problem: str | None = None
+    raw = b""
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    except OSError:
+        info = None
+        problem = "cannot be read"
+    if info is not None:
+        if not stat.S_ISREG(info.st_mode):
+            problem = "is not a regular file"
+        elif info.st_size > MAX_ADDENDUM_BYTES:
+            problem = f"is over {MAX_ADDENDUM_BYTES} bytes"
+        else:
+            try:
+                with path.open("rb") as handle:
+                    raw = handle.read(MAX_ADDENDUM_BYTES + 1)
+            except OSError:
+                problem = "cannot be read"
+            if problem is None and len(raw) > MAX_ADDENDUM_BYTES:
+                problem = f"is over {MAX_ADDENDUM_BYTES} bytes"
+    text = ""
+    if problem is None:
+        try:
+            text = raw.decode("utf-8").replace("\r\n", "\n").strip()
+        except UnicodeDecodeError:
+            problem = "is not UTF-8"
+    if problem is not None:
+        raise PromptError(f"local addendum for {name} {problem}")
+    return text or None
+
+
+def load_effective_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
+    """`load_prompt`, plus the optional local addendum `<prompts_dir>/local/<name>.md`.
+
+    The addendum is appended to the system text after the body (CLS-004.D16). `load_prompt` itself
+    never reads `local/`, and `*.example.md` files are never loaded: only the exact name is.
+    """
+    prompt = load_prompt(name, prompts_dir)
+    text = _read_addendum(prompts_dir / LOCAL_DIR / f"{name}.md", name)
+    if text is None:
+        return prompt
+    digest = hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()[:8]
+    return prompt.model_copy(update={"addendum": neutralize(text), "addendum_hash": digest})

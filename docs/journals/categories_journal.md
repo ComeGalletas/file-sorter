@@ -494,6 +494,9 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
     - [x] CLS-004.4.5.4 — Results, self-rating, PR (lists every test file touched outside `tests/*/graph` and `tests/*/cli`) (`90d2fd6`; PR #160, merged as `863a966`)
 - [ ] CLS-004.5 — `eval/classify_eval.py` on the VLM path (no threshold sweep; public form at `min_level`), and the real run on the box (CLS-004.D11) · #136 · ML · acceptance: `tests/gpu/models/test_classify_eval.py`. The real run waits for CLS-004.6 and the human's local addenda (CLS-004.D16).
 - [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
+  - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (hash in Results)
+  - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
+  - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders
 
 ## CLS-004 — Results
 
@@ -564,6 +567,15 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - A non-VLM integration test that reaches `classify` without `ollama_transport` would hit a live Ollama if one is up, and fail with `OllamaUnavailable` if not. Every test I touched passes a transport; I did not audit other desks' tests.
   - An unanswered file stays in `error` until the next run retries it from ingest (D4); M4's review lists such rows.
 - **Self-rating:** 9/10, proud: yes. Gaps: (1) the node has not run against the real model; its only evidence is the scripted and recorded runs, until CLS-004.5's box run (CLS-004.D11); (2) the Reviewer and Privacy auditor verdicts are not in yet. Neither blocks the acceptance criteria.
+- **Reviewer / Privacy auditor:** pending.
+
+### CLS-004.6 (ML, #148)
+
+- **Commits:** 225951b (.6.1 loader, `Prompt` fields, tests), 4f531ec (.6.2 `vlm_classify`, `VlmAnswer.prompt_version`); .6.3 adds the two example files (hash in the PR).
+- **Built:** `load_effective_prompt` appends `prompts/local/<name>.md` after the body with one blank line and no heading. Symlink, non-regular file, over 4096 bytes and non-UTF-8 are refused with fixed, unchained text; an empty file is absent; `PROMPTS_LOCAL=off` means off, anything else on. `Prompt.addendum` is `repr=False`; `effective_version` is `<name>+<8 hex>`. `load_prompt` stays committed-only, and a prompt file may not set the addendum keys.
+- **Tests:** `tests/unit` plus `tests/integration/test_classify_node.py`: 1595 passed; the pre-push gate (default tiers and the acceptance test) passed; `tests/unit/models/test_prompts.py` gained 24 tests, including that `resolve()` refuses a body rendered with an addendum. No `gpu` or `eval` run: the committed prompt files and the no-addendum rendering are unchanged.
+- **Open:** #161 sets `PROMPTS_LOCAL=off` for the default tiers and must merge with or right after this PR. The node write of `VlmAnswer.prompt_version` into `files.prompt_version` is a Pipeline follow-up on the G1 list.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is proven on tmp_path stand-ins only, never against the human's real addenda (by design).
 - **Reviewer / Privacy auditor:** pending.
 
 ---

@@ -31,7 +31,7 @@ from PIL import Image
 from classifier.config import NsfwLevel
 from classifier.models.classify_rules import UNSORTED, VlmAnswer
 from classifier.models.ollama import OllamaClient, OllamaError, OllamaUnavailable
-from classifier.models.prompts import Prompt, load_prompt
+from classifier.models.prompts import Prompt, load_effective_prompt
 
 CLASSIFY_PROMPT = "classify_v1"
 NSFW_PROMPT = "nsfw_level_v1"
@@ -189,7 +189,7 @@ def classify_image(
     prompt: Prompt | None = None,
 ) -> ClassifyAnswer:
     """Format and topic of `image` from frame 0, with the sanitized name as a weak hint."""
-    prompt = prompt or load_prompt(CLASSIFY_PROMPT)
+    prompt = prompt or load_effective_prompt(CLASSIFY_PROMPT)
     format_names = _names(formats, UNSORTED)
     topic_names = _names(topics, NO_TOPIC)
     system = prompt.render(formats=", ".join(format_names), topics=", ".join(topic_names))
@@ -232,7 +232,7 @@ def rate_nsfw(
 
     An animated image is rated in one call on its first, middle and last frames (CLS-004.D2).
     """
-    prompt = prompt or load_prompt(NSFW_PROMPT)
+    prompt = prompt or load_effective_prompt(NSFW_PROMPT)
     indexes = pick_frames(getattr(image, "n_frames", 1))
     images = encode_frames(
         image,
@@ -267,6 +267,14 @@ def vlm_classify(
     added when missing. `hint` is `files.original_sanitized` as stored (None or blank: no hint).
     Raises `VlmUnanswered` after a failed retry and lets `OllamaUnavailable` propagate.
     """
-    chosen = classify_image(client, model, image, hint=hint, formats=formats, topics=topics)
-    level = rate_nsfw(client, model, image)
-    return VlmAnswer(format=chosen.format, topic=chosen.topic, level=level)
+    classify_prompt = load_effective_prompt(CLASSIFY_PROMPT)
+    nsfw_prompt = load_effective_prompt(NSFW_PROMPT)
+    chosen = classify_image(
+        client, model, image, hint=hint, formats=formats, topics=topics, prompt=classify_prompt
+    )
+    level = rate_nsfw(client, model, image, prompt=nsfw_prompt)
+    # CLS-004.6: the NSFW version joins only when its prompt carries an addendum.
+    version = classify_prompt.effective_version
+    if nsfw_prompt.addendum_hash is not None:
+        version = f"{version}/{nsfw_prompt.effective_version}"
+    return VlmAnswer(format=chosen.format, topic=chosen.topic, level=level, prompt_version=version)

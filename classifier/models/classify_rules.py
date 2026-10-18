@@ -72,6 +72,8 @@ class VlmAnswer:
     format: str = field(repr=False)
     topic: str | None = field(repr=False)
     level: NsfwLevel
+    # CLS-004.6: the effective prompt version(s) behind this answer; None when not recorded.
+    prompt_version: str | None = None
 
 
 @dataclass(frozen=True)
