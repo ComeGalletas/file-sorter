@@ -367,6 +367,27 @@ def test_min_level_refuses_anything_else(value: object) -> None:
         Config.model_validate(with_nsfw(min_level=value))
 
 
+@pytest.mark.parametrize("present", [False, True])
+def test_min_level_is_required_and_not_null(present: bool) -> None:
+    data = real_data()
+    del data["nsfw"]["min_level"]
+    if present:
+        data["nsfw"]["min_level"] = None
+    with pytest.raises(ValidationError):
+        Config.model_validate(data)
+
+
+def test_missing_min_level_error_names_the_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    del data["nsfw"]["min_level"]
+    error = load_error(write_config(tmp_path, data))
+    assert "nsfw.min_level: missing" in str(error)
+    assert_value_free(error)
+
+
 def test_cross_check_defaults_to_off() -> None:
     data = real_data()
     data["nsfw"].pop("cross_check", None)

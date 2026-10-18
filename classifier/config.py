@@ -110,7 +110,7 @@ class CrossCheckConfig(_Section):
 
 class NsfwConfig(_Section):
     threshold: float | None = None  # obsolete (CLS-004.D3): replaced by min_level
-    min_level: NsfwLevel | None = None
+    min_level: NsfwLevel  # required: the VLM path has no default (CLS-004.D3)
     cross_check: CrossCheckConfig = CrossCheckConfig()
     mode: Literal["mirror", "separate"]
     root: str
@@ -119,8 +119,6 @@ class NsfwConfig(_Section):
     @classmethod
     def _level_by_name(cls, value: object) -> object:
         # `suggestive | nudity | explicit` only: not `safe`, and not a number (CLS-004.D3).
-        if value is None:
-            return None
         if isinstance(value, str) and value in ("suggestive", "nudity", "explicit"):
             return NsfwLevel[value]
         raise ValueError("must be suggestive, nudity or explicit")
