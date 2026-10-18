@@ -5,10 +5,12 @@ the module has its own migrated schema (`schema_dsn`, tests/integration/conftest
 """
 
 import csv
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Sequence
 from hashlib import sha256
 from pathlib import Path
 
+import numpy as np
 import psycopg
 import pytest
 import yaml
@@ -18,9 +20,10 @@ from typer.testing import CliRunner
 
 from classifier import cli
 from classifier.cli import app
-from classifier.cli.dry_run_report import COLUMNS
+from classifier.cli.dry_run_report import COLUMNS, REPORT_FOLDER_FAILED
+from classifier.graph import classify as classify_node
 from classifier.graph import sanitize as node
-from classifier.graph.nodes import REGISTRY
+from classifier.graph.classify import IMAGE_VEC_DIM
 
 REAL_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
 SOURCE_NAMES = ("alpha.png", "bravo.png", "alpha-copy.png", "notes.txt")
@@ -32,15 +35,45 @@ RULES = {
 pytestmark = pytest.mark.usefixtures("empty_ledger")  # TST-003.1
 
 
+class FakeVision:
+    """A deterministic `VisionBackend` for the CLI (CLI-005.1): hashed embeddings, cosine score.
+
+    Synthetic only. The adult gate reads the red channel of the first pixel, so one made-up
+    picture is adult and the others are not; no real model, no real content.
+    """
+
+    classifier_id = "fake-classifier"
+    nsfw_id = "fake-nsfw"
+    logit_scale = 1.0
+    logit_bias = 0.0
+
+    @staticmethod
+    def _unit(seed: bytes) -> np.ndarray:
+        rng = np.random.default_rng(int.from_bytes(sha256(seed).digest()[:8], "big"))
+        vector = rng.standard_normal(IMAGE_VEC_DIM).astype(np.float32)
+        return vector / np.linalg.norm(vector)
+
+    def embed_images(self, images: Sequence[Image.Image]) -> np.ndarray:
+        return np.stack([self._unit(image.tobytes()) for image in images])
+
+    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
+        return np.stack([self._unit(text.encode()) for text in texts])
+
+    def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:
+        return np.array([image.getpixel((0, 0))[0] / 255 for image in images], dtype=np.float32)
+
+
 @pytest.fixture(autouse=True)
-def _m2_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """These are M2 tests: ingest and sanitize only. CLI-005.1 moves the CLI to M3."""
+def _fake_vision(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The dry run runs every M3 node; the classify node gets the fake through its seam."""
     real = cli.run
-    m2 = tuple(n for n in REGISTRY if n.name in ("ingest", "sanitize"))
-    monkeypatch.setattr(cli, "run", lambda config, **kw: real(config, nodes=m2, **kw))
+    monkeypatch.setattr(cli, "run", lambda config, **kw: real(config, vision=FakeVision(), **kw))
 
 
-def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Path]:
+def _setup(
+    tmp_path: Path, *, results: str = "results", min_score: float | None = -1.0
+) -> tuple[Path, Path, Path]:
+    """`min_score` -1 lets every file win a format and a topic; 2 lets none (cosine ≤ 1)."""
     source = tmp_path / "source"
     source.mkdir()
     first = source / "alpha.png"
@@ -55,6 +88,9 @@ def _setup(tmp_path: Path, *, results: str = "results") -> tuple[Path, Path, Pat
     rules = tmp_path / "rules.yaml"  # synthetic: never the local sanitize.yaml (SAN-001.4)
     rules.write_text(yaml.safe_dump(RULES), encoding="utf-8")
     data["sanitizer"]["rules_file"] = str(rules)
+    data["classify"]["score"] = "cosine"  # the fake's scale and bias are 1 and 0
+    for axis in ("format", "topic"):  # test-only values; CLS-003 owns the real ones
+        data["classify"][axis] = {"default_min_score": min_score, "margin": 0.0}
     config = tmp_path / "config.yaml"
     config.write_text(yaml.safe_dump(data), encoding="utf-8")
     return source, results_root, config
@@ -91,6 +127,9 @@ def test_prints_the_run_counts_without_names(tmp_path: Path, schema_dsn: str) ->
     assert "sanitized: 2" in out  # CLI-003.1: the duplicate shares its original's row
     assert "sanitize errors: 0" in out
     assert "sanitize error, " not in out
+    assert "classified: 2" in out  # CLI-005.1
+    assert "classify errors: 0" in out
+    assert "classify error, " not in out
 
 
 def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> None:
@@ -108,14 +147,14 @@ def test_csv_lists_the_ledger_rows_by_path(tmp_path: Path, schema_dsn: str) -> N
     paths = [row["source_path"] for row in body]
     assert paths == sorted(paths)
     assert all(Path(p).parent == source for p in paths)
-    assert sorted(row["status"] for row in body) == ["sanitized", "sanitized", "skipped"]
+    assert sorted(row["status"] for row in body) == ["classified", "classified", "skipped"]
     skipped = next(row for row in body if row["status"] == "skipped")
     assert skipped["reason"]
     assert all(row["proposed_output"] == "" for row in body)
     assert all(row["short_hash"] == row["source_hash"][:8] for row in body)
     # CLI-003.1: the sanitized stem beside the path; empty where the node hasn't run.
     for row in body:
-        expected = Path(row["source_path"]).stem if row["status"] == "sanitized" else ""
+        expected = Path(row["source_path"]).stem if row["status"] == "classified" else ""
         assert row["sanitized_name"] == expected
 
 
@@ -146,6 +185,7 @@ def test_second_run_reports_everything_known_and_adds_no_rows(
     assert second.exit_code == 0, second.output
     assert "new: 0" in second.stdout
     assert "skipped-known: 4" in second.stdout
+    assert "classified: 0" in second.stdout  # nothing is `sanitized` any more (P-4)
     assert _ledger_count(schema_dsn) == rows == 3
 
 
@@ -333,3 +373,198 @@ def test_a_work_folder_linked_elsewhere_exits_2(tmp_path: Path, schema_dsn: str)
     assert result.stderr.startswith("error: results_root/.work")
     _assert_clean(result)
     assert list(elsewhere.iterdir()) == []
+
+
+# --- CLI-005.1: the classify node in the report ------------------------------------------
+
+PINNED_NONE_WIN = [  # the console contract gate 3 may parse; see classifier/cli/__init__.py
+    r"run [0-9a-f]{8} \(dry run\)",
+    "new: 2",
+    "skipped-known: 0",
+    "skipped-unreadable: 1",
+    "duplicates: 1",
+    "total: 4",
+    r"ledger skipped, [a-z_ ]+: 1",
+    "sanitized: 2",
+    "sanitize errors: 0",
+    "classified: 2",
+    "unsorted: 2",
+    "no topic: 2",
+    "adult: 1",
+    "classify errors: 0",
+    r"report: dry-run-\d{8}T\d{6}Z\.csv \(3 rows\)",
+]
+
+
+def _report(results: Path) -> list[dict[str, str]]:
+    (path,) = (results / "reports").glob("dry-run-*.csv")
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_console_lines_are_pinned_on_a_known_run(tmp_path: Path, schema_dsn: str) -> None:
+    """When no category clears its bar every file is unsorted with no topic; bravo is adult."""
+    _, _, config = _setup(tmp_path, min_score=2.0)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    lines = result.stdout.splitlines()
+    assert len(lines) == len(PINNED_NONE_WIN)
+    for line, pattern in zip(lines, PINNED_NONE_WIN, strict=True):
+        assert re.fullmatch(pattern, line), pattern
+    assert result.stderr == ""
+
+
+def test_csv_holds_the_classify_columns_and_folders_when_nothing_clears(
+    tmp_path: Path, schema_dsn: str
+) -> None:
+    source, results, config = _setup(tmp_path, min_score=2.0)
+    assert _invoke(config, schema_dsn, "--csv").exit_code == 0
+    body = [row for row in _report(results) if row["status"] == "classified"]
+    assert len(body) == 2
+    for row in body:
+        assert row["format"] == "unsorted"
+        assert row["topic"] == ""
+        assert row["needs_review"] == "true"
+        assert row["review_reason"] == "unsorted"
+        assert row["proposed_output"] == ""  # files.proposed_path is the name node's (CLI-005.D1)
+    by_hash = {row["source_hash"]: row for row in body}
+    alpha = by_hash[sha256((source / "alpha.png").read_bytes()).hexdigest()]
+    bravo = by_hash[sha256((source / "bravo.png").read_bytes()).hexdigest()]
+    assert (alpha["branch"], alpha["proposed_folder"]) == ("safe", "Unsorted")
+    assert (bravo["branch"], bravo["proposed_folder"]) == ("nsfw", "Adult/Unsorted")
+    skipped = next(row for row in _report(results) if row["status"] == "skipped")
+    for column in COLUMNS[COLUMNS.index("proposed_output") :]:
+        assert skipped[column] == ""
+    with psycopg.connect(schema_dsn) as conn:  # CLI-005.D1: the folder is computed, not stored
+        stored = conn.execute("select count(*) from files where proposed_path is not null")
+        assert stored.fetchone()[0] == 0
+
+
+def _expected_folder(conn: psycopg.Connection, row: dict[str, str]) -> str:
+    """The folder from the categories table alone, independent of the CLI's resolver."""
+    cats = {
+        (axis, name): (cid, folder, parent)
+        for cid, axis, name, folder, parent in conn.execute(
+            "select id, axis, name, folder, parent_id from categories"
+        )
+    }
+    by_id = {cid: (folder, parent) for cid, folder, parent in cats.values()}
+    parts: list[str] = []
+    if row["format"] == "unsorted":
+        parts = ["Unsorted"]
+    else:
+        chain: list[str] = []
+        parent = cats[("topic", row["topic"])][0] if row["topic"] else None
+        while parent is not None:
+            folder, parent = by_id[parent]
+            chain.insert(0, folder)
+        parts = [*(chain or ["General"]), cats[("format", row["format"])][1]]
+    if row["branch"] == "nsfw":
+        parts.insert(0, "Adult")
+    return "/".join(parts)
+
+
+def test_csv_folders_match_the_ledger_when_every_file_wins(tmp_path: Path, schema_dsn: str) -> None:
+    _, results, config = _setup(tmp_path, min_score=-1.0)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    assert "classified: 2" in result.stdout
+    assert "classify errors: 0" in result.stdout
+    body = [row for row in _report(results) if row["status"] == "classified"]
+    with psycopg.connect(schema_dsn) as conn:
+        ledger = {
+            h: rest
+            for h, *rest in conn.execute(
+                "select source_hash, format, topic, branch, needs_review from files"
+                " where status = 'classified'"
+            )
+        }
+        assert len(ledger) == len(body) == 2
+        for row in body:
+            fmt, topic, branch, review = ledger[row["source_hash"]]
+            assert (row["format"], row["topic"] or None, row["branch"]) == (fmt, topic, branch)
+            assert row["needs_review"] == str(review).lower()
+            assert row["proposed_folder"] == _expected_folder(conn, row)
+            assert row["proposed_folder"] != ""
+
+
+def test_a_working_copy_that_cannot_be_read_is_one_fixed_reason_line(
+    tmp_path: Path, schema_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, results, config = _setup(tmp_path)
+    target = sha256((source / "bravo.png").read_bytes()).hexdigest()
+    real = classify_node.open_working_copy
+
+    def failing(work: Path, source_hash: str, ext: str) -> Image.Image:
+        if source_hash == target:
+            raise classify_node.WorkingCopyUnreadable
+        return real(work, source_hash, ext)
+
+    monkeypatch.setattr(classify_node, "open_working_copy", failing)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    assert "classified: 1" in result.stdout
+    assert "classify errors: 1" in result.stdout
+    assert "classify error, classify_working_copy_unreadable: 1" in result.stdout
+    assert result.stdout.count("classify error, ") == 1
+    bad = next(row for row in _report(results) if row["source_hash"] == target)
+    assert bad["status"] == "error"
+    assert bad["proposed_folder"] == ""
+
+
+def test_a_classify_pre_flight_failure_exits_2_after_sanitize_committed(
+    tmp_path: Path, schema_dsn: str
+) -> None:
+    """No `default_min_score` (the shipped config, before CLS-003) is a fixed-text exit 2."""
+    _, results, config = _setup(tmp_path, min_score=None)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 2, result.output
+    assert isinstance(result.exception, SystemExit)
+    assert result.stderr.startswith("error: ")
+    assert "default_min_score" in result.stderr
+    assert "Traceback" not in result.output
+    assert not (results / "reports").exists()
+    with psycopg.connect(schema_dsn) as conn:
+        statuses = {row[0] for row in conn.execute("select status from files")}
+    assert "sanitized" in statuses  # the node rolled back; earlier nodes' work stays
+    assert "classified" not in statuses
+
+
+def test_a_folder_that_cannot_be_built_exits_2_and_a_rerun_rebuilds_the_report(
+    tmp_path: Path, schema_dsn: str
+) -> None:
+    _, results, config = _setup(tmp_path)
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    data["folders"]["layout"] = "{format}/{topic}"  # unsupported (FOP-002.D1)
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 2, result.output
+    assert result.stderr == f"error: {REPORT_FOLDER_FAILED}\n"
+    assert "classified: 2" in result.stdout  # run committed: the ledger is written
+    assert not (results / "reports").exists()
+    data["folders"]["layout"] = "{topic}/{format}"
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    again = _invoke(config, schema_dsn, "--csv")
+    assert again.exit_code == 0, again.output
+    assert all(row["proposed_folder"] for row in _report(results) if row["status"] == "classified")
+
+
+def test_classify_output_carries_no_planted_name_or_category(
+    tmp_path: Path, schema_dsn: str
+) -> None:
+    source, results, config = _setup(tmp_path)
+    _plant(source)
+    result = _invoke(config, schema_dsn, "--csv")
+    assert result.exit_code == 0, result.output
+    _assert_clean(result)
+    with psycopg.connect(schema_dsn) as conn:
+        names = {name for (name,) in conn.execute("select name from categories")}
+        names |= {f for (f,) in conn.execute("select folder from categories")}
+    fixed = re.compile(r"[a-z -]+(, \w+)?: \d+")
+    free = "\n".join(  # the fixed labels may repeat a category's word (`unsorted`); no other line
+        line for line in result.stdout.splitlines() if not fixed.fullmatch(line)
+    )
+    for name in names:
+        assert name not in free, "a category name reached the console"
+    assert "/source" not in result.stdout
+    assert "classified: 3" in result.stdout

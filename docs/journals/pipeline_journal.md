@@ -192,6 +192,24 @@ references or host paths here. Use hashes.
 
 ## CLI-005 — Tasks
 
-- [ ] CLI-005.1 — `dry-run` reports classify: console counts and the CSV's classify columns · #100 · acceptance: `tests/integration/test_dry_run_cli.py`
+- [x] CLI-005.1 — `dry-run` reports classify: console counts and the CSV's classify columns · #100 · acceptance: `tests/integration/test_dry_run_cli.py`
+  - [x] CLI-005.1.1 — the report module: `LedgerRow` as a frozen dataclass with `repr=False`, the classify columns, `folder_resolver` (FOP-002.1's `result_folder`), `surrogateescape` CSV; `topic_chain` made public in `fileops/folders.py`
+  - [x] CLI-005.1.2 — the console counts and the M3 dry run in the CLI; the console contract pinned in a test
+  - [x] CLI-005.1.3 — Results
+  - [x] CLI-005.1.4 — review fixes: the report is encoded in memory before the file is created (a raw write failure leaves the partial file, see CLI-005.1.5); a CLI-level lone-surrogate test; the unknown-format/removed-topic folder test
+  - [x] CLI-005.1.5 — lead's ask: `write_csv` no longer unlinks a half-written report (deleting is `fileops/delete.py`'s alone); encode-first stays; a partial file may remain and a re-run writes a new one
 
 ## CLI-005 — Results
+
+### CLI-005.1 (Pipeline, branch `office/byte-72ab`, #100)
+
+- **Done:** `7a38dad` (CLI-005.1.1), `6732cdb` (CLI-005.1.2), this commit (Results); CLI-005.1.4 fixes the review findings (no partial report on an encoding or write failure, CLI-level surrogate test, counts).
+- **Console contract (gate 3 may parse it).** Documented in the `classifier/cli/__init__.py` docstring and pinned line by line in `test_console_lines_are_pinned_on_a_known_run`. After sanitize's lines: `classified`, `unsorted`, `no topic`, `adult`, `classify errors` (each `label: N`), then one `classify error, <fixed reason>: N` per reason, sorted. `unsorted`, `no topic` and `adult` are subsets of `classified`. Then `report: <file name> (<n> rows)` with `--csv`. Counts and fixed reason codes only.
+- **CSV.** New columns after `proposed_output`: `format`, `topic`, `branch`, `needs_review` (`true`/`false`), `review_reason`, `proposed_folder`; all blank until a row is classified. `proposed_folder` is computed with FOP-002.1's `result_folder` (CLI-005.D1) and never stored; `files.proposed_path` stays untouched. The file is written with `surrogateescape` (the lead's decision on #100): a non-UTF-8 name round-trips as its bytes, and any other lone surrogate gives the fixed `ReportWriteError`. This closes the SAN-003.3 G1 follow-up about the CSV `UnicodeEncodeError`.
+- **Errors.** `ClassifyConfigError`, `ClassifyRulesError` and `VisionError` exit 2 with fixed text; the failing node rolls back and earlier nodes' commits stay. A folder that cannot be built after the run exits 2 with fixed text and writes no report; the ledger is already written, so a re-run regenerates the report (tested).
+- **Privacy.** `LedgerRow` is a frozen dataclass with `repr=False` on the path, name, format and topic (planted-value repr/str test); new errors are unchained (tested); tests are synthetic, in `tmp_path`, with a deterministic fake `VisionBackend` and no fixtures.
+- **Tests (default tiers, `make test`):** 1825 passed, 39 deselected; `make lint` clean. Tiers: unit (10 new report tests), integration (the acceptance file, now on the M3 nodes, 7 new tests). No `gpu` tier: `models/` and `prompts/` are untouched.
+- **Side effects:** `topic_chain` is public in `fileops/folders.py` (was `_topic_path`, no behavior change). `test_dry_run_cli.py` no longer pins the M2 nodes.
+- **Completion status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and R-IDs: (1) the integration tests use a fake backend with arbitrary hashed scores, so they prove the wiring, folders and contract, not classification quality (CLS-003); (2) a lone surrogate cannot come back from Postgres, so that case is covered at CLI level with a faked row (`CliRunner`, no database) rather than in the integration tier.
+- **Deferred:** none.

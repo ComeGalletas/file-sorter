@@ -71,8 +71,8 @@ def check_nsfw_mode(nsfw: NsfwConfig) -> None:
         raise FolderSyncError(_ERR_MODE)
 
 
-def _topic_path(rule: CategoryRule, topics: dict[int, CategoryRule]) -> list[CategoryRule]:
-    """The chain from the root topic down to `rule` (FOP-002.D2)."""
+def topic_chain(rule: CategoryRule, topics: dict[int, CategoryRule]) -> list[CategoryRule]:
+    """The chain from the root topic down to `rule` (FOP-002.D2); CLI-005.1 reuses it."""
     chain = [rule]
     seen = {rule.id}
     current = rule
@@ -151,7 +151,7 @@ def plan_folders(
         if (pair.topic is not None and topic is None) or (pair.format is not None and fmt is None):
             continue
         branch = "nsfw" if pair.branch == "nsfw" else "safe"
-        chain = _topic_path(topic, topics) if topic is not None else []
+        chain = topic_chain(topic, topics) if topic is not None else []
         add(branch, chain, None if fmt is None or fmt.name == UNSORTED else fmt)
     for reserved in (WORK_FOLDER, REPORTS_FOLDER):
         found.setdefault((reserved,), set()).add((reserved, "config"))
