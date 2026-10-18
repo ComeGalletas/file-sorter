@@ -95,9 +95,13 @@ def image_digest(image: Image.Image) -> str:
         mode = image.mode.encode("ascii")
         width, height = image.size
         pixels = image.tobytes()
+        decoded = True
     except (OSError, EOFError, ValueError, AttributeError, UnicodeEncodeError):
-        # The library's message can embed a file name, so it is not chained.
-        raise _fixed("an image could not be decoded for a vision key") from None
+        decoded = False
+    if not decoded:
+        # Raised outside the except block, so the library's message (it can embed a file
+        # name) is on neither __cause__ nor __context__.
+        raise _fixed("an image could not be decoded for a vision key")
     digest = hashlib.sha256()
     for part in (mode, struct.pack("<QQ", width, height), pixels):
         digest.update(struct.pack("<Q", len(part)))
