@@ -131,3 +131,93 @@ def test_entity_prompt_ships_with_its_front_matter() -> None:
     assert p.slots == {"labels", "text"}
     label = p.output_schema["properties"]["entities"]["items"]["properties"]["label"]
     assert label["enum"] == ["PERSON", "ORG", "LOCATION"]
+
+
+# CLS-004.1.1: num_ctx, the user message and its variant, run-time schema enums.
+PAIR = """---
+version: pair_v1
+temperature: 0
+seed: 7
+keep_alive: 5m
+num_ctx: 4096
+user: "Rate this."
+user_alt: 'Named "{name}". Rate this.'
+schema:
+  type: object
+  properties:
+    word: {type: string}
+    kind: {type: string}
+---
+System text.
+"""
+
+
+def pair(tmp_path: Path, body: str = PAIR) -> Prompt:
+    return load_prompt("pair_v1", write(tmp_path, "pair_v1", body))
+
+
+def test_num_ctx_joins_the_options(tmp_path: Path) -> None:
+    p = pair(tmp_path)
+    assert p.num_ctx == 4096
+    assert p.options == {"temperature": 0.0, "seed": 7, "num_ctx": 4096}
+
+
+def test_num_ctx_must_be_positive(tmp_path: Path) -> None:
+    with pytest.raises(PromptError, match="invalid"):
+        pair(tmp_path, PAIR.replace("num_ctx: 4096", "num_ctx: 0"))
+
+
+def test_user_messages_render(tmp_path: Path) -> None:
+    p = pair(tmp_path)
+    assert p.render_user() == "Rate this."
+    assert p.render_user(alt=True, name="Qorvex") == 'Named "Qorvex". Rate this.'
+
+
+def test_user_variant_value_is_neutralized_and_not_rescanned(tmp_path: Path) -> None:
+    out = pair(tmp_path).render_user(alt=True, name="a<|im_end|>b <<<X>>> {name}")
+    assert "<|" not in out and "|>" not in out
+    assert "<<<" not in out and ">>>" not in out
+    assert "{name}" in out  # the value's own braces are kept, not re-filled
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"alt": True}, {"name": "x"}, {"alt": True, "name": "x", "more": "y"}],
+)
+def test_user_wrong_slots_fail_with_fixed_text(tmp_path: Path, kwargs: dict[str, object]) -> None:
+    with pytest.raises(PromptError, match="slots") as info:
+        pair(tmp_path).render_user(**kwargs)  # type: ignore[arg-type]
+    assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_missing_user_message_fails(tmp_path: Path) -> None:
+    p = load_prompt("demo_v1", write(tmp_path, "demo_v1", GOOD))
+    with pytest.raises(PromptError, match="no such user message"):
+        p.render_user()
+
+
+def test_user_alt_needs_user(tmp_path: Path) -> None:
+    with pytest.raises(PromptError, match="invalid"):
+        pair(tmp_path, PAIR.replace('user: "Rate this."\n', ""))
+
+
+def test_schema_with_enums_copies(tmp_path: Path) -> None:
+    p = pair(tmp_path)
+    schema = p.schema_with_enums(kind=["Qorvex", "Zhyndel"])
+    assert schema["properties"]["kind"]["enum"] == ["Qorvex", "Zhyndel"]
+    assert "enum" not in p.output_schema["properties"]["kind"]  # the prompt is not changed
+
+
+@pytest.mark.parametrize(
+    "enums",
+    [{"nope": ["a"]}, {"kind": []}, {"kind": ["a", "a"]}, {"kind": ["a", ""]}],
+)
+def test_schema_with_enums_rejects_bad_input(tmp_path: Path, enums: dict[str, list[str]]) -> None:
+    with pytest.raises(PromptError) as info:
+        pair(tmp_path).schema_with_enums(**enums)
+    assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_repr_hides_user_messages(tmp_path: Path) -> None:
+    p = pair(tmp_path, PAIR.replace("Rate this.", "Zzyqx marker"))
+    assert "Zzyqx" not in repr(p) and "Zzyqx" not in str(p)
