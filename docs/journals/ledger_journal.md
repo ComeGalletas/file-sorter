@@ -153,6 +153,17 @@ references or host paths here. Use hashes.
 
 ## DB-004 — Tasks
 
-- [ ] DB-004.1 — Migration `0004`: `files.nsfw_level` with its check constraint, the ORM field, and the one-head and downgrade tests · #129 · Pipeline · acceptance: `tests/db/ledger/test_nsfw_level_migration.py`
+- [x] DB-004.1 — Migration `0004`: `files.nsfw_level` with its check constraint, the ORM field, and the one-head and downgrade tests · #129 · Pipeline · acceptance: `tests/db/ledger/test_nsfw_level_migration.py`
+  - [x] DB-004.1.1 — Migration `0004`, the `File.nsfw_level` field with its check constraint, and the model test · `afc3afc`
+  - [x] DB-004.1.2 — The acceptance test `test_nsfw_level_migration.py` · this commit's hash is in Results
 
 ## DB-004 — Results
+
+### DB-004.1 (#129)
+
+- **Tests:** default tiers (`make test`: unit, db, integration) 1942 passed; `make lint` clean. The acceptance test is `tests/db/ledger/test_nsfw_level_migration.py` (db tier). No `gpu` or eval run: no model, prompt or threshold code changed.
+- **Alembic:** one head, `0004`, revising `0003`; the `0003` and `0002` tests assert a single head and needed no edits.
+- **Existing tests touched:** `tests/unit/db/test_models.py` lists `nsfw_level` and checks the mirrored constraint.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. The gap is that the check's refused values cover case and whitespace variants and `nsfw`, not every possible string; the constraint is a closed `in` list, so I judged that low risk.
+- **Reviewer and Privacy auditor:** pending (lead).
