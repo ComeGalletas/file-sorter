@@ -49,7 +49,7 @@ compose_test() {
 }
 
 # The git-ignored .task file at the worktree root (RUN-002.D4): key=value lines
-#   role=pipeline   issue=12   acceptance=tests/unit/classify/test_margin.py
+#   role=pipeline   issue=12   acceptance=tests/unit/models/test_classify_rules.py
 # A desk cannot set environment variables for its own hooks, so they read this file.
 task_field() {
   # Always succeeds (empty output when absent): callers run under `set -e`, and a failing

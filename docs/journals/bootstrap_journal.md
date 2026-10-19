@@ -908,3 +908,34 @@ and then (PR #43 review round 2):
 - **Status:** DONE.
 - **Triage:** small. One ignore rule, one block in the init helper, and a test.
 - **Tests:** `tests/unit/runtime/test_prompt_addenda.py` (4). It checks that an addendum is ignored and an example isn't, using the repo's real `.gitignore` in a sandbox repo. It checks that the copy reaches a worktree and isn't committed, that a worktree's own edit is never overwritten, and that nothing is copied when there are no addenda. All of them use synthetic stand-ins, never a real addendum.
+
+---
+
+## RUN-018 — Requirement (human, 2026-10-18)
+
+- **Objective:** close the gaps a read-only repo review found in the human-owned runtime files.
+- **Details:**
+  - `.gitignore` had no rule for build output, root scratch files or images outside `fixtures/`. An empty untracked `msg157.txt` sat at the root.
+  - `pydantic-settings` is declared but never imported. `click` is imported by a test but not declared.
+  - The compose `app` comment and a `common.sh` example still described the bootstrap.
+- **Constraint:** human-side (RUN-002.D16): `.gitignore`, `pyproject.toml`, `docker-compose.yml` and `.claude/hooks/`.
+
+## RUN-018 — Confirmed reading
+
+- **RUN-018.D1:** **`.gitignore` covers images everywhere**, case-insensitive (png, jpg/jpeg, gif, webp, heic/heif, bmp, tif/tiff). The repo tracks none, and none should ever be committed. It also covers `*.egg-info/`, `build/` and `dist/`, plus `/*.txt` and `/*.log` at the root only, so nested text files stay committable. (the human's session, 2026-10-18)
+- **RUN-018.D2:** **`pydantic-settings` is dropped** from the dependencies, since nothing imports it. `click` is declared as a dev dependency, because `tests/integration/test_dry_run_cli.py` imports `click.testing`. (the human's session, 2026-10-18)
+- **RUN-018.D3:** two stale comments are fixed: the compose `app` command (M1 added the CLI) and the `.task` example in `.claude/hooks/common.sh`, which named a test that doesn't exist. (the human's session, 2026-10-18)
+- **Checked and not changed:** `make up` starting `ollama` is correct. RUN-011.D1 limits Ollama only for test runs, and the app needs it.
+
+## RUN-018 — Tasks
+
+- [x] RUN-018.1 — `.gitignore`, `pyproject.toml`, the compose comment, the `common.sh` example, and `tests/unit/runtime/test_gitignore_rules.py`
+
+## RUN-018 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Ignore rules, one dependency removed and one declared, two comments, and a test.
+- **Tests:** `tests/unit/runtime/test_gitignore_rules.py` (19) checks the rules with the repo's real `.gitignore` in a sandbox repo:
+  - images in any folder and in either case are ignored;
+  - build output and root scratch files are ignored;
+  - README, config, prompts, the example addenda, recordings, eval data and nested text files stay committable.

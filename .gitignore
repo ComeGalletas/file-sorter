@@ -7,6 +7,17 @@ prompts/local/*.md
 # Image data never leaves the box
 fixtures/images/
 fixtures/labels.csv
+# RUN-018.D1: no image file is committed anywhere, so a stray copy can't be pushed by mistake
+*.[pP][nN][gG]
+*.[jJ][pP][gG]
+*.[jJ][pP][eE][gG]
+*.[gG][iI][fF]
+*.[wW][eE][bB][pP]
+*.[hH][eE][iI][cC]
+*.[hH][eE][iI][fF]
+*.[bB][mM][pP]
+*.[tT][iI][fF]
+*.[tT][iI][fF][fF]
 # Runtime artifacts
 .work/
 reports/
@@ -16,6 +27,12 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
+build/
+dist/
+# RUN-018.D1: scratch files at the repo root (commit-message drafts, logs)
+/*.txt
+/*.log
 # agent-office data for this floor: worker worktrees, office password, state (RUN-003)
 .agent-office/
 
