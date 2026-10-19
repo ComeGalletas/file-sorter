@@ -80,7 +80,7 @@ def test_list_shows_the_columns_and_the_seeded_unsorted(cli: None) -> None:
     result = run("list")
     assert result.exit_code == 0
     lines = result.output.splitlines()
-    assert lines[0] == "axis\tname\tfolder\tmin_score\tbranch\tparent\tprompts"
+    assert lines[0] == ("axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)")
     unsorted = [ln for ln in lines if ln.startswith("format\tunsorted\t")]
     assert unsorted == ["format\tunsorted\tUnsorted\taxis default\tany\t-\t0"]
 
@@ -113,6 +113,25 @@ def test_add_creates_the_category_and_its_prompts_in_order(cli: None, schema_dsn
     assert "topic\tQorvex\tQorvex Dir\t0.4\tsafe\t-\t2" in listed
 
 
+def test_add_without_a_prompt_succeeds_and_stores_none(cli: None, schema_dsn: str) -> None:
+    result = add("Qorvex", "--axis", "topic", "--folder", "Qv")  # CLI-006.1
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "added topic category Qorvex"
+    assert _rows(
+        schema_dsn,
+        "select count(*) from category_prompts p join categories c on c.id = p.category_id "
+        "where c.name = 'Qorvex'",
+    ) == [(0,)]
+    assert "topic\tQorvex\tQv\taxis default\tany\t-\t0" in run("list").output
+
+
+def test_help_marks_prompt_and_min_score_unused(cli: None) -> None:
+    for verb in ("add", "edit"):
+        text = " ".join(run(verb, "--help").output.split())
+        assert "Unused on the VLM path (CLS-004.D7)" in text
+        assert "DOC-009.D3" in text
+
+
 def test_add_with_a_parent_on_the_same_axis(cli: None) -> None:
     assert add("Zhyndel", "--axis", "topic", "--folder", "Zh", "--prompt", "p").exit_code == 0
     result = add(
@@ -138,7 +157,6 @@ def _fails(result, text: str) -> None:
          "--min-score must be a number from 0 to 1"),
         (["--axis", "topic", "--folder", "Q", "--prompt", "p", "--min-score", "nan"],
          "--min-score must be a number from 0 to 1"),
-        (["--axis", "topic", "--folder", "Q"], "at least one --prompt is required"),
         (["--axis", "topic", "--folder", "Q", "--prompt", "  "],
          "a name or prompt is empty, has a control character or is not valid text"),
         (["--axis", "topic", "--folder", "a/b", "--prompt", "p"], "invalid folder name"),

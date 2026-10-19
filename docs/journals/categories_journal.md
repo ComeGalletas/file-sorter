@@ -626,7 +626,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLI-006 — Tasks
 
-- [ ] CLI-006.1 — `categories add` without `--prompt`; `--prompt`/`--min-score` handled per CLI-006.D1; `list` without the unused columns; docstring · #171 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
+- [x] CLI-006.1 — `categories add` without `--prompt`; `--prompt`/`--min-score` kept and marked unused per CLI-006.D1; `list` columns renamed `(unused)`; docstring · #171 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
 
 ## CLI-006 — Results
 

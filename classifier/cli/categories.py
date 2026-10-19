@@ -4,6 +4,9 @@ Postgres only, no file system access (P-5). Prompts and `min_score` are hand-tun
 (CLAUDE.md §1.7): they live in the local database and are never committed. Edits apply to the
 next classify, not to rows already classified (CLI-004.D2).
 
+`--prompt` and `--min-score` are unused on the VLM path (CLS-004.D7). They stay accepted and
+stored because DOC-009.D3 keeps the columns, and `add` no longer needs a prompt (CLI-006.1).
+
 Console output is category configuration only (names, folders, scores): never a file name, a
 path or a count of files. Every error is a fixed text, raised outside any `except` block so
 `__cause__` and `__context__` stay None; the user's input is never quoted (R-CLS-7, P-5).
@@ -54,6 +57,8 @@ def _fail(message: str, code: int = 2) -> typer.Exit:
     return typer.Exit(code)
 
 
+_UNUSED_HELP = "Unused on the VLM path (CLS-004.D7), kept for the columns (DOC-009.D3)."
+
 ConfigOption = Annotated[
     str | None, typer.Option("--config", help="Config file; default $CLASSIFIER_CONFIG.")
 ]
@@ -85,7 +90,7 @@ def _open(config_path: str | None) -> tuple[Config, psycopg.Connection]:
 def list_categories(
     config_path: ConfigOption = None,
 ) -> None:
-    """List every category: axis, name, folder, min_score, branch, parent, prompt count."""
+    """List every category: axis, name, folder, branch, parent and the unused min_score, prompts."""
     _config, conn = _open(config_path)
     problem = None
     rows: list[tuple] = []
@@ -103,7 +108,7 @@ def list_categories(
         conn.close()
     if problem is not None:
         raise _fail(problem, 1)
-    typer.echo("axis\tname\tfolder\tmin_score\tbranch\tparent\tprompts")
+    typer.echo("axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)")
     for axis, name, folder, min_score, branch, parent, prompts in rows:
         score = "axis default" if min_score is None else f"{min_score:g}"
         typer.echo(f"{axis}\t{name}\t{folder}\t{score}\t{branch}\t{parent or '-'}\t{prompts}")
@@ -231,18 +236,14 @@ def add_category(
     name: Annotated[str, typer.Argument(help="Category name, unique on its axis.")],
     axis: Annotated[str, typer.Option("--axis", help="format or topic.")],
     folder: Annotated[str, typer.Option("--folder", help="Result folder name.")],
-    prompt: Annotated[
-        list[str] | None, typer.Option("--prompt", help="SigLIP prompt; repeat for more.")
-    ] = None,
-    min_score: Annotated[
-        float | None, typer.Option("--min-score", help="Omit to use the axis default.")
-    ] = None,
+    prompt: Annotated[list[str] | None, typer.Option("--prompt", help=_UNUSED_HELP)] = None,
+    min_score: Annotated[float | None, typer.Option("--min-score", help=_UNUSED_HELP)] = None,
     branch: Annotated[str, typer.Option("--branch", help="any, safe or nsfw.")] = "any",
     parent: Annotated[str | None, typer.Option("--parent", help="Parent name, same axis.")] = None,
     config_path: ConfigOption = None,
 ) -> None:
     """Add a category. It applies to the next classify (CLI-004.D2)."""
-    problem, prompts = _check_common(axis, branch, min_score, prompt or [])
+    problem, prompts = _check_common(axis, branch, min_score, prompt)
     clean_name = _clean(name)
     clean_parent = _clean(parent) if parent is not None else None
     if problem is None and (clean_name is None or (parent is not None and clean_parent is None)):
@@ -253,7 +254,7 @@ def add_category(
         problem = _check_folder(folder)
     if problem is not None:
         raise _fail(problem)
-    assert clean_name is not None and prompts is not None
+    assert clean_name is not None
 
     def work(config: Config, conn: psycopg.Connection) -> str | None:
         rules = _rules(conn)
@@ -279,7 +280,7 @@ def add_category(
             (axis, clean_name, folder, min_score, branch, parent_id),
         ).fetchone()
         assert row is not None
-        for position, text in enumerate(prompts):
+        for position, text in enumerate(prompts or []):
             conn.execute(
                 "insert into category_prompts (category_id, position, prompt) values (%s, %s, %s)",
                 (row[0], position, text),
@@ -297,12 +298,10 @@ def edit_category(
     folder: Annotated[str | None, typer.Option("--folder", help="New result folder name.")] = None,
     prompt: Annotated[
         list[str] | None,
-        typer.Option("--prompt", help="Replaces all prompts; repeat for more."),
+        typer.Option("--prompt", help=_UNUSED_HELP),
     ] = None,
-    min_score: Annotated[float | None, typer.Option("--min-score", help="New min_score.")] = None,
-    reset_min_score: Annotated[
-        bool, typer.Option("--reset-min-score", help="Use the axis default again.")
-    ] = False,
+    min_score: Annotated[float | None, typer.Option("--min-score", help=_UNUSED_HELP)] = None,
+    reset_min_score: Annotated[bool, typer.Option("--reset-min-score", help=_UNUSED_HELP)] = False,
     branch: Annotated[str | None, typer.Option("--branch", help="any, safe or nsfw.")] = None,
     config_path: ConfigOption = None,
 ) -> None:
