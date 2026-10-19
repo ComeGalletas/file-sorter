@@ -660,7 +660,7 @@ references or host paths here. Use hashes.
 
 ## TST-012 — Tasks
 
-- [x] TST-012.1 — The orphan-recording check (TST-012.1.1) and the deletion of the orphans it finds (TST-012.1.2), after CLS-006.1 and CLS-006.3 · #175 · QA · acceptance: `tests/devtools/test_recordings.py` or the file the plan names (key log + `orphan_recordings` 9451777; run gate 15f7b3b; deletion 15f7b3b)
+- [x] TST-012.1 — The orphan-recording check (TST-012.1.1) and the deletion of the orphans it finds (TST-012.1.2), after CLS-006.1 and CLS-006.3 · #175 · QA · acceptance: `tests/devtools/test_recordings.py` or the file the plan names (the commits are numbered .1 to .3: .1 key log + `orphan_recordings` `9451777`; .2 the full-run gate `2d28876`; .3 the deletion `15f7b3b`; PR #184, merged as `510d7ba`; the lead corrected the hashes)
 
 ## TST-012 — Results
 
