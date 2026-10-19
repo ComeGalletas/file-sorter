@@ -656,7 +656,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLS-006 — Tasks
 
 - [ ] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
-- [ ] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
+- [x] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` · done (2cbf8bf, docstring commit next)
 - [ ] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · after CLS-006.1
 
 ## CLS-006 — Results

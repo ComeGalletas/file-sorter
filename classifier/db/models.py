@@ -149,7 +149,10 @@ class SanitizeLog(Base):
 
 
 class Category(Base):
-    """One category on one axis (DESIGN §5, R-CLS-0). `files.format`/`topic` hold names, no FK."""
+    """One category on one axis (DESIGN §5, R-CLS-0). `files.format`/`topic` hold names, no FK.
+
+    `min_score` is a SigLIP-era column: kept, but unread on the VLM path (CLS-004.D7, DOC-009.D3).
+    """
 
     __tablename__ = "categories"
     __table_args__ = (
@@ -183,7 +186,10 @@ class Category(Base):
 
 
 class CategoryPrompt(Base):
-    """One SigLIP prompt of a category; `position` follows the seed's table order (DB-003.D4)."""
+    """One SigLIP prompt of a category; `position` follows the seed's table order (DB-003.D4).
+
+    The table is kept but unread on the VLM path (CLS-004.D7, DOC-009.D3).
+    """
 
     __tablename__ = "category_prompts"
     __table_args__ = (
