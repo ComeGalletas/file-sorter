@@ -66,7 +66,7 @@ services:
     environment:
       <<: *env
       SANITIZE_LOG_KEY: ${SANITIZE_LOG_KEY:?run make init}   # SAN-001.D5; app and test only, never fetch
-    # RUN-001.D11: idle until M1 adds real commands; use `docker compose exec app classifier ...`.
+    # RUN-001.D11: the container stays up; run the CLI with `docker compose exec app classifier ...`.
     command: ["sleep", "infinity"]
     volumes:
       - .:/app
