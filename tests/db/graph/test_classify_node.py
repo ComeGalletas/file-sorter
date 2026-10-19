@@ -56,18 +56,11 @@ class FakeVision:
 
     classifier_id = "fake-classifier"
     nsfw_id = "fake-gate"
-    logit_scale = 1.0
-    logit_bias = 0.0
 
     def __init__(self, fail_images: bool = False) -> None:
         self.fail_images = fail_images
-        self.text_calls = 0
         self.image_calls = 0
         self.seen: list[Image.Image] = []
-
-    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
-        self.text_calls += 1  # CLS-004.D7: the node no longer scores prompts
-        raise AssertionError("the VLM path never embeds category prompts")
 
     def embed_images(self, images: Sequence[Image.Image]) -> np.ndarray:
         self.image_calls += 1
@@ -400,7 +393,7 @@ def test_images_go_to_siglip_in_batches_and_the_vlm_gets_two_calls_each(
         _add(db, folders[1], 100 + n)
     vision, ollama = FakeVision(), FakeOllama()
     assert classify(db, _ctx(folders, config, vision, ollama)).classified == BATCH_SIZE + 1
-    assert (vision.image_calls, vision.text_calls) == (2, 0)
+    assert vision.image_calls == 2
     assert len(ollama.requests) == 2 * (BATCH_SIZE + 1)
 
 
