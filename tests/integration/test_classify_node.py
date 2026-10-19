@@ -24,7 +24,7 @@ from classifier.graph.classify import (
     ClassifyResult,
     _load_rules,
     classify,
-    open_working_copy,
+    first_frame_rgb,
     open_working_frames,
 )
 from classifier.graph.nodes import Node, NodeContext
@@ -81,9 +81,9 @@ def _expected(dsn, backend, results, config, ollama_transport, label: str):
     with psycopg.connect(dsn) as conn:
         rules = _load_rules(conn)
     digest = source_hash(label)
-    first = open_working_copy(results / ".work", digest, "png")
-    nsfw = float(backend.nsfw_scores([first])[0])
     frames = open_working_frames(results / ".work", digest, "png")
+    first = first_frame_rgb(frames)
+    nsfw = float(backend.nsfw_scores([first])[0])
     with OllamaClient("http://ollama:11434", transport=ollama_transport("models")) as client:
         answer = vlm_classify(
             client,
@@ -143,7 +143,8 @@ def test_the_stored_vector_is_the_recorded_embedding(
     rows = _rows(schema_dsn)
     for label in SCENARIO_LABELS:
         digest = source_hash(label)
-        image = open_working_copy(tmp_path / "results" / ".work", digest, "png")
+        frames = open_working_frames(tmp_path / "results" / ".work", digest, "png")
+        image = first_frame_rgb(frames)
         stored = np.array(rows[digest]["image_vec"].strip("[]").split(","), dtype=np.float32)
         assert stored.shape == (1152,)
         np.testing.assert_allclose(stored, backend.embed_images([image])[0], atol=1e-6)
@@ -151,7 +152,7 @@ def test_the_stored_vector_is_the_recorded_embedding(
 
 def test_the_gate_score_never_decides_the_branch(
     schema_dsn: str, tmp_path, vision_backend, ollama_transport
-) -> None:  # CLS-004.D5: Falconsai is a cross-check, and the committed config has it off
+) -> None:  # CLS-004.D5: Falconsai is a cross-check, and the scenario config has it off
     plain = _backend(vision_backend)
     run_classify(schema_dsn, tmp_path / "plain", plain, ollama_transport("models"))
     baseline = _rows(schema_dsn)

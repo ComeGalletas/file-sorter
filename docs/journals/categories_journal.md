@@ -516,7 +516,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
 - [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; no issue yet
-- [ ] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
+- [x] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
 
@@ -598,6 +598,13 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is proven on tmp_path stand-ins only, never against the human's real addenda (by design).
 - **Reviewer / Privacy auditor:** pending.
 
+### CLS-004.8 (ML, #168)
+
+- **Commits:** .8.1 loader, `vlm_classify` and tests (`CLS-004.8.1`), .8.2 eval wording and tests, .8.3 example files; hashes in the PR.
+- **Built:** `load_effective_prompt` uses `prompts/local/<name>.md` as the whole system text. Front matter and `user`/`user_alt` stay committed. A slot the committed body lacks is refused (fewer slots are allowed). Cap 16384 bytes. `Prompt.addendum*` became `replacement*`. Eval says `local prompts: present|absent` and `with the provisional H8 local prompts`.
+- **Tests:** full default tiers (`make test`): 2366 passed; `make lint` clean. The gpu tier runs at pre-push.
+- **Status:** pending PR. **Reviewer / Privacy auditor:** pending.
+
 ---
 
 ## CLS-005 — Requirement (human, "include", 2026-10-18; parked until its milestone)
@@ -626,7 +633,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLI-006 — Tasks
 
-- [ ] CLI-006.1 — `categories add` without `--prompt`; `--prompt`/`--min-score` handled per CLI-006.D1; `list` without the unused columns; docstring · #171 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
+- [x] CLI-006.1 — `categories add` without `--prompt`; `--prompt`/`--min-score` kept and marked unused per CLI-006.D1; `list` columns renamed `(unused)`; docstring · #171 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
 
 ## CLI-006 — Results
 
@@ -656,13 +663,18 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLS-006 — Tasks
 
 - [x] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py` · commits 3e28599 (.1 rules), b7e08f8 (.3 siglip), 7bac465 (.2 vision), 83280fe (.4 docstring)
-- [ ] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
+- [x] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` · done (2cbf8bf, c0e20e0)
 - [ ] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · after CLS-006.1
 
 ## CLS-006 — Results
 
 ### CLS-006.1 (ML)
 
-- **Done:** the SigLIP scoring and text code is gone from `classifier/models/`; the privacy tests now run on `decide` with the same planted secrets. `vlm_classify.py` names no SigLIP scoring, so its docstring is unchanged.
+- **Done:** the SigLIP scoring and text code is gone from `classifier/models/`; the `choose` privacy tests now run on `decide` with the same planted names, folders and scores, and the siglip and vision privacy tests plant real inputs (CLS-006.1.6). The `vlm_classify.py` docstring names `open_working_frames`.
 - **Tests:** `make test` 2299 passed; `make lint` clean; `test_classify_rules.py` 73 passed; `make test-gpu` 48 passed.
 - **Deferred:** the replay backend and `embed_texts` fakes (CLS-006.3); orphaned recordings (TST-012.1), listed by hash in the PR.
+
+### CLS-006.2 (Pipeline)
+
+- Status: DONE. Self-rating 9/10, proud: yes. The gap is the one word in `models/vlm_classify.py` that still names `open_working_copy`, left to CLS-006.1 (#172) as the lead said.
+- Tests: `make test` (unit + db + integration) 2364 passed; `make lint` clean. The acceptance test, `tests/db/graph/test_classify_node.py`, is in that run.

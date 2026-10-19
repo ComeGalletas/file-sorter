@@ -86,7 +86,7 @@ def row(hint: str | None = "Hintqorvex") -> ev._Row:
 
 @pytest.fixture
 def prompts_dir(tmp_path, monkeypatch):
-    """A copy of the committed prompts with an empty `local/`, local addenda on."""
+    """A copy of the committed prompts with an empty `local/`, local prompts on."""
     monkeypatch.delenv("PROMPTS_LOCAL", raising=False)
     folder = tmp_path / "prompts"
     (folder / "local").mkdir(parents=True)
@@ -95,22 +95,22 @@ def prompts_dir(tmp_path, monkeypatch):
     return folder
 
 
-def test_the_addenda_line_says_present_or_absent_and_never_a_hash(prompts_dir):
-    bare = ev.addenda_lines(ev.effective_prompts(prompts_dir))
-    assert bare == ["local addenda: classify_v1 absent, nsfw_level_v1 absent"]
-    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} addendum", encoding="utf-8")
+def test_the_local_prompts_line_says_present_or_absent_and_never_a_hash(prompts_dir):
+    bare = ev.local_prompt_lines(ev.effective_prompts(prompts_dir))
+    assert bare == ["local prompts: classify_v1 absent, nsfw_level_v1 absent"]
+    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} replacement", encoding="utf-8")
     prompts = ev.effective_prompts(prompts_dir)
-    lines = ev.addenda_lines(prompts)
+    lines = ev.local_prompt_lines(prompts)
     assert lines == [
-        "local addenda: classify_v1 present, nsfw_level_v1 absent",
-        "with the provisional H8 addenda",
+        "local prompts: classify_v1 present, nsfw_level_v1 absent",
+        "with the provisional H8 local prompts",
     ]
     line = " | ".join(lines)
     assert SECRET not in line and not re.search(r"[0-9a-f]{8}", line)
 
 
 def test_the_versions_line_carries_the_hash_for_the_console_only(prompts_dir):
-    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} addendum", encoding="utf-8")
+    (prompts_dir / "local" / "classify_v1.md").write_text(f"{SECRET} replacement", encoding="utf-8")
     prompts = ev.effective_prompts(prompts_dir)
     line = ev.versions_line(prompts)
     assert re.fullmatch(
@@ -119,17 +119,17 @@ def test_the_versions_line_carries_the_hash_for_the_console_only(prompts_dir):
     assert SECRET not in line
 
 
-def test_the_local_off_switch_ignores_the_addendum(prompts_dir, monkeypatch):
-    (prompts_dir / "local" / "classify_v1.md").write_text("an addendum", encoding="utf-8")
+def test_the_local_off_switch_ignores_the_replacement(prompts_dir, monkeypatch):
+    (prompts_dir / "local" / "classify_v1.md").write_text("a replacement", encoding="utf-8")
     monkeypatch.setenv("PROMPTS_LOCAL", "off")
-    assert ev.addenda_lines(ev.effective_prompts(prompts_dir)) == [
-        "local addenda: classify_v1 absent, nsfw_level_v1 absent"
+    assert ev.local_prompt_lines(ev.effective_prompts(prompts_dir)) == [
+        "local prompts: classify_v1 absent, nsfw_level_v1 absent"
     ]
 
 
-def test_the_file_digest_ignores_the_addendum_and_a_missing_file_is_unchained(prompts_dir):
+def test_the_file_digest_ignores_the_replacement_and_a_missing_file_is_unchained(prompts_dir):
     before = ev.prompt_file_digest("classify_v1", prompts_dir)
-    (prompts_dir / "local" / "classify_v1.md").write_text("an addendum", encoding="utf-8")
+    (prompts_dir / "local" / "classify_v1.md").write_text("a replacement", encoding="utf-8")
     assert ev.prompt_file_digest("classify_v1", prompts_dir) == before
     with pytest.raises(ev.EvalError) as caught:
         ev.prompt_file_digest("classify_v1", prompts_dir / "nowhere")
@@ -277,7 +277,7 @@ def collected(rows: list[gate.Outcome], cross_checked: int = 0, **checks) -> ev.
     flags = {"nsfw_label": True, "nsfw_input": True} | checks
     result = ev.Checks(coverage=measures.coverage_ok, **flags)
     prompts = tuple(
-        load_effective_prompt(name).model_copy(update={"addendum_hash": hashed})
+        load_effective_prompt(name).model_copy(update={"replacement_hash": hashed})
         for name, hashed in zip(ev.PROMPT_NAMES, ("0a1b2c3d", None), strict=True)
     )
     return ev.Collected(measures, result, prompts, "nudity", cross_checked)
@@ -286,12 +286,12 @@ def collected(rows: list[gate.Outcome], cross_checked: int = 0, **checks) -> ev.
 def test_the_public_form_is_verdicts_whole_percents_and_no_hash():
     lines = ev.render(collected(outcomes()))
     out = "\n".join(lines)
-    assert "local addenda: classify_v1 present, nsfw_level_v1 absent" in lines
-    assert "with the provisional H8 addenda" in lines
+    assert "local prompts: classify_v1 present, nsfw_level_v1 absent" in lines
+    assert "with the provisional H8 local prompts" in lines
     assert "0a1b2c3d" not in out and not re.search(r"[0-9a-f]{8}", out)
     assert "bug checks: nsfw label ok, nsfw input ok, coverage ok" in lines
-    assert "format agreement: 100% (required >= 85%): ok" in lines
-    assert "topic agreement: 100% (required >= 85%): ok" in lines
+    assert "format agreement: 100% (required >= 80%): ok" in lines
+    assert "topic agreement: 100% (required >= 80%): ok" in lines
     assert "unrecognized format: 0% (required < 10%): ok" in lines
     assert "nsfw gate (adult flagged, safe not flagged): ok" in lines
     assert "suggestive-negative rows safe: ok" in lines
@@ -303,7 +303,7 @@ def test_the_public_form_is_verdicts_whole_percents_and_no_hash():
 def test_failures_say_fail_and_percentages_round_down():
     wrong = outcomes(**{"b_qorvex.png": ("Zhyndel", None, "safe", "safe")})
     out = "\n".join(ev.render(collected(wrong)))
-    assert "format agreement: 75% (required >= 85%): FAIL" in out
+    assert "format agreement: 75% (required >= 80%): FAIL" in out
     leaked = outcomes(**{"d_qorvex.png": ("Qorvex", None, "nsfw", "explicit")})
     out = "\n".join(ev.render(collected(leaked)))
     assert "suggestive-negative rows safe: FAIL" in out

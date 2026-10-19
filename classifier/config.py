@@ -1,8 +1,9 @@
 """Typed configuration (DESIGN.md §6, CFG-001, R-CFG-1).
 
 `config.yaml` holds container paths only. Every section is a strict model: an unknown key
-is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1) and the
-`classify.*.default_min_score` values (calibrated in M3).
+is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1). The
+SigLIP-era keys `classify.*.default_min_score` and `margin` are kept but unread on the VLM
+path (CLS-004.D7, DOC-009.D3).
 
 No error raised by `load_config` repeats a value from the file or the environment: messages
 name the file, the key location and the error type only (CFG-002).
@@ -60,8 +61,8 @@ class NsfwLevel(IntEnum):
     explicit = 3
 
 
-# CFG-003.1: the SigLIP keys below no longer decide anything (CLS-004.D7). They stay
-# parseable, and optional, until DOC-009 decides whether DESIGN drops them.
+# CFG-003.1: the SigLIP keys below no longer decide anything (CLS-004.D7). They are kept,
+# parseable and optional, but unread on the VLM path (DOC-009.D3).
 class AxisConfig(_Section):
     default_min_score: float | None = None  # calibrated in M3 (R-CLS-8)
     margin: float | None = None
