@@ -1,6 +1,6 @@
 # Categories — journal
 
-**ID:** CLS-001 (+ CLS-002, CLS-003, FOP-002, CLI-004) · **Systems:** CLS (+ NAME, FOP, DB, API, TST, MOD, CLI) · **Type:** feature · **Status:** CLS-001 design done; its build (CLS-002, CLS-003, FOP-002, CLI-004) proposed for M3 ·
+**ID:** CLS-001 (+ CLS-002, CLS-003, FOP-002, CLI-004, CLS-004, CLS-005, CLI-006, CLS-006) · **Systems:** CLS (+ NAME, FOP, DB, API, TST, MOD, CLI) · **Type:** feature · **Status:** CLS-001 design done; CLS-002, FOP-002, CLI-004 done; CLS-003.2 dropped (superseded by CLS-004); CLS-004 in progress; CLS-005 parked; CLI-006 and CLS-006 open (M3) ·
 **Milestone:** m3 (CLS-001 designed pre-repo) · **Issues:** CLS-001: — (pre-repo); M3: see each Tasks section · **Branch:** CLS-001 pre-repo, committed at bootstrap; M3 per task (`office/*`)
 
 ---
@@ -39,7 +39,7 @@ Decisions:
   - NSFW: every adult image caught, 0 false positives;
   - unrecognized format < 10%.
   
-  (human, 2026-10-05)
+  (human, 2026-10-05) **Superseded** by CLS-004.D12 (format and topic ≥ 80% on a single run, human, 2026-10-19) and CLS-004.D3 (NSFW by level at `nsfw.min_level`).
 - **CLS-001.D6:** Default vocabulary from the sample:
   - Formats: photos, screenshots, memes, artwork, documents.
   - Topics: videogames, anime, cartoons, pc-equipment, animals, people, landscapes (beach merged in), music, tv-shows, software (mobile and IDE merged).
@@ -57,7 +57,7 @@ and then (human review of the noted rows, 2026-10-05):
   Other reversed pairs share one folder; their nuance stays in subject and reference. (human, 2026-10-05)
 - **CLS-001.D10:** `memes` and `documents` are also topics, meaning the image's meaning, and a topic never repeats its format (R-CLS-3b). When both labels are formats, the first is the format and the second becomes the topic: `photos + memes` → `Memes/Photos/`, and `screenshots + documents` → `Documents/Screenshots/`. (human, 2026-10-05)
 - **CLS-001.D11:** **Blank means undecided.** The image stays in the test set and runs end to end, but isn't scored on the blank axis. A former `gif` row gets a topic where its reference settles it. (human, 2026-10-05)
-- **CLS-001.D12:** **Adult means explicit sexual imagery.** Suggestive images without it stay `adult = no`. Such rows are deliberate negative tests, tagged `suggestive-negative`, and none may be flagged (R-CLS-1). (human, 2026-10-05)
+- **CLS-001.D12:** **Adult means explicit sexual imagery.** Suggestive images without it stay `adult = no`. Such rows are deliberate negative tests, tagged `suggestive-negative`, and none may be flagged (R-CLS-1). (human, 2026-10-05) **Superseded in part** by CLS-004.D3: adult now means a level at or above `nsfw.min_level` (`nudity`), not explicit only. The `suggestive-negative` rows still must stay safe.
 - **CLS-001.D13:** One label was corrected in review; the correction is in the local `labels.csv`. An earlier answer was amended the same day. (human, 2026-10-05)
 - **CLS-001.D14:** The `note` column is replaced by `tags`, which holds test tags only (`suggestive-negative`). The review notes are resolved.
 
@@ -339,7 +339,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-003 — Tasks
 
-- [ ] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py`
+- [x] CLS-003.1 — `eval/classify_eval.py`: score the sanitized labelled fixtures once, sweep the thresholds, report per CLS-001.D5 with a held-out estimate · #101 · acceptance: `tests/gpu/models/test_classify_eval.py` (done with concerns; PR #120, merged as `fd4f7c2`)
   - [x] CLS-003.1.1 — `eval/classify_sweep.py`: the pure sweep, overrides and 5-fold check, with unit tests (17176ee)
   - [x] CLS-003.1.2 — scoring: `SiglipBackend` scores of the working copies, the score cache, the label join (1f821d7)
   - [x] CLS-003.1.3 — `eval/classify_eval.py`: the throwaway-db run, the CLI, the public and `--detail` report, the proposal printout (a7ba20e)
@@ -348,7 +348,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-003.1.6 — box-only NSFW block in `--detail`, and `--hold-nsfw-threshold` (sweep side 3eff259; the CLI side and the report in the CLS-003.1.5 commit)
   - [x] CLS-003.1.7 — `tests/gpu/models/test_siglip_reference.py`: SigLIP known-answer and reference-agreement cross-check; result `ok`, no fix needed (#101, lead's comment)
   - [x] CLS-003.1.8 — review fixes: the infeasible suggestive-negative verdict, a real `nsfw input` check, repr tests for `Checks`/`RunInfo`/`NsfwDiagnostic`, Results brought current (#120 review)
-- ~~CLS-003.2~~ dropped (lead, 2026-10-18): superseded by CLS-004. The human replaced SigLIP threshold calibration with a VLM classifier, so there are no SigLIP thresholds to commit. #102 is closed as not planned once the re-plan is approved. The settings the VLM path needs land in CFG-003.1.
+- ~~CLS-003.2~~ dropped (lead, 2026-10-18): superseded by CLS-004. The human replaced SigLIP threshold calibration with a VLM classifier, so there are no SigLIP thresholds to commit. #102 is closed as not planned once the re-plan is approved (the human approved it on 2026-10-19). The settings the VLM path needs land in CFG-003.1.
 
 ## CLS-003 — Results
 
@@ -431,6 +431,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - **Source:** the human's spike prompt texts, available to the ML desk locally on the box (the location isn't published). They are the starting point. The desk commits them only after a privacy read, because a prompt may name or hint at things seen in the human's images. Any wording that does gets generalised before it lands.
 - **CLS-004.D11 — the M3 checkpoint before G1** (lead). CLS-004.5's real run on the box, through the eval harness, must reproduce the spike's passing result in the repo before `make gate-3`. It publishes only in the TST-008.D1 form.
 - **CLS-004.D12 — the gate 3 format target is 85%** (human, 3.6). DOC-009 changes DESIGN §11 and CLS-001.D5. Topic stays at 85%, and the other criteria are unchanged.
+  - **Amended (human, 2026-10-19, at the CLS-004.D11 checkpoint):** format ≥ **80%** and topic ≥ **80%**, judged on a **single run**. Repeated identical runs are deterministic, so one run is enough. DOC-011 (#166) changes DESIGN §11, C-28 and Q-8; TST-009.3 (#169) changes `gate_3.py`, which the eval harness judges through.
 - **CLS-004.D13 — `nsfw_disagreement` wins over `unsorted` as `review_reason`** (lead, 2026-10-18, provisional; #133). A row can need review for both reasons, and the ledger holds one. The disagreement is the one a human must look at first. DB-005.1 (#159) lets the ledger store it.
 - **CLS-004.D14 — the client contract** (lead, 2026-10-18; #132, #135).
   - One call per image: `vlm_classify(client, model, image, *, hint, formats, topics) -> VlmAnswer`.
@@ -441,6 +442,15 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - `retry_temperature: 0.3`. At temperature 0 with a fixed seed, an identical retry would return the identical answer.
   - `max_side: 1024` and `jpeg_quality: 90`: each frame is scaled down (never up) and sent as JPEG, so a large image stays within `num_ctx: 4096`.
 - **CLS-004.D16 — the local prompt addendum** (H8, provisional, taken under the human's standing instruction; **the human decides**). Some operative clauses from the human's spike prompts are held back from the public prompt files and live in git-ignored `prompts/local/<version>.md` files on the box (RUN-017, CLS-004.6). The committed files keep only what the spec already publishes. CLS-004.5's real run uses the addenda, and its result is reported as "with the provisional H8 addenda".
+  - **Superseded by CLS-004.D17** (human, 2026-10-19). The clauses stay local (H8 resolved), but the local file replaces the system text instead of adding to it.
+- **CLS-004.D17 — route B′: a local prompt file replaces the committed system text** (human, 2026-10-19, at the CLS-004.D11 checkpoint; the mechanism is the lead's reading, 2026-10-19).
+  - `prompts/local/<name>.md` keeps its path and becomes a **replacement** for the committed file's system text. The addendum mode goes: one file, one meaning.
+  - The committed file still supplies the front matter and the `user`/`user_alt` templates, so the settings stay public and reviewed. The replacement renders with the committed file's slots; an undeclared slot is refused.
+  - The effective version keeps its hash, `<version>+<8 hex>`, now of the replacement text, and the hash stays off the default output (CLS-004.5.6).
+  - The cap rises to 16384 bytes (lead, provisional). `PROMPTS_LOCAL=off` still disables it (TST-011).
+  - The committed prompts stay generic. The human's session writes the replacement files on the box. CLS-004.5.7 then re-runs, reported "with the provisional H8 local prompts".
+  - Built by CLS-004.8 (#168).
+- **The human's answers at the checkpoint (2026-10-19)** also confirm, as set: CLS-004.D4 (H6), D5's reading with the values `safe_above: 0.90` and `adult_below: 0.10` (H3, committed by CFG-004.1), D8 (H4), D15 (H10). A label question from the checkpoint was answered with no label change.
 
 ## CLS-004 — Plan
 
@@ -499,11 +509,14 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.5.4 — `--detail` console-only (`83a40ca`)
   - [x] CLS-004.5.5 — Unit tests on a scripted VLM client; `tests/gpu/models/test_classify_eval.py` re-pointed to the real `models.vlm_safe` on synthetic images
   - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
-  - [ ] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (waits for the lead's go)
-- [ ] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
-  - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (hash in Results)
+  - [x] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (2026-10-18, the CLS-004.D11 checkpoint; posted on #136, no PR). It did not pass gate 3, and the human chose CLS-004.D12's amendment and route B′ (CLS-004.D17). The step was numbered .5.6 in the desk's plan; .5.6 went to the review fixes, so the run is .5.7.
+  - [ ] CLS-004.5.8 — The re-run on the box after CLS-004.8 and the human's local prompt files, public form only, "with the provisional H8 local prompts", judged at 80% (TST-009.3)
+- [x] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
+  - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
-  - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders
+  - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
+- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; no issue yet
+- [ ] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
 
@@ -595,4 +608,55 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - At classify time, the nearest exemplars come from pgvector. A near-duplicate takes the human's answer and skips the VLM. A similar image passes the exemplars' answers to the VLM as hints.
   - `fixtures/labels.csv` seeds the first exemplars.
 - **Constraint:** gate measures never score an image against its own exemplar. Checking stays held-out, as the calibration harness does.
-- **Lead's proposal for where it lands (to confirm):** M6, beside the reference store (`classifier/rag/`, pgvector). M4 produces the corrections, and M4's plan stores them as rows ready for M6. It is not in M3.
+- **Where it lands: M6** (the lead's proposal, confirmed by the human as H7, 2026-10-19), beside the reference store (`classifier/rag/`, pgvector). M4 produces the corrections, and M4's plan stores them as rows ready for M6. It is not in M3.
+
+---
+
+## CLI-006 — Requirement (human, the 2026-10-18 repo review)
+
+- **Objective:** `classifier categories` stops demanding and showing the SigLIP-era fields that nothing reads on the VLM path.
+- **Details:** `add` still requires at least one `--prompt`; `add` and `edit` still validate `--min-score`; `list` prints both. Nothing reads either at classify time (CLS-004.D7).
+- **Constraint:** DOC-009.D3 keeps the columns and the config keys. The privacy cases of CLI-004 still hold.
+- **Implements:** R-CLS-7; follows CLS-004.D7 and DOC-009.D3.
+
+## CLI-006 — Confirmed reading
+
+- **The VLM gets** the category names, plus the seeded categories' definitions, which live in the prompt files (CLS-004.1). A user-added category is offered by its bare name. So a category's `category_prompts` rows and `min_score` change nothing today.
+- **CLI-006.D1 — keep or drop the options** (lead, open until CLI-006.1's plan). The lead's leaning is to keep `--prompt` and `--min-score` accepted and stored, marked unused in `--help`, because DOC-009.D3 keeps the columns, and to drop the columns from `list`. The desk proposes; the lead approves on the issue.
+
+## CLI-006 — Tasks
+
+- [ ] CLI-006.1 — `categories add` without `--prompt`; `--prompt`/`--min-score` handled per CLI-006.D1; `list` without the unused columns; docstring · #171 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
+
+## CLI-006 — Results
+
+---
+
+## CLS-006 — Requirement (human, the 2026-10-18 repo review)
+
+- **Objective:** Remove the SigLIP scoring and text code that the VLM path (CLS-004) left unused, with its tests and the stale docstrings.
+- **Details:**
+  - `classify_rules`: `choose`, `nsfw_branch` and the helpers only they use;
+  - `vision`: `score_matrix`, `max_over_prompts`, `cosine_matrix`, `score_images`; `VisionBackend.embed_texts`, `logit_scale` and `logit_bias`, in the client and the replay backend;
+  - the old `open_working_copy` in the node;
+  - `calibration_rows()` in the labels loader;
+  - the docstrings that still describe SigLIP scoring.
+- **Constraint:** `image_vec` (SigLIP's image embedding, CLS-002.D10) and the Falconsai score (the cross-check, CLS-004.D5) stay. The privacy tests that call `choose` are rewritten on `decide`, never dropped. The SigLIP-era config keys and columns stay (DOC-009.D3).
+- **Implements:** CLS-004.D7; closes the deferred items in CLS-004.3's, .4's and .5's Results.
+
+## CLS-006 — Confirmed reading
+
+- **Three parts, by owner** (CLAUDE.md, "Roles and file ownership"):
+  - ML: `classifier/models/`;
+  - Pipeline: `classifier/graph/`, `config.py`, `db/models.py`;
+  - QA: the replay backend, the test fakes and `scripts/fixture_labels.py`.
+- **ML goes first.** A test fake or replay backend that still defines `embed_texts` doesn't break the `Protocol`, so QA follows without a conflict.
+- **The orphaned recordings** under `tests/recordings/graph/` and the new orphan check are TST-012, after CLS-006.1 and .3.
+
+## CLS-006 — Tasks
+
+- [ ] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
+- [ ] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
+- [ ] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · after CLS-006.1
+
+## CLS-006 — Results

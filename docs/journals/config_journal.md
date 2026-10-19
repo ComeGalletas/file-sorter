@@ -136,3 +136,24 @@ references or host paths here. Use hashes.
 - **Consumers now seeing `None` (other roles' files, not touched):** `graph/classify.py` (`config.classify.score`, `config.nsfw.threshold`, `validate_rules(... config.classify)`), `models/classify_rules.py` (`default_min_score`, `margin`), `cli/categories.py` (`config.classify`). CLS-004.3 and .4 re-point them.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. The gap: the old SigLIP path now sees `None` in its keys and would fail at run time rather than at load; CLS-004.4 owns that.
 - **Reviewer / Privacy auditor:** pending.
+
+---
+
+## CFG-004 — Requirement (human, at the M3 checkpoint, 2026-10-19)
+
+- **Objective:** Commit the Falconsai cross-check values the human set (H3), and fix the `config.yaml` comments that still describe the SigLIP path.
+- **Details:**
+  - `nsfw.cross_check.safe_above: 0.90` and `adult_below: 0.10`, from `null` (CFG-003.1 left them off);
+  - the comments on `nsfw.threshold` ("adult = explicit…") and `classify.*` ("calibrated in M3") contradict C-26 and DOC-009.D3.
+- **Constraint:** the values are hand-tuned (CLAUDE.md §1.7). They land as given, in their own `balance` commit.
+- **Implements:** CLS-004.D5, DESIGN §6 (after DOC-011).
+
+## CFG-004 — Confirmed reading
+
+- `nsfw_cross_check` (CLS-004.3) is on when both values are set. A strong disagreement sets `needs_review` with `nsfw_disagreement` and never changes the branch (CLS-004.D5, D13).
+
+## CFG-004 — Tasks
+
+- [ ] CFG-004.1 — The two values (CFG-004.1.1, values only), then the comments (CFG-004.1.2) · #170 · Pipeline · type `balance` · acceptance: `tests/unit/config/test_config.py`
+
+## CFG-004 — Results
