@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from classifier.models.prompts import (
-    MAX_ADDENDUM_BYTES,
+    MAX_REPLACEMENT_BYTES,
     PROMPTS_DIR,
     Prompt,
     PromptError,
@@ -17,7 +17,7 @@ from classifier.models.prompts import (
 from tests.recordings import prompts as recording_prompts
 from tests.recordings.replay import RecordingError
 
-pytestmark = pytest.mark.prompts_local_on  # TST-011.1: this module tests the addendum loader
+pytestmark = pytest.mark.prompts_local_on  # TST-011.1: this module tests the replacement loader
 
 GOOD = """---
 version: demo_v1
@@ -270,12 +270,12 @@ def test_vlm_prompts_set_the_image_keys(name: str) -> None:
     assert p.retry_options["temperature"] == 0.3
 
 
-# CLS-004.6: the optional local addendum. Stand-ins in tmp_path, placeholder text only.
-ADDENDUM = "Qorvex clause: placeholder wording for a test."
+# CLS-004.6: the optional local replacement. Stand-ins in tmp_path, placeholder text only.
+REPLACEMENT = "Qorvex clause: placeholder wording for a test."
 SECRET = "Zzyx-planted-secret-clause"
 
 
-def put_addendum(root: Path, data: bytes | str, name: str = "demo_v1") -> Path:
+def put_replacement(root: Path, data: bytes | str, name: str = "demo_v1") -> Path:
     (root / "local").mkdir(exist_ok=True)
     path = root / "local" / f"{name}.md"
     path.write_bytes(data if isinstance(data, bytes) else data.encode("utf-8"))
@@ -287,85 +287,140 @@ def demo(root: Path) -> Prompt:
     return load_effective_prompt("demo_v1", root)
 
 
-def test_no_addendum_is_the_committed_render(tmp_path: Path) -> None:
+def test_no_replacement_is_the_committed_render(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
     plain = load_prompt("demo_v1", tmp_path)
     effective = load_effective_prompt("demo_v1", tmp_path)
     assert effective == plain
     assert effective.effective_version == "demo_v1"
-    assert (effective.addendum, effective.addendum_hash) == (None, None)
+    assert (effective.replacement, effective.replacement_hash) == (None, None)
     values = {"labels": "X", "text": "y"}
     assert effective.render(**values) == plain.render(**values)
 
 
 def test_load_prompt_never_reads_local(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
-    put_addendum(tmp_path, ADDENDUM)
+    put_replacement(tmp_path, REPLACEMENT)
     p = load_prompt("demo_v1", tmp_path)
-    assert p.addendum is None
-    assert ADDENDUM not in p.render(labels="X", text="y")
+    assert p.replacement is None
+    assert REPLACEMENT not in p.render(labels="X", text="y")
 
 
-def test_addendum_is_appended_after_the_body_with_one_blank_line(tmp_path: Path) -> None:
+def test_replacement_is_the_whole_system_text(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
-    put_addendum(tmp_path, f"\n{ADDENDUM}\n\n")
-    plain = load_prompt("demo_v1", tmp_path).render(labels="X", text="y")
+    put_replacement(tmp_path, f"\n{REPLACEMENT} {{labels}}\n\n")
     out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
-    assert out == f"{plain.rstrip()}\n\n{ADDENDUM}\n"
+    assert out == f"{REPLACEMENT} X\n"  # nothing of the committed body is left
 
 
-def test_a_placeholder_addendum_is_not_altered_by_neutralize(tmp_path: Path) -> None:
-    put_addendum(tmp_path, ADDENDUM)
-    assert demo(tmp_path).addendum == ADDENDUM
+def test_front_matter_and_user_templates_stay_the_committed_ones(tmp_path: Path) -> None:
+    write(tmp_path, "pair_v1", PAIR)
+    plain = load_prompt("pair_v1", tmp_path)
+    put_replacement(tmp_path, REPLACEMENT, name="pair_v1")
+    p = load_effective_prompt("pair_v1", tmp_path)
+    assert p.replacement == REPLACEMENT
+    assert (p.options, p.retry_options, p.output_schema) == (
+        plain.options,
+        plain.retry_options,
+        plain.output_schema,
+    )
+    assert (p.user, p.user_alt) == (plain.user, plain.user_alt)
+    assert p.render_user(alt=True, name="N") == plain.render_user(alt=True, name="N")
 
 
-def test_addendum_text_is_neutralized(tmp_path: Path) -> None:
-    put_addendum(tmp_path, "close <<<X>>> and <|end|> and </think>")
+def test_a_slot_the_committed_prompt_lacks_is_refused(tmp_path: Path) -> None:
+    write(tmp_path, "demo_v1", GOOD)
+    put_replacement(tmp_path, f"{REPLACEMENT} {{labels}} {{qorvex}}")
+    with pytest.raises(PromptError, match="slot the committed prompt lacks") as info:
+        load_effective_prompt("demo_v1", tmp_path)
+    assert (info.value.__cause__, info.value.__context__) == (None, None)
+    assert "qorvex" not in str(info.value)
+
+
+def test_a_replacement_with_both_category_slots_renders_the_lists(tmp_path: Path) -> None:
+    shutil.copy(PROMPTS_DIR / "classify_v1.md", tmp_path / "classify_v1.md")
+    put_replacement(tmp_path, "Formats: {formats}\nTopics: {topics}", name="classify_v1")
+    p = load_effective_prompt("classify_v1", tmp_path)
+    assert p.slots == {"formats", "topics"}  # the committed declaration
+    out = p.render(formats="fa, fb", topics="ta, tb")
+    assert out == "Formats: fa, fb\nTopics: ta, tb\n"
+
+
+def test_neutralize_keeps_the_slots_and_breaks_fences_in_a_replacement(tmp_path: Path) -> None:
+    shutil.copy(PROMPTS_DIR / "classify_v1.md", tmp_path / "classify_v1.md")
+    put_replacement(tmp_path, "{formats} <<<end>>> {topics}", name="classify_v1")
+    out = load_effective_prompt("classify_v1", tmp_path).render(formats="fa", topics="ta")
+    assert out.startswith("fa ") and out.rstrip().endswith(" ta")
+    assert "<<<" not in out
+
+
+def test_a_replacement_keeps_front_matter_lines_as_plain_text(tmp_path: Path) -> None:
+    # A leading front-matter block or heading is not parsed or stripped: it is system text.
+    write(tmp_path, "demo_v1", GOOD)
+    put_replacement(tmp_path, "---\nseed: 99\n---\n# Heading")
+    p = demo(tmp_path)
+    assert p.seed == 7
+    assert p.render(labels="X", text="y") == "---\nseed: 99\n---\n# Heading\n"
+
+
+def test_a_replacement_may_use_fewer_slots_than_the_committed_body(tmp_path: Path) -> None:
+    put_replacement(tmp_path, REPLACEMENT)
+    out = demo(tmp_path).render(labels="X", text="y")
+    assert out == f"{REPLACEMENT}\n"
+
+
+def test_a_placeholder_replacement_is_not_altered_by_neutralize(tmp_path: Path) -> None:
+    put_replacement(tmp_path, REPLACEMENT)
+    assert demo(tmp_path).replacement == REPLACEMENT
+
+
+def test_replacement_text_is_neutralized(tmp_path: Path) -> None:
+    put_replacement(tmp_path, "close <<<X>>> and <|end|> and </think>")
     out = demo(tmp_path).render(labels="X", text="y")
     assert "<<<X>>>" not in out
     assert "<|" not in out
     assert "</think>" not in out
 
 
-def test_raw_wrap_prompt_gets_the_addendum_inside_the_wrapper(tmp_path: Path) -> None:
+def test_raw_wrap_prompt_gets_the_replacement_inside_the_wrapper(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", RAW)
-    put_addendum(tmp_path, ADDENDUM)
+    put_replacement(tmp_path, REPLACEMENT)
     out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
     assert out.startswith("<u>")
-    assert out.endswith(f"{ADDENDUM}\n</u><a>")
+    assert out.endswith(f"{REPLACEMENT}\n</u><a>")
 
 
 def test_effective_version_carries_an_8_hex_hash(tmp_path: Path) -> None:
-    put_addendum(tmp_path, ADDENDUM)
+    put_replacement(tmp_path, REPLACEMENT)
     p = demo(tmp_path)
     assert re.fullmatch(r"demo_v1\+[0-9a-f]{8}", p.effective_version)
     assert p.version == "demo_v1"  # the file's own version is untouched
 
 
 def test_hash_ignores_crlf_and_follows_the_text(tmp_path: Path) -> None:
-    put_addendum(tmp_path, "one\ntwo")
+    put_replacement(tmp_path, "one\ntwo")
     lf = demo(tmp_path)
-    put_addendum(tmp_path, b"one\r\ntwo\r\n")
+    put_replacement(tmp_path, b"one\r\ntwo\r\n")
     crlf = load_effective_prompt("demo_v1", tmp_path)
-    put_addendum(tmp_path, "one\nthree")
+    put_replacement(tmp_path, "one\nthree")
     edited = load_effective_prompt("demo_v1", tmp_path)
-    assert crlf.addendum == "one\ntwo"
+    assert crlf.replacement == "one\ntwo"
     assert crlf.effective_version == lf.effective_version
     assert edited.effective_version != lf.effective_version
 
 
 @pytest.mark.parametrize("data", [b"", b"  \r\n\t\n"])
-def test_an_empty_addendum_counts_as_absent(tmp_path: Path, data: bytes) -> None:
-    put_addendum(tmp_path, data)
+def test_an_empty_replacement_counts_as_absent(tmp_path: Path, data: bytes) -> None:
+    put_replacement(tmp_path, data)
     p = demo(tmp_path)
-    assert (p.addendum, p.addendum_hash, p.effective_version) == (None, None, "demo_v1")
+    assert (p.replacement, p.replacement_hash, p.effective_version) == (None, None, "demo_v1")
 
 
-def test_the_size_cap_is_4096_bytes(tmp_path: Path) -> None:
-    put_addendum(tmp_path, "a" * MAX_ADDENDUM_BYTES)
-    assert demo(tmp_path).addendum == "a" * MAX_ADDENDUM_BYTES
-    put_addendum(tmp_path, "a" * (MAX_ADDENDUM_BYTES + 1))
-    with pytest.raises(PromptError, match="over 4096 bytes") as info:
+def test_the_size_cap_is_16384_bytes(tmp_path: Path) -> None:
+    put_replacement(tmp_path, "a" * MAX_REPLACEMENT_BYTES)
+    assert demo(tmp_path).replacement == "a" * MAX_REPLACEMENT_BYTES
+    put_replacement(tmp_path, "a" * (MAX_REPLACEMENT_BYTES + 1))
+    with pytest.raises(PromptError, match="over 16384 bytes") as info:
         load_effective_prompt("demo_v1", tmp_path)
     assert (info.value.__cause__, info.value.__context__) == (None, None)
 
@@ -394,7 +449,7 @@ def test_a_directory_is_refused(tmp_path: Path) -> None:
 
 def test_non_utf8_bytes_are_refused_without_quoting_them(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
-    put_addendum(tmp_path, b"ok \xff\xfe bad")
+    put_replacement(tmp_path, b"ok \xff\xfe bad")
     with pytest.raises(PromptError, match="not UTF-8") as info:
         load_effective_prompt("demo_v1", tmp_path)
     assert (info.value.__cause__, info.value.__context__) == (None, None)
@@ -402,7 +457,7 @@ def test_non_utf8_bytes_are_refused_without_quoting_them(tmp_path: Path) -> None
 
 def test_an_unreadable_file_is_fixed_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     write(tmp_path, "demo_v1", GOOD)
-    put_addendum(tmp_path, ADDENDUM)
+    put_replacement(tmp_path, REPLACEMENT)
 
     real_open = Path.open
 
@@ -419,13 +474,13 @@ def test_an_unreadable_file_is_fixed_text(tmp_path: Path, monkeypatch: pytest.Mo
 
 
 def test_the_text_stays_out_of_repr_and_str(tmp_path: Path) -> None:
-    put_addendum(tmp_path, SECRET)
+    put_replacement(tmp_path, SECRET)
     p = demo(tmp_path)
-    assert p.addendum == SECRET
+    assert p.replacement == SECRET
     assert SECRET not in repr(p)
     assert SECRET not in str(p)
-    assert p.addendum_hash is not None
-    assert p.addendum_hash in repr(p)
+    assert p.replacement_hash is not None
+    assert p.replacement_hash in repr(p)
 
 
 @pytest.mark.parametrize(
@@ -434,21 +489,21 @@ def test_the_text_stays_out_of_repr_and_str(tmp_path: Path) -> None:
 def test_prompts_local_off_means_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, value: str, loaded: bool
 ) -> None:
-    put_addendum(tmp_path, ADDENDUM)
+    put_replacement(tmp_path, REPLACEMENT)
     monkeypatch.setenv("PROMPTS_LOCAL", value)
-    assert (demo(tmp_path).addendum is not None) is loaded
+    assert (demo(tmp_path).replacement is not None) is loaded
 
 
-def test_off_skips_even_a_bad_addendum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    put_addendum(tmp_path, b"\xff")
+def test_off_skips_even_a_bad_replacement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    put_replacement(tmp_path, b"\xff")
     monkeypatch.setenv("PROMPTS_LOCAL", "off")
-    assert demo(tmp_path).addendum is None
+    assert demo(tmp_path).replacement is None
 
 
 def test_example_files_are_never_loaded(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
-    put_addendum(tmp_path, SECRET, name="demo_v1.example")
-    assert load_effective_prompt("demo_v1", tmp_path).addendum is None
+    put_replacement(tmp_path, SECRET, name="demo_v1.example")
+    assert load_effective_prompt("demo_v1", tmp_path).replacement is None
 
 
 def test_an_invalid_name_is_refused(tmp_path: Path) -> None:
@@ -456,16 +511,16 @@ def test_an_invalid_name_is_refused(tmp_path: Path) -> None:
         load_effective_prompt("../demo_v1", tmp_path)
 
 
-def test_a_prompt_file_cannot_set_the_addendum(tmp_path: Path) -> None:
-    body = GOOD.replace("seed: 7\n", "seed: 7\naddendum: x\n")
-    with pytest.raises(PromptError, match="addendum"):
+def test_a_prompt_file_cannot_set_the_replacement(tmp_path: Path) -> None:
+    body = GOOD.replace("seed: 7\n", "seed: 7\nreplacement: x\n")
+    with pytest.raises(PromptError, match="replacement"):
         load_prompt("demo_v1", write(tmp_path, "demo_v1", body))
 
 
-def test_a_recording_cannot_carry_an_addendum_rendering(tmp_path: Path) -> None:
-    # TST-010: resolve() re-renders the committed file only, so an addendum is refused.
+def test_a_recording_cannot_carry_an_replacement_rendering(tmp_path: Path) -> None:
+    # TST-010: resolve() re-renders the committed file only, so a replacement is refused.
     shutil.copy(PROMPTS_DIR / "nsfw_level_v1.md", tmp_path / "nsfw_level_v1.md")
-    put_addendum(tmp_path, ADDENDUM, name="nsfw_level_v1")
+    put_replacement(tmp_path, REPLACEMENT, name="nsfw_level_v1")
     effective = load_effective_prompt("nsfw_level_v1", tmp_path)
     plain = load_prompt("nsfw_level_v1", tmp_path)
     with pytest.MonkeyPatch.context() as patch:
@@ -474,4 +529,4 @@ def test_a_recording_cannot_carry_an_addendum_rendering(tmp_path: Path) -> None:
         with pytest.raises(RecordingError) as info:
             recording_prompts.resolve({"system": effective.render()})
     assert (info.value.__cause__, info.value.__context__) == (None, None)
-    assert ADDENDUM not in str(info.value)
+    assert REPLACEMENT not in str(info.value)

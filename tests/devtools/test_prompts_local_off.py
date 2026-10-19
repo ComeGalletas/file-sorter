@@ -1,7 +1,7 @@
 """TST-011.1: the default tiers run with PROMPTS_LOCAL=off (CLS-004.D16, RUN-017, TST-010).
 
-The human's local prompt addenda are copied into every worktree by `make init`. A default-tier
-replay is keyed on the exact prompt text, so no default-tier test may see an addendum. The
+The human's local prompt files are copied into every worktree by `make init`. A default-tier
+replay is keyed on the exact prompt text, so no default-tier test may see a replacement. The
 fixture lives in tests/conftest.py; these tests run it on a copy of the real conftest in a
 synthetic tests tree, so the real tier mapping is what is exercised.
 """
@@ -98,39 +98,39 @@ def test_the_real_tiers_of_this_repo_run_with_it_off() -> None:
     assert os.environ.get(ENV) == "off"
 
 
-PLACEHOLDER = "Placeholder addendum text, planted by a test."
+PLACEHOLDER = "Placeholder replacement text, planted by a test."
 
 
 @pytest.fixture
 def planted(tmp_path: Path) -> Path:
-    """A prompts dir holding a copy of `classify_v1` and a placeholder local addendum."""
+    """A prompts dir holding a copy of `classify_v1` and a placeholder local replacement."""
     (tmp_path / "classify_v1.md").write_bytes((PROMPTS_DIR / "classify_v1.md").read_bytes())
     (tmp_path / "local").mkdir()
     (tmp_path / "local" / "classify_v1.md").write_text(PLACEHOLDER, encoding="utf-8")
     return tmp_path
 
 
-def test_a_planted_addendum_changes_nothing_in_the_default_tiers(planted: Path) -> None:
+def test_a_planted_replacement_changes_nothing_in_the_default_tiers(planted: Path) -> None:
     prompt = load_effective_prompt("classify_v1", prompts_dir=planted)
     assert prompt == load_prompt("classify_v1", planted)
-    assert prompt.addendum is None
-    assert prompt.addendum_hash is None
+    assert prompt.replacement is None
+    assert prompt.replacement_hash is None
     assert prompt.effective_version == prompt.version == "classify_v1"
     assert PLACEHOLDER not in prompt.template
 
 
-def test_the_same_addendum_applies_once_the_switch_is_not_off(
+def test_the_same_replacement_applies_once_the_switch_is_not_off(
     planted: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The control: the planted file is live, so the test above is not vacuous."""
     monkeypatch.delenv(ENV)
     prompt = load_effective_prompt("classify_v1", prompts_dir=planted)
-    assert prompt.addendum == PLACEHOLDER
+    assert prompt.replacement == PLACEHOLDER
     assert prompt.effective_version.startswith("classify_v1+")
 
 
 def test_only_the_loader_tests_opt_out() -> None:
-    """The opt-out marker stays on the unit tests of the addendum loader (TST-011.1)."""
+    """The opt-out marker stays on the unit tests of the replacement loader (TST-011.1)."""
     users = sorted(
         path.relative_to(REPO_TESTS).as_posix()
         for path in REPO_TESTS.rglob("test_*.py")

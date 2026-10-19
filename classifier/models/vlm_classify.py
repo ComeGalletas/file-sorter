@@ -273,8 +273,8 @@ def vlm_classify(
         client, model, image, hint=hint, formats=formats, topics=topics, prompt=classify_prompt
     )
     level = rate_nsfw(client, model, image, prompt=nsfw_prompt)
-    # CLS-004.6: the NSFW version joins only when its prompt carries an addendum.
+    # CLS-004.8: the NSFW version joins only when its prompt is replaced locally.
     version = classify_prompt.effective_version
-    if nsfw_prompt.addendum_hash is not None:
+    if nsfw_prompt.replacement_hash is not None:
         version = f"{version}/{nsfw_prompt.effective_version}"
     return VlmAnswer(format=chosen.format, topic=chosen.topic, level=level, prompt_version=version)

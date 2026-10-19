@@ -32,11 +32,11 @@ _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
 # tag or a fence marker (`<<<`, `>>>`) and close the turn or the data region. These patterns
 # are broken up before rendering.
 _INJECTION = re.compile(r"<\||\|>|</?think>|<{3,}|>{3,}", re.IGNORECASE)
-# CLS-004.D16 / CLS-004.6: the git-ignored local addendum. `PROMPTS_LOCAL=off` turns it off;
-# any other value, or none, leaves it on.
+# CLS-004.D17 / CLS-004.8: the git-ignored local prompt replaces the committed system text.
+# `PROMPTS_LOCAL=off` turns it off; any other value, or none, leaves it on.
 LOCAL_DIR = "local"
 LOCAL_ENV = "PROMPTS_LOCAL"
-MAX_ADDENDUM_BYTES = 4096
+MAX_REPLACEMENT_BYTES = 16384
 
 
 def neutralize(text: str) -> str:
@@ -80,10 +80,10 @@ class Prompt(BaseModel):
     user_alt: str | None = Field(default=None, repr=False)
     output_schema: dict[str, Any] = Field(alias="schema")
     template: str
-    # CLS-004.6: set only by `load_effective_prompt`, never by a prompt file. The text is the
-    # human's local wording, so it stays out of every repr; the hash is what gets recorded.
-    addendum_hash: str | None = None
-    addendum: str | None = Field(default=None, repr=False)
+    # CLS-004.8: set only by `load_effective_prompt`, never by a prompt file. The text is the
+    # human's local system text, so it stays out of every repr; the hash is what gets recorded.
+    replacement_hash: str | None = None
+    replacement: str | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def _raw_needs_wrap(self) -> Self:
@@ -97,10 +97,10 @@ class Prompt(BaseModel):
 
     @property
     def effective_version(self) -> str:
-        """`version`, plus `+<8 hex>` of the local addendum when one is appended (CLS-004.6)."""
-        if self.addendum_hash is None:
+        """`version`, plus `+<8 hex>` of the local replacement when one is in use (CLS-004.8)."""
+        if self.replacement_hash is None:
             return self.version
-        return f"{self.version}+{self.addendum_hash}"
+        return f"{self.version}+{self.replacement_hash}"
 
     @property
     def options(self) -> dict[str, Any]:
@@ -130,9 +130,10 @@ class Prompt(BaseModel):
             raise PromptError(
                 f"prompt {self.version} takes slots {sorted(self.slots)}, got {sorted(values)}"
             )
-        body = _SLOT.sub(lambda m: values[m.group(1)], self.template)
-        if self.addendum is not None:  # after the body, one blank line, no heading (CLS-004.6)
-            body = f"{body.rstrip()}\n\n{self.addendum}\n"
+        # CLS-004.8: the local replacement is the whole system text; its slots are a subset of
+        # the committed ones (checked at load), and the user templates stay the committed ones.
+        source = self.template if self.replacement is None else f"{self.replacement}\n"
+        body = _SLOT.sub(lambda m: values[m.group(1)], source)
         # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.
         return self.wrap.replace("{prompt}", body) if self.wrap is not None else body
 
@@ -183,8 +184,8 @@ def load_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
         raise PromptError(f"prompt {name} front matter is not YAML: {exc}") from None
     if not isinstance(meta, Mapping):
         raise PromptError(f"prompt {name} front matter is not a mapping")
-    if {"template", "addendum", "addendum_hash"} & set(meta):
-        raise PromptError(f"prompt {name} front matter must not set 'template' or an addendum")
+    if {"template", "replacement", "replacement_hash"} & set(meta):
+        raise PromptError(f"prompt {name} front matter must not set 'template' or a replacement")
     try:
         prompt = Prompt.model_validate({**meta, "template": match.group(2)})
     except ValidationError as exc:
@@ -194,12 +195,12 @@ def load_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
     return prompt
 
 
-def _read_addendum(path: Path, name: str) -> str | None:
-    """The text of the local addendum at `path`, or None when absent, off or blank.
+def _read_replacement(path: Path, name: str) -> str | None:
+    """The text of the local replacement at `path`, or None when absent, off or blank.
 
-    Refuses a symlink, a non-regular file, a file over `MAX_ADDENDUM_BYTES` and bytes that are not
-    UTF-8. Every refusal is fixed text raised outside any `except`, so it carries no cause or
-    context and never quotes the path or the text (CLS-004.6).
+    Refuses a symlink, a non-regular file, a file over `MAX_REPLACEMENT_BYTES` and bytes that are
+    not UTF-8. Every refusal is fixed text raised outside any `except`, so it carries no cause or
+    context and never quotes the path or the text (CLS-004.8).
     """
     if os.environ.get(LOCAL_ENV) == "off":
         return None
@@ -215,16 +216,16 @@ def _read_addendum(path: Path, name: str) -> str | None:
     if info is not None:
         if not stat.S_ISREG(info.st_mode):
             problem = "is not a regular file"
-        elif info.st_size > MAX_ADDENDUM_BYTES:
-            problem = f"is over {MAX_ADDENDUM_BYTES} bytes"
+        elif info.st_size > MAX_REPLACEMENT_BYTES:
+            problem = f"is over {MAX_REPLACEMENT_BYTES} bytes"
         else:
             try:
                 with path.open("rb") as handle:
-                    raw = handle.read(MAX_ADDENDUM_BYTES + 1)
+                    raw = handle.read(MAX_REPLACEMENT_BYTES + 1)
             except OSError:
                 problem = "cannot be read"
-            if problem is None and len(raw) > MAX_ADDENDUM_BYTES:
-                problem = f"is over {MAX_ADDENDUM_BYTES} bytes"
+            if problem is None and len(raw) > MAX_REPLACEMENT_BYTES:
+                problem = f"is over {MAX_REPLACEMENT_BYTES} bytes"
     text = ""
     if problem is None:
         try:
@@ -232,19 +233,24 @@ def _read_addendum(path: Path, name: str) -> str | None:
         except UnicodeDecodeError:
             problem = "is not UTF-8"
     if problem is not None:
-        raise PromptError(f"local addendum for {name} {problem}")
+        raise PromptError(f"local prompt for {name} {problem}")
     return text or None
 
 
 def load_effective_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
-    """`load_prompt`, plus the optional local addendum `<prompts_dir>/local/<name>.md`.
+    """`load_prompt`, with the system text replaced by `<prompts_dir>/local/<name>.md` if present.
 
-    The addendum is appended to the system text after the body (CLS-004.D16). `load_prompt` itself
-    never reads `local/`, and `*.example.md` files are never loaded: only the exact name is.
+    The replacement is the whole system text (CLS-004.D17). The front matter and the user
+    templates stay the committed file's, and the replacement may use only the slots the committed
+    body declares. `load_prompt` itself never reads `local/`, and `*.example.md` files are never
+    loaded: only the exact name is.
     """
     prompt = load_prompt(name, prompts_dir)
-    text = _read_addendum(prompts_dir / LOCAL_DIR / f"{name}.md", name)
+    text = _read_replacement(prompts_dir / LOCAL_DIR / f"{name}.md", name)
     if text is None:
         return prompt
+    undeclared = not set(_SLOT.findall(text)) <= prompt.slots
+    if undeclared:  # raised outside any except; fixed text, as the slot name is the human's text
+        raise PromptError(f"local prompt for {name} uses a slot the committed prompt lacks")
     digest = hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()[:8]
-    return prompt.model_copy(update={"addendum": neutralize(text), "addendum_hash": digest})
+    return prompt.model_copy(update={"replacement": neutralize(text), "replacement_hash": digest})
