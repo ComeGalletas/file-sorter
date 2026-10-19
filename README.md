@@ -9,7 +9,7 @@ A local bot that sorts an image folder. For every image it:
 
 Adult content is filed in the same tree under `Adult/`. Everything runs on one machine in Docker. The source folder is mounted **read-only** and is never modified.
 
-Status: **pre-alpha, bootstrap.** Nothing sorts yet; milestones are listed in [DESIGN.md](DESIGN.md) §11.
+Status: **pre-alpha.** Ingest (M1) and sanitize (M2) are approved; classify (M3) runs in dry-run mode on a local VLM. Nothing is filed yet: milestones are listed in [DESIGN.md](DESIGN.md) §11.
 
 ## Documents
 

@@ -246,3 +246,37 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 - **Status:** DONE.
 - **Triage:** small. Rule and template text; no code.
+
+---
+
+## DOC-011 — Requirement (human, 2026-10-18)
+
+**Objective:** record the human's answers at the M3 re-plan checkpoint (CLS-004.D11) in the spec, and bring the docs still describing the SigLIP and threshold approach up to date.
+
+**Details:** CLS-004.5's real run did not pass gate 3. The human answered the checkpoint, and a read-only review of the repo found docs that still describe the old approach as current.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13). The lead records the answers in `docs/plans/m3.md` and the CLS-004 block, and annotates CLS-001.D5 and D12 as superseded.
+
+## DOC-011 — Confirmed reading
+
+- **DOC-011.D1 (= CLS-004.D12, amended):** **gate 3 requires ≥ 80% format and ≥ 80% topic agreement**, each judged on a single run. Repeated runs of one setup give the same answers. DESIGN §11 (M3 row), C-28 and §14 Q-8 follow, and CLS-001.D5 is amended. (human, 2026-10-18)
+- **DOC-011.D2 (= H8, answered as B′):** the human's own prompt wording stays local, in git-ignored `prompts/local/<prompt>.md` files, which **replace** the committed system text when present. The committed prompts stay generic, and the effective prompt version carries a short hash of the local file (DESIGN R-CLS-8). The loader change is a CLS-004 task. (human, 2026-10-18)
+- **DOC-011.D3 (= H3):** the Falconsai cross-check values are `nsfw.cross_check.safe_above: 0.90` and `adult_below: 0.10`, shown in the DESIGN §6 sketch. Committing them to `config.yaml` is a CFG task. (human, 2026-10-18)
+- **DOC-011.D4:** docs brought in line with the merged state.
+  - **CLAUDE.md:** "Current phase", the model-client rule, the CLS row and the `gpu` tier row.
+  - **`.claude/roles/ml.md`:** the VLM client, `prompts/local/`, no threshold calibration, and Adult meaning level ≥ `min_level`.
+  - **DESIGN:** §6's `no_topic` comment, §11's `calibration-only` wording and §10's layout.
+  - **README:** the status line.
+  - **`docs/PLAN.md`:** a "historical" banner.
+
+  (the human's session, 2026-10-18, from the repo review the human asked for)
+
+## DOC-011 — Tasks
+
+- [x] DOC-011.1 — DESIGN §6, §10, §11, §13 C-28, §14 Q-8 and R-CLS-8; CLAUDE.md; `.claude/roles/ml.md`; README; `docs/PLAN.md`
+
+## DOC-011 — Results
+
+- **Status:** DONE.
+- **Triage:** small. Spec, rule and brief text; no code.
+- **Privacy:** no counts, file names or per-image remarks. The checkpoint result appears only as "after the repo's checkpoint run".

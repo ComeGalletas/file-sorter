@@ -110,7 +110,7 @@ ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Fa
   - With `folders.animated_subfolder: true`, animated images (R-ING-9) go one level deeper (`…/<Format>/Animated/`). The default is `false`.
 - **R-CLS-6** Per-category `branch`, on both axes: `any` (default, mirrored), `safe` (adult images fall through: a format to `Adult/Unsorted/`, a topic to no topic), or `nsfw` (adult-only).
 - **R-CLS-7** Category CLI: `list`, `add --axis format|topic`, `edit`, `remove`, `sync-folders`. Removing a category never deletes folders or files. `sync-folders` creates the `<Topic>/<Format>` grid lazily (only for pairs that are actually filed) plus `General/<Format>/`. It runs before every sort unless `folders.auto_create: false`.
-- **R-CLS-8** **Prompts and settings.** The classify and NSFW prompts are versioned files (`prompts/classify_v1.md`, `prompts/nsfw_level_v1.md`; R-CAP-3 style), and every Ollama call pins the same `num_ctx` (4096) in its prompt file (CLS-004.D9, D10). They are measured against `fixtures/labels.csv` (CLS-004.5) and committed once the human approves them (CLAUDE.md §1.7). M3's SigLIP threshold calibration (CLS-003) found no values that reach gate 3, so none are committed (CLS-003.2 dropped).
+- **R-CLS-8** **Prompts and settings.** The classify and NSFW prompts are versioned files (`prompts/classify_v1.md`, `prompts/nsfw_level_v1.md`; R-CAP-3 style), and every Ollama call pins the same `num_ctx` (4096) in its prompt file (CLS-004.D9, D10). They are measured against `fixtures/labels.csv` (CLS-004.5) and committed once the human approves them (CLAUDE.md §1.7). The committed files hold generic definitions only. The human's own wording lives in git-ignored local prompt files on the box, `prompts/local/<prompt>.md` (RUN-017), which **replace** the committed system text when present (the human's decision B′, 2026-10-18; the loader change is a CLS-004 task). The effective prompt version carries a short hash of the local file, so a local edit is traceable without publishing it. M3's SigLIP threshold calibration (CLS-003) found no values that reach gate 3, so none are committed (CLS-003.2 dropped).
 
 **Default formats** (required; folder = second level). `game-screenshots` is a capture taken **inside** a game, on PC, console or any source. `screenshots` is a computer or phone capture of an app, website or chat, even when its content is about games (CLS-001.D9):
 
@@ -225,7 +225,7 @@ paths:                               # container paths; host paths come from .en
 folders:
   auto_create: true
   layout: "{topic}/{format}"         # CLS-001.D2; topic folder first
-  no_topic: General                  # folder used when no topic clears its threshold
+  no_topic: General                  # folder used when the topic is `none` (R-CLS-3a)
   animated_subfolder: false          # true → …/<Format>/Animated/ (R-ING-9)
 models:
   classifier: google/siglip-so400m-patch14-384
@@ -245,8 +245,8 @@ classify:                            # SigLIP-era scoring keys: ignored on the V
 nsfw:
   min_level: nudity                  # suggestive | nudity | explicit; Adult = VLM level >= this (R-CLS-1, CLS-004.D3)
   cross_check:                       # Falconsai disagreement -> needs_review, never the branch (CLS-004.D5)
-    safe_above: <the human sets>     # VLM says safe, Falconsai score >= this
-    adult_below: <the human sets>    # VLM says Adult, Falconsai score <= this
+    safe_above: 0.90                 # VLM says safe, Falconsai score >= this (the human's value, H3)
+    adult_below: 0.10                # VLM says Adult, Falconsai score <= this (the human's value, H3)
   threshold: 0.70                    # SigLIP-era gate: ignored on the VLM path
   mode: mirror                       # mirror | separate
   root: Adult
@@ -370,20 +370,21 @@ db:
 classifier/
   cli/ graph/ models/ sanitize/ rag/ naming/ fileops/ api/ ui/ db/
 prompts/            # versioned VLM / judge / sanitizer prompts
-eval/               # labelled-sample evaluation harness
+prompts/local/      # git-ignored local prompts (RUN-017); only *.example.md is committed
+eval/               # labelled-sample evaluation harness; eval/data/ holds synthetic inputs
 scripts/gate_1.py … gate_8.py
 tests/{unit,db,integration,gpu,devtools}/  tests/recordings/  tests/conftest.py   # tiers by path (CLAUDE.md §3)
 fixtures/           # fixtures/images/ is git-ignored, box-only
-docs/PLAN.md  docs/plans/{TEMPLATE,mN}.md
+README.md  docs/PLAN.md (the original plan, superseded by this file)  docs/plans/{TEMPLATE,mN}.md
 docs/journals/{INDEX,TEMPLATE}.md  docs/journals/<feature>_journal.md   # work IDs (CLAUDE.md §1)
 config.yaml  sanitize.example.yaml  .env.example        # sanitize.yaml and .env are git-ignored
-docker-compose.yml  docker-compose.egress.yml  docker-compose.purge.yml  Dockerfile  Makefile  pyproject.toml  .gitattributes  .gitignore
+docker-compose.yml  docker-compose.egress.yml  docker-compose.purge.yml  Dockerfile  .dockerignore  Makefile  pyproject.toml  .gitattributes  .gitignore
 fixtures/labels.example.csv                           # labels.csv and images/ are git-ignored
 .claude/agents/{reviewer,reviewer-quick,privacy-auditor,test-runner}.md   # read-only subagents only (RUN-002.D1)
 .claude/roles/{README,lead,pipeline,ml,rag,api-ui,qa}.md    # desk briefs
 .claude/settings.json  .claude/settings.{lead,worker}.json   # shared + per-desk layers (RUN-002.D6)
 .claude/hooks/   .githooks/pre-push                         # lint, stop tests, logs; the push gate
-docker/searxng/settings.yml  scripts/{fetch_models.py,init_local_files.sh,review_route.sh,gate_1..8.py}
+docker/searxng/settings.yml  scripts/{fetch_models.py,fixture_labels.py,init_local_files.sh,prune_test_projects.sh,review_route.sh,gate_1..8.py}
 .github/ISSUE_TEMPLATE/task.md  .github/pull_request_template.md
 .task                                                       # git-ignored per worktree: role, issue, acceptance
 ```
@@ -396,7 +397,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | --- | --- | --- |
 | 1 | Skeleton + ledger: compose, `files`, hashing, ingest, `dry-run` CSV | Re-running on the same folder skips 100% of files, with no new ledger rows. |
 | 2 | Sanitize: EXIF strip, literal/regex, `sanitize_log`, entity rule via local LLM | 50 seeded names come out with 0 residual sensitive values. EXIF on outputs contains only the allow-list. |
-| 3 | Classify: a local VLM classifies format and topic and rates the NSFW level (CLS-004; SigLIP keeps `image_vec`, Falconsai is the cross-check), default formats and topics, `<Topic>/<Format>` folders, mirror, unsorted, category CLI; **the prompts measured on the labelled fixtures** | Measured on **every real image labelled in `fixtures/labels.csv`**. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 85% **format** agreement on rows with a format (CLS-004.D12: lowered from 90%); ≥ 85% **topic** agreement on rows with a topic (CLS-001.D5, amended); every row tagged `suggestive-negative` must stay `safe`; **every** labelled adult image is flagged and **0** safe ones, judged by NSFW level at `nsfw.min_level` (R-CLS-1); unrecognized < 10%. Rows tagged `calibration-only` in `fixtures/labels.csv` may be used for threshold calibration but don't count toward the gate (TST-008.D2). **Published results (TST-008.D1):** in public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**. No breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. |
+| 3 | Classify: a local VLM classifies format and topic and rates the NSFW level (CLS-004; SigLIP keeps `image_vec`, Falconsai is the cross-check), default formats and topics, `<Topic>/<Format>` folders, mirror, unsorted, category CLI; **the prompts measured on the labelled fixtures** | Measured on **every real image labelled in `fixtures/labels.csv`**. A blank format or topic means the human was **undecided**: the row still runs, but isn't scored on that axis (CLS-001.D11). Targets: ≥ 80% **format** agreement on rows with a format (CLS-004.D12, amended 2026-10-18: lowered from 90%, then 85%); ≥ 80% **topic** agreement on rows with a topic (CLS-001.D5, amended); every row tagged `suggestive-negative` must stay `safe`; **every** labelled adult image is flagged and **0** safe ones, judged by NSFW level at `nsfw.min_level` (R-CLS-1); unrecognized < 10%. Rows tagged `calibration-only` in `fixtures/labels.csv` may be used for tuning but don't count toward the gate (TST-008.D2). Each criterion is judged on a single run: repeated runs of one setup give the same answers. **Published results (TST-008.D1):** in public, a verdict per criterion, with a percentage rounded down to a whole percent for the format, topic and unrecognized criteria only. The adult and `suggestive-negative` criteria publish a **verdict only**. No breakdown, confusion matrix or count anywhere public; per-category detail stays on the box console. |
 | 4 | Status UI read-only: `/api/status`, `/api/files`, dashboard, `report` | A dry run of the whole real folder is reviewable end to end without a terminal. |
 | 5 | Name: built-in and user templates, captions from both VLMs, collisions | 0 sensitive values in 500 names. A readability spot-check of names passes human review at G1. |
 | 6 | RAG + web: pgvector, judge, SearXNG, write-back, `refs` CLI | A franchise searched once resolves locally on the second image (`web_called = false`). |
@@ -471,7 +472,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | C-25 | SigLIP zero-shot scores format and topic; Falconsai gates NSFW | **A local VLM classifies** (`qwen3-vl:8b-instruct` through Ollama): one structured call for format and topic, with the sanitized file name as a hint, and a dedicated call for the NSFW level. SigLIP keeps `image_vec`, and Falconsai becomes a review cross-check (R-CLS-1, R-CLS-2; CLS-004). | CLS-003.1 showed thresholds can't reach gate 3 with SigLIP, and the client was verified against the reference model. The human's spike with the VLM passed every gate 3 criterion. | **changed** (human, 2026-10-17) |
 | C-26 | "Adult means explicit sexual imagery" with a Falconsai score threshold (CLS-001.D12) | **NSFW scale A** (`safe < suggestive < nudity < explicit`) with a strictness setting, `nsfw.min_level`, at `nudity`. Text alone never raises the level (R-CLS-1; CLS-004.D2, D3). | One Falconsai score can't separate the levels, so it can't act as a strictness setting, and the human wanted one; Falconsai becomes a cross-check. | **changed** (human, 2026-10-14) |
 | C-27 | R-MOD-1: `keep_alive` per stage | **One resident Ollama model** (`OLLAMA_MAX_LOADED_MODELS=1`), **one `num_ctx` (4096) in every prompt file**, and the instruct builds (R-MOD-1, R-MOD-1a; RUN-016, CLS-004.D8, D9) | Two models resident at once exhaust 16 GB of VRAM; a context-size change reloads the model; the thinking build can return empty answers (R-MOD-1a). | **changed** (human, 2026-10-17) |
-| C-28 | Gate 3: ≥ 90% format agreement (CLS-001.D5) | **≥ 85% format agreement** (§11; CLS-004.D12). Topic stays at 85%. | The human's decision (CLS-004.D12). Personal exemplars are proposed for later (CLS-005). | **changed** (human, 2026-10-17) |
+| C-28 | Gate 3: ≥ 90% format agreement, ≥ 85% topic agreement (CLS-001.D5) | **≥ 80% format and ≥ 80% topic agreement**, on a single run (§11; CLS-004.D12) | The human's decision: 85% format on 2026-10-17, then 80% for both axes on 2026-10-18 after the repo's checkpoint run. Personal exemplars are proposed for later (CLS-005). | **changed** (human, 2026-10-18) |
 
 ## 14. Open questions (human)
 
@@ -484,4 +485,4 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | Q-5 | ~~Repo location~~ | **Answered (2026-10-05):** Windows-native, no WSL repo. The workspace is `file-sorter-full\` and the repo is fixed at `file-sorter-full\file-sorter` (§9a). |
 | Q-6 | ~~Metadata loss~~ | **Answered:** the source is read-only and never deleted by sorting. Deletion stays as a separate function, disabled by default (P-1, R-FOP-0, R-FOP-8). |
 | Q-7 | ~~Public fixtures~~ | **Answered:** `fixtures/labels.csv` is git-ignored, and a 5-row synthetic `labels.example.csv` is committed. |
-| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. Every real image is labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic; amended again by CLS-004.D12: ≥ 85% format); the NSFW gate catches every adult image with 0 false positives, judged by level at `nsfw.min_level` (§11, M3). |
+| Q-8 | ~~M3 gate on a small folder~~ | **Answered:** locked in. Every real image is labelled; ≥ 90% category agreement overall (amended by CLS-001: ≥ 90% format, plus ≥ 85% topic on rows with a topic; amended again by CLS-004.D12: ≥ 80% format and ≥ 80% topic); the NSFW gate catches every adult image with 0 false positives, judged by level at `nsfw.min_level` (§11, M3). |
