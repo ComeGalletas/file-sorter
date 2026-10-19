@@ -22,7 +22,13 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from tests.recordings.replay import RECORDINGS, RecordingError, _is_file, package_dir
+from tests.recordings.replay import (
+    RECORDINGS,
+    RecordingError,
+    _is_file,
+    note_served,
+    package_dir,
+)
 from tests.recordings.vision import (
     check_request,
     encode_array,
@@ -76,6 +82,7 @@ class ReplayVisionBackend(_Tracked):
         root: Path = RECORDINGS,
     ) -> None:
         super().__init__(package, test_id, root)
+        self._root = root
         self._classifier_id = classifier_id
         self._nsfw_id = nsfw_id
 
@@ -92,9 +99,11 @@ class ReplayVisionBackend(_Tracked):
         try:
             if not _is_file(path, f"recording {name}"):
                 raise RecordingError(f"no recording {name} (kind {kind}); {RECORD_HINT}")
-            return load_vision_recording(path, f"recording {name}").array
+            array = load_vision_recording(path, f"recording {name}").array
         except RecordingError as exc:
             raise self._fail(str(exc)) from None
+        note_served(self.directory, key, self._root)
+        return array
 
     def _stack(self, rows: list[np.ndarray]) -> np.ndarray:
         if not rows:

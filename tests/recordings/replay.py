@@ -64,6 +64,9 @@ UNRECORDED_RESPONSE_FIELDS = ("context",)
 PACKAGE_RE = re.compile(r"[a-z][a-z0-9_]*")
 KEY_RE = re.compile(r"[0-9a-f]{64}")
 RECORD_HINT = "record it in the gpu tier: pytest -m gpu --record-ollama <test path>"
+# TST-012.D1: every committed recording a replay served in this session, as `<package>/<key>`.
+# Hashes only: no request content, so the set is safe to print from.
+SERVED: set[str] = set()
 
 
 class RecordingError(BaseException):
@@ -185,6 +188,30 @@ def package_dir(package: str, root: Path = RECORDINGS) -> Path:
         # Fixed text: the name is never echoed (PR #71 privacy audit).
         raise RecordingError("a recording package name is not a plain lower-case name")
     return root / package
+
+
+def note_served(directory: Path, key: str, root: Path = RECORDINGS) -> None:
+    """Log a served recording (TST-012.1.1); a store other than the committed one is not logged."""
+    if directory.parent == root:
+        SERVED.add(f"{directory.name}/{key}")
+
+
+def orphan_recordings(served: set[str], root: Path = RECORDINGS) -> list[str]:
+    """Every `<package>/<key>.json` under `root` that `served` lacks, sorted (TST-012.1.1).
+
+    Each is named `<package>/<8-hex>`: the package and a key prefix, never a file name that
+    is not a key. A stray `*.json` that is not `<package>/<64-hex>.json` is the lint's to report.
+    """
+    try:
+        paths = sorted(root.glob("*/*.json"))
+    except OSError:
+        return []
+    found = []
+    for path in paths:
+        if PACKAGE_RE.fullmatch(path.parent.name) and KEY_RE.fullmatch(path.stem):
+            if f"{path.parent.name}/{path.stem}" not in served:
+                found.append(f"{path.parent.name}/{path.stem[:8]}")
+    return found
 
 
 def describe(path: Path, root: Path | None = None) -> str:
@@ -367,6 +394,7 @@ class ReplayTransport(httpx.BaseTransport):
             recording = load_recording(path)
         except RecordingError as exc:
             raise self._fail(str(exc)) from None
+        note_served(self.directory, key)
         return httpx.Response(200, json=recording["response"])
 
 
