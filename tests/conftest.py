@@ -30,7 +30,12 @@ from typing import Any
 import httpx
 import pytest
 
-from tests.recordings.replay import RecordingTransport, ReplayTransport
+from tests.recordings.replay import (
+    SERVED,
+    RecordingTransport,
+    ReplayTransport,
+    orphan_recordings,
+)
 from tests.recordings.vision import register_test_model, unregister_test_model
 from tests.recordings.vision_backend import (
     NO_UPSTREAM,
@@ -53,6 +58,7 @@ CALL_FAILED = pytest.StashKey[bool]()
 PROMPTS_LOCAL_ENV = "PROMPTS_LOCAL"
 PROMPTS_LOCAL_MARK = "prompts_local_on"  # unit tests of the addendum loader itself
 PROMPTS_LOCAL_TIERS = frozenset({"gpu", "gate"})  # the tiers that use the local addenda
+DEFAULT_TIERS = ("unit", "db", "integration")  # what `make test` and the pre-push hook run
 
 
 def tier_of(path: Path) -> str:
@@ -93,6 +99,51 @@ def pytest_collection_finish(session: pytest.Session) -> None:
             f"{chosen[0]} is for the gpu tier only, but the selection includes "
             f"{len(others)} other test(s), e.g. {others[0]}; run pytest -m gpu {chosen[0]}"
         )
+
+
+def _addopts_markexpr(config: pytest.Config) -> str:
+    """The `-m` expression of the ini `addopts`: what a run without its own `-m` selects."""
+    words = list(config.getini("addopts"))
+    return words[words.index("-m") + 1] if "-m" in words[:-1] else ""
+
+
+def full_default_run(session: pytest.Session) -> bool:
+    """True only for the whole default suite (TST-012.D2): the run that serves every recording.
+
+    `make test` and the pre-push hook run bare `pytest`, which is that run. Anything that
+    narrows it (a path, `-k`, `-m`, `--deselect`, `--ignore`, `-x`, `--lf`) or a tier that
+    collected nothing makes it partial, so the orphan check does not run.
+    """
+    config, option = session.config, session.config.option
+    if option.file_or_dir or option.keyword or option.collectonly:
+        return False
+    if option.markexpr != _addopts_markexpr(config):
+        return False
+    narrowing = ("deselect", "ignore", "ignore_glob", "lf", "failedfirst", "stepwise", "nf")
+    if any(getattr(option, name, None) for name in narrowing) or option.maxfail:
+        return False
+    tiers = {tier_of(Path(item.fspath)) for item in session.items}
+    return all(tier in tiers for tier in DEFAULT_TIERS)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail a full green default run when a committed recording was never served (TST-012.1.2).
+
+    Prints the package and the first 8 hex of each key, nothing else. Never skipped: a
+    partial run does not run it, a full run always does.
+    """
+    if exitstatus != pytest.ExitCode.OK or not full_default_run(session):
+        return
+    orphans = orphan_recordings(SERVED)
+    if not orphans:
+        return
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    line = "Orphaned recordings: " + " ".join(orphans)
+    if reporter is not None:
+        reporter.write_line(line, red=True)
+    else:
+        print(line)
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 @pytest.hookimpl(wrapper=True)

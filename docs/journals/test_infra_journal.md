@@ -660,6 +660,14 @@ references or host paths here. Use hashes.
 
 ## TST-012 — Tasks
 
-- [ ] TST-012.1 — The orphan-recording check (TST-012.1.1) and the deletion of the orphans it finds (TST-012.1.2), after CLS-006.1 and CLS-006.3 · #175 · QA · acceptance: `tests/devtools/test_recordings.py` or the file the plan names
+- [x] TST-012.1 — The orphan-recording check (TST-012.1.1) and the deletion of the orphans it finds (TST-012.1.2), after CLS-006.1 and CLS-006.3 · #175 · QA · acceptance: `tests/devtools/test_recordings.py` or the file the plan names (key log + `orphan_recordings` 9451777; run gate 15f7b3b; deletion 15f7b3b)
 
 ## TST-012 — Results
+
+### TST-012.1 (QA)
+
+- Check: `pytest_sessionfinish` in `tests/conftest.py` runs `orphan_recordings` only on a green, bare default run (the `addopts` `-m`, no path, `-k`, `--deselect`, `--ignore`, `-x`, `--lf`) with at least one item in each of unit, db and integration. The pre-push hook runs bare `pytest -q`, so it counts as full; no hook change needed.
+- Found 16 orphaned Ollama recordings under `models/` (prefixes 08dc92da 0b693462 0e07cd37 10e623c2 1fa49f02 32f1eea9 387f7d34 5677f68d 73776f98 85a8a223 8fdb4999 c751668c d26ef443 d3d2f7b3 e952f99e fc488529); deleted in 15f7b3b. No vision or graph orphans.
+- Tests: `tests/devtools/test_recordings.py` 184 passed (pytester gate: orphan fails and is named; every key served passes; `-k`, path, `-m`, `-x`, `--deselect`, an empty tier and a failing run don't check). `make test` 2324 passed, red before the deletion and green after. `make lint` clean.
+- Status: DONE. Self-rating 9/10, proud: yes. Gap: the gate compares `-m` with the `addopts` one, so a changed `addopts` marker expression is followed automatically but a `-p` plugin that narrows selection by other means is not detected.
+
