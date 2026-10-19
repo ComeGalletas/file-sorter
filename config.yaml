@@ -31,8 +31,8 @@ nsfw:
   threshold: 0.70                    # adult = explicit sexual imagery (CLS-001.D12)
   min_level: nudity                  # adult = VLM level >= this: suggestive | nudity | explicit (CLS-004.D3)
   cross_check:                       # Falconsai disagreement -> needs_review; null/null = off (CLS-004.D5)
-    safe_above: null                 # VLM says safe but the score is >= this
-    adult_below: null                # VLM says adult but the score is <= this
+    safe_above: 0.90                 # VLM says safe but the score is >= this
+    adult_below: 0.10                # VLM says adult but the score is <= this
   mode: mirror                       # mirror | separate
   root: Adult
 
