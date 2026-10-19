@@ -85,7 +85,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | CFG-004 | Commit the human's cross-check values (`safe_above: 0.90`, `adult_below: 0.10`, H3) and fix the stale `config.yaml` comments | CFG, CLS | balance | done (PR #178) | m3 | #170 | [config_journal.md](config_journal.md) | — | 2026-10-19 |
 | CLI-006 | `classifier categories` stops requiring and showing the unused SigLIP prompts and `min_score` | CLI, CLS | refactor | done (PR #179) | m3 | #171 | [categories_journal.md](categories_journal.md) | — | 2026-10-19 |
 | CLS-006 | Remove the dead SigLIP scoring and text code (models, node, replay, labels loader) with its tests and docstrings | CLS, MOD, PIPE, TST | refactor | done (PRs #181, #182, #183) | m3 | #172, #173, #174 | [categories_journal.md](categories_journal.md) | — | 2026-10-19 |
-| TST-012 | An orphan-recording check, and the orphaned recordings deleted | TST | feature | proposed | m3 | #175 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-19 |
+| TST-012 | An orphan-recording check, and the orphaned recordings deleted | TST | feature | done (PR #184) | m3 | #175 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-19 |
 
 ## Plans and designs
 
