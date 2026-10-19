@@ -547,7 +547,7 @@ references or host paths here. Use hashes.
   - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
   - [x] TST-009.2.4 — Results and self-rating · `8adc3d6` (PR #151, merged as `3a211b3`)
   - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5 (now after CLS-004.5.8, and judged at 80% once TST-009.3 merges)
-- [ ] TST-009.3 — Gate 3 at format and topic ≥ 80% on a single run (CLS-004.D12 as amended by the human, 2026-10-19): `FORMAT_MIN`/`TOPIC_MIN` 80, the criterion text, the tests that pin 85 (the lead approves the pinned-value edits in `tests/unit/eval/` and `tests/gpu/models/`) · #169 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py`
+- [x] TST-009.3 — Gate 3 at format and topic ≥ 80% on a single run (CLS-004.D12 as amended by the human, 2026-10-19): `FORMAT_MIN`/`TOPIC_MIN` 80, the criterion text, the tests that pin 85 (the lead approves the pinned-value edits in `tests/unit/eval/` and `tests/gpu/models/`) · #169 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py`
 
 ## TST-009 — Results
 

@@ -1,7 +1,7 @@
 """Milestone 3 gate: Classify (DESIGN.md §11).
 
-Criterion: On every real image labelled in fixtures/labels.csv: format agreement >= 85% on rows
-with a format; topic agreement >= 85% on rows with a topic (blank = undecided, not scored); every
+Criterion: On every real image labelled in fixtures/labels.csv: format agreement >= 80% on rows
+with a format; topic agreement >= 80% on rows with a topic (blank = undecided, not scored); every
 adult image flagged and every safe image safe, judged by NSFW level at nsfw.min_level; every
 suggestive-negative row safe; unrecognized format < 10%. (CLS-001.D5, D11, D12; CLS-004.D3, D12)
 
@@ -57,15 +57,15 @@ for _path in (str(REPO), str(SCRIPTS)):
 import fixture_labels  # noqa: E402  (needs SCRIPTS on sys.path)
 
 CRITERION = (
-    "On every real image labelled in fixtures/labels.csv: format agreement >= 85% on rows "
-    "with a format; topic agreement >= 85% on rows with a topic (blank = undecided, not "
+    "On every real image labelled in fixtures/labels.csv: format agreement >= 80% on rows "
+    "with a format; topic agreement >= 80% on rows with a topic (blank = undecided, not "
     "scored); every adult image flagged and every safe image safe, judged by NSFW level at "
     "nsfw.min_level; every suggestive-negative row safe; unrecognized format < 10%. "
     "(CLS-001.D5, D11, D12; CLS-004.D3, D12)"
 )
 
-FORMAT_MIN = 85  # percent, inclusive (CLS-004.D12)
-TOPIC_MIN = 85  # percent, inclusive
+FORMAT_MIN = 80  # percent, inclusive (CLS-004.D12)
+TOPIC_MIN = 80  # percent, inclusive
 UNRECOGNIZED_BELOW = 10  # percent, strict
 
 UNSORTED = "unsorted"

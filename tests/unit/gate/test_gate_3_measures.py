@@ -77,16 +77,17 @@ def _pass_rows(extra_rows: list[str], extra_outs: list):
 
 @pytest.mark.parametrize(
     ("hit", "total", "verdict_ok", "printed"),
-    [(8499, 10000, False, 84), (8500, 10000, True, 85), (17, 20, True, 85), (84, 100, False, 84)],
+    [(7999, 10000, False, 79), (8000, 10000, True, 80), (16, 20, True, 80), (79, 100, False, 79)],
 )
 def test_format_boundary_uses_exact_ratio_and_prints_floor(hit, total, verdict_ok, printed) -> None:
     tally = gate_3.Tally(hit, total)
-    assert tally.at_least(85) is verdict_ok
+    assert tally.at_least(80) is verdict_ok
     assert tally.floor_pct() == printed
 
 
-def test_format_boundary_line_84_99_fails_prints_84_and_85_0_passes_prints_85() -> None:
+def _only_one_axis_varies(**axis):
     base = dict(
+        format=gate_3.Tally(100, 100),
         topic=gate_3.Tally(100, 100),
         unrecognized=gate_3.Tally(0, 100),
         adult=gate_3.Tally(1, 1),
@@ -97,16 +98,29 @@ def test_format_boundary_line_84_99_fails_prints_84_and_85_0_passes_prints_85() 
         by_format=(),
         by_topic=(),
     )
-    low = gate_3.judge(gate_3.Measures(format=gate_3.Tally(8499, 10000), **base))
-    high = gate_3.judge(gate_3.Measures(format=gate_3.Tally(8500, 10000), **base))
-    assert low.lines[0] == "format agreement: 84% (required >= 85%): FAIL" and not low.passed
-    assert high.lines[0] == "format agreement: 85% (required >= 85%): ok" and high.passed
+    return gate_3.judge(gate_3.Measures(**{**base, **axis}))
 
 
-def test_topic_boundary_is_85_inclusive() -> None:
-    assert gate_3.Tally(85, 100).at_least(85)
-    assert not gate_3.Tally(84999, 100000).at_least(85)
-    assert gate_3.Tally(84999, 100000).floor_pct() == 84
+def test_gate_minimums_are_80_percent_on_both_axes() -> None:
+    assert gate_3.FORMAT_MIN == 80 and gate_3.TOPIC_MIN == 80
+
+
+@pytest.mark.parametrize(("axis", "line"), [("format", 0), ("topic", 1)], ids=["format", "topic"])
+def test_axis_at_exactly_80_passes_and_just_below_fails(axis, line) -> None:
+    low = _only_one_axis_varies(**{axis: gate_3.Tally(7999, 10000)})
+    exact = _only_one_axis_varies(**{axis: gate_3.Tally(8000, 10000)})
+    assert low.lines[line] == f"{axis} agreement: 79% (required >= 80%): FAIL"
+    assert not low.passed
+    assert exact.lines[line] == f"{axis} agreement: 80% (required >= 80%): ok"
+    assert exact.passed
+
+
+def test_just_below_80_on_one_axis_fails_whatever_the_other_scores() -> None:
+    both_ok = gate_3.Tally(100, 100)
+    verdict = _only_one_axis_varies(format=gate_3.Tally(79, 100), topic=both_ok)
+    assert not verdict.passed
+    verdict = _only_one_axis_varies(format=both_ok, topic=gate_3.Tally(79, 100))
+    assert not verdict.passed
 
 
 def test_unrecognized_is_strictly_below_10() -> None:
@@ -222,8 +236,8 @@ def test_default_output_is_exactly_the_public_form() -> None:
     lset, outs = _pass_rows(["c.png,zorbs,plinth,no,,,"], [out("c.png")])
     verdict = gate_3.judge(measures(lset, outs))
     assert verdict.lines == (
-        "format agreement: 100% (required >= 85%): ok",
-        "topic agreement: 100% (required >= 85%): ok",
+        "format agreement: 100% (required >= 80%): ok",
+        "topic agreement: 100% (required >= 80%): ok",
         "unrecognized format: 0% (required < 10%): ok",
         "nsfw gate (adult flagged, safe not flagged): ok",
         "suggestive-negative rows safe: ok",
@@ -249,7 +263,7 @@ def test_default_output_has_no_count_or_label_value() -> None:
     text = "\n".join(gate_3.judge(measures(lset, outs)).lines)
     for forbidden in ("zorbs", "plinth", "vexil", "a.png", "/"):
         assert forbidden not in text
-    assert re.findall(r"\d+", text) == ["100", "85", "100", "85", "0", "10", "3"]
+    assert re.findall(r"\d+", text) == ["100", "80", "100", "80", "0", "10", "3"]
 
 
 def test_detail_adds_lines_and_marks_them_box_only() -> None:
@@ -433,7 +447,7 @@ def test_the_level_gate_keeps_the_public_form() -> None:
     verdict = gate_3.judge(gate_3.evaluate(lset, outs, MIN_LEVEL))
     assert verdict.passed
     text = "\n".join(verdict.lines)
-    assert re.findall(r"\d+", text) == ["100", "85", "100", "85", "0", "10", "3"]
+    assert re.findall(r"\d+", text) == ["100", "80", "100", "80", "0", "10", "3"]
     for word in ("nudity", "explicit"):  # "safe" and "suggestive" are in the fixed text
         assert word not in text
 
