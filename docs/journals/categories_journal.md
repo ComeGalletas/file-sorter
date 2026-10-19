@@ -516,7 +516,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
 - [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; no issue yet
-- [ ] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
+- [x] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
 
@@ -597,6 +597,13 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Open:** #161 sets `PROMPTS_LOCAL=off` for the default tiers and must merge with or right after this PR. The node write of `VlmAnswer.prompt_version` into `files.prompt_version` is a Pipeline follow-up on the G1 list.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is proven on tmp_path stand-ins only, never against the human's real addenda (by design).
 - **Reviewer / Privacy auditor:** pending.
+
+### CLS-004.8 (ML, #168)
+
+- **Commits:** .8.1 loader, `vlm_classify` and tests (`CLS-004.8.1`), .8.2 eval wording and tests, .8.3 example files; hashes in the PR.
+- **Built:** `load_effective_prompt` uses `prompts/local/<name>.md` as the whole system text. Front matter and `user`/`user_alt` stay committed. A slot the committed body lacks is refused (fewer slots are allowed). Cap 16384 bytes. `Prompt.addendum*` became `replacement*`. Eval says `local prompts: present|absent` and `with the provisional H8 local prompts`.
+- **Tests:** full default tiers (`make test`): 2366 passed; `make lint` clean. The gpu tier runs at pre-push.
+- **Status:** pending PR. **Reviewer / Privacy auditor:** pending.
 
 ---
 

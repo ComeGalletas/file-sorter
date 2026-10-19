@@ -452,11 +452,11 @@ def test_vlm_classify_returns_the_shared_type() -> None:
     assert "nsfw_level" in seen[1]["format"]["properties"]
 
 
-@pytest.mark.prompts_local_on  # TST-011.1: it plants addenda and expects them applied
-def test_the_prompt_version_names_each_addendum_hash(
+@pytest.mark.prompts_local_on  # TST-011.1: it plants local prompts and expects them applied
+def test_the_prompt_version_names_each_replacement_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # CLS-004.6: stand-ins in tmp_path; the NSFW version joins only when it has an addendum.
+    # CLS-004.6: stand-ins in tmp_path; the NSFW version joins only when it has a replacement.
     for name in ("classify_v1", "nsfw_level_v1"):
         shutil.copy(PROMPTS_DIR / f"{name}.md", tmp_path / f"{name}.md")
     (tmp_path / "local").mkdir()
