@@ -163,7 +163,7 @@ def test_duplicate_file_names_the_later_line() -> None:
     )
 
 
-def test_calibration_rows_are_left_out_of_the_gate_rows() -> None:
+def test_calibration_only_rows_are_left_out_of_the_gate_rows() -> None:
     result = parse(
         "a1.zz,zorbs,,no,,,\n"
         "b2.zz,zorbs,,yes,,,calibration-only\n"
@@ -172,7 +172,6 @@ def test_calibration_rows_are_left_out_of_the_gate_rows() -> None:
     )
     assert [r.file for r in result.gate_rows()] == ["a1.zz", "c3.zz"]
     assert [r.file for r in result.suggestive_negatives()] == ["c3.zz"]
-    assert [r.file for r in result.calibration_rows()] == ["b2.zz", "d4.zz"]
 
 
 def test_repr_hides_planted_tags_and_values_after_full_validation() -> None:

@@ -45,8 +45,6 @@ class FakeVision:
 
     classifier_id = "fake-classifier"
     nsfw_id = "fake-nsfw"
-    logit_scale = 1.0
-    logit_bias = 0.0
 
     @staticmethod
     def _unit(seed: bytes) -> np.ndarray:
@@ -56,9 +54,6 @@ class FakeVision:
 
     def embed_images(self, images: Sequence[Image.Image]) -> np.ndarray:
         return np.stack([self._unit(image.tobytes()) for image in images])
-
-    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
-        return np.stack([self._unit(text.encode()) for text in texts])
 
     def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:
         return np.array([image.getpixel((0, 0))[0] / 255 for image in images], dtype=np.float32)

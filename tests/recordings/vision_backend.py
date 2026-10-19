@@ -1,4 +1,4 @@
-"""TST-008.1: replay and record the `VisionBackend` seam (MOD-002.D1, TST-008.D3, D7).
+"""TST-008.1: replay and record the `VisionBackend` seam (MOD-002.D1, TST-008.D3).
 
 `ReplayVisionBackend` implements the protocol in `classifier/models/vision.py` from recordings
 and never loads a model. A miss raises `RecordingError`, which is a `BaseException`, so a
@@ -6,13 +6,12 @@ fail-closed `except Exception` in the code under test cannot swallow it; every f
 kept in `failures` so the fixture can fail the test at teardown.
 
 `RecordingVisionBackend` (record mode, `gpu` tier only) wraps the real backend that the caller
-built, forwards each call, and writes one recording per image, text, NSFW score or param.
+built, forwards each call, and writes one recording per image embedding or NSFW score.
 The caller builds the real backend (the ML desk's session-scoped gpu fixture): QA never loads
 a model.
 
-Privacy (DOC-007.D1): recordings come from synthetic inputs only. The text inputs and arrays
-keyed by them are `repr=False`, and every error names at most the package, the 64-hex key, the
-kind and the test id, raised unchained.
+Privacy (DOC-007.D1): recordings come from synthetic inputs only. Every error names at most
+the package, the 64-hex key, the kind and the test id, raised unchained.
 """
 
 import json
@@ -66,7 +65,7 @@ class _Tracked:
 
 
 class ReplayVisionBackend(_Tracked):
-    """Serves recorded embeddings, scores and params. A miss raises `RecordingError`."""
+    """Serves recorded image embeddings and NSFW scores. A miss raises `RecordingError`."""
 
     def __init__(
         self,
@@ -97,14 +96,6 @@ class ReplayVisionBackend(_Tracked):
         except RecordingError as exc:
             raise self._fail(str(exc)) from None
 
-    @property
-    def logit_scale(self) -> float:
-        return float(self._serve(self._classifier_id, "param", "logit_scale"))
-
-    @property
-    def logit_bias(self) -> float:
-        return float(self._serve(self._classifier_id, "param", "logit_bias"))
-
     def _stack(self, rows: list[np.ndarray]) -> np.ndarray:
         if not rows:
             return np.zeros((0, 0), dtype=np.float32)
@@ -116,9 +107,6 @@ class ReplayVisionBackend(_Tracked):
         return self._stack(
             [self._serve(self._classifier_id, "image", self._digest(i)) for i in images]
         )
-
-    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
-        return self._stack([self._serve(self._classifier_id, "text", text) for text in texts])
 
     def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:
         scores = [self._serve(self._nsfw_id, "nsfw", self._digest(i)) for i in images]
@@ -186,30 +174,11 @@ class RecordingVisionBackend(_Tracked):
             # The OSError's text carries the checkout path, so it is not chained (PR #71).
             raise self._fail(f"recording {name} cannot be written") from None
 
-    @property
-    def logit_scale(self) -> float:
-        value = float(self._upstream.logit_scale)
-        self._record(self.classifier_id, "param", "logit_scale", np.float32(value))
-        return value
-
-    @property
-    def logit_bias(self) -> float:
-        value = float(self._upstream.logit_bias)
-        self._record(self.classifier_id, "param", "logit_bias", np.float32(value))
-        return value
-
     def embed_images(self, images: Sequence[Image.Image]) -> np.ndarray:
         result = np.asarray(self._upstream.embed_images(images), dtype=np.float32)
         self._check_rows(result, len(images))
         for image, row in zip(images, result, strict=True):
             self._record(self.classifier_id, "image", self._digest(image), row)
-        return result
-
-    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
-        result = np.asarray(self._upstream.embed_texts(texts), dtype=np.float32)
-        self._check_rows(result, len(texts))
-        for text, row in zip(texts, result, strict=True):
-            self._record(self.classifier_id, "text", text, row)
         return result
 
     def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:

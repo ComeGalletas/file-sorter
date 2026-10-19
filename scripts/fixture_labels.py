@@ -74,10 +74,6 @@ class LabelSet:
         """The gate rows tagged suggestive-negative (CLS-001.D12)."""
         return tuple(r for r in self.gate_rows() if TAG_SUGGESTIVE_NEGATIVE in r.tags)
 
-    def calibration_rows(self) -> tuple[LabelRow, ...]:
-        """The rows tagged calibration-only, for the NSFW sweep only (TST-008.D2)."""
-        return tuple(r for r in self.rows if TAG_CALIBRATION_ONLY in r.tags)
-
 
 def _fail(line: int, column: str, reason: str) -> LabelsError:
     return LabelsError(f"labels line {line}, column {column}: {reason}")
