@@ -1,8 +1,9 @@
-"""The NSFW gate client (MOD-002.2, R-CLS-1, R-MOD-2, P-2).
+"""The Falconsai NSFW cross-check client (MOD-002.2, CLS-004.D5, R-MOD-2, P-2).
 
-`load_nsfw(model_id)` returns the process-wide scorer for the adult gate. It maps decoded images
-to one score each in `[0, 1]`: the softmax probability of the label named `nsfw` in the model's
-`id2label` (MOD-002.D3). No threshold is applied here; the rules and CLS-003 own it.
+`load_nsfw(model_id)` returns the process-wide scorer for the adult cross-check. It maps decoded
+images to one score each in `[0, 1]`: the softmax probability of the label named `nsfw` in the
+model's `id2label` (MOD-002.D3). No threshold is applied here; `classify_rules.nsfw_cross_check`
+owns it, and the VLM's level decides the branch (CLS-004.D3).
 
 - **Offline.** Weights load from the shared `hf` volume with `local_files_only=True` (R-MOD-2).
 - **GPU when there is one, CPU otherwise** (MOD-002.D4, DESIGN §8). This is the only model with a
