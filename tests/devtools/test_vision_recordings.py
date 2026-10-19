@@ -519,12 +519,21 @@ def test_a_bad_request_is_refused(request_body: object) -> None:
 
 
 def test_load_returns_the_array_and_hides_input_and_values(tmp_path: Path) -> None:
-    path = write_vision(tmp_path, MODEL, "image", DIGEST, np.array([0.25, 0.5]))
+    # The file sits in a folder named by the planted SECRET: the loaded recording must not
+    # carry the path, and a refused input that is SECRET itself must not be echoed.
+    made = write_vision(tmp_path, MODEL, "image", DIGEST, np.array([0.25, 0.5]))
+    path = tmp_path / SECRET / made.name
+    path.parent.mkdir()
+    path.write_bytes(made.read_bytes())
     recording = load_vision_recording(path, "recording pkg/x.json")
     assert recording.kind == "image" and recording.array.tolist() == [0.25, 0.5]
     # repr=False on every field keyed by the input (privacy checklist 4).
-    assert DIGEST not in repr(recording) and DIGEST not in str(recording)
-    assert "0.25" not in repr(recording)
+    for text in (repr(recording), str(recording)):
+        assert SECRET not in text and DIGEST not in text and "0.25" not in text
+    bad = raw_file(tmp_path, {"model": MODEL, "kind": "image", "input": SECRET}, encode_array(1.0))
+    with pytest.raises(RecordingError) as caught:
+        load_vision_recording(bad, "recording pkg/x.json")
+    assert_private(caught.value)
 
 
 def test_load_refuses_a_misnamed_tampered_or_odd_shaped_file(tmp_path: Path) -> None:
