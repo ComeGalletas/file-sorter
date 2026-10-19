@@ -15,13 +15,18 @@ from classifier.graph.classify import (
     WORKING_COPY_UNREADABLE,
     WorkingCopyUnreadable,
     first_frame_rgb,
-    open_working_copy,
     open_working_frames,
 )
 
 HASH = "ab" * 32
 OTHER = "cd" * 32
 SECRET = "Qorvex-Zhyndel"  # an artificial coinage, planted to prove it never leaks
+
+
+def _open_rgb(work: Path, source_hash: str, ext: str) -> Image.Image:
+    """What the node does: open the working copy once, take frame 0 as RGB."""
+    with open_working_frames(work, source_hash, ext) as image:
+        return first_frame_rgb(image)
 
 
 def _png(path: Path, size: tuple[int, int] = (6, 4), color=(200, 30, 40)) -> None:
@@ -37,7 +42,7 @@ def test_sanitize_and_classify_agree_on_the_name(tmp_path: Path) -> None:
     work = tmp_path / ".work"
     copy = make_working_copy(source, work, HASH, "png", lambda tmp: None)
     assert copy.path.name == working_copy_name(HASH, "png")
-    assert open_working_copy(work, HASH, "png").size == (6, 4)
+    assert _open_rgb(work, HASH, "png").size == (6, 4)
 
 
 @pytest.mark.parametrize(
@@ -63,7 +68,7 @@ def test_name_refuses_bad_hash_or_ext_with_fixed_text(source_hash: str, ext: str
 
 def test_opens_a_png_as_rgb(tmp_path: Path) -> None:
     _png(tmp_path / working_copy_name(HASH, "png"), (7, 5))
-    image = open_working_copy(tmp_path, HASH, "png")
+    image = _open_rgb(tmp_path, HASH, "png")
     assert image.mode == "RGB"
     assert image.size == (7, 5)
 
@@ -71,8 +76,8 @@ def test_opens_a_png_as_rgb(tmp_path: Path) -> None:
 def test_converts_palette_and_alpha_to_rgb(tmp_path: Path) -> None:
     Image.new("RGBA", (3, 3), (1, 2, 3, 4)).save(tmp_path / working_copy_name(HASH, "png"))
     Image.new("P", (3, 3)).save(tmp_path / working_copy_name(OTHER, "gif"))
-    assert open_working_copy(tmp_path, HASH, "png").mode == "RGB"
-    assert open_working_copy(tmp_path, OTHER, "gif").mode == "RGB"
+    assert _open_rgb(tmp_path, HASH, "png").mode == "RGB"
+    assert _open_rgb(tmp_path, OTHER, "gif").mode == "RGB"
 
 
 def test_takes_only_the_first_frame(tmp_path: Path) -> None:  # R-ING-6
@@ -80,14 +85,14 @@ def test_takes_only_the_first_frame(tmp_path: Path) -> None:  # R-ING-6
     frames[0].save(
         tmp_path / working_copy_name(HASH, "gif"), save_all=True, append_images=frames[1:]
     )
-    image = open_working_copy(tmp_path, HASH, "gif")
+    image = _open_rgb(tmp_path, HASH, "gif")
     red, _green, blue = image.getpixel((0, 0))
     assert red > blue
 
 
 def _refused(work: Path, source_hash: str = HASH, ext: str = "png") -> WorkingCopyUnreadable:
     with pytest.raises(WorkingCopyUnreadable) as caught:
-        open_working_copy(work, source_hash, ext)
+        _open_rgb(work, source_hash, ext)
     return caught.value
 
 
@@ -142,7 +147,7 @@ def test_error_is_unchained_and_carries_no_path(tmp_path: Path) -> None:
 def test_opened_image_is_independent_of_the_file(tmp_path: Path) -> None:
     path = tmp_path / working_copy_name(HASH, "png")
     _png(path)
-    image = open_working_copy(tmp_path, HASH, "png")
+    image = _open_rgb(tmp_path, HASH, "png")
     path.unlink()
     assert image.getpixel((0, 0)) == (200, 30, 40)  # pixels were loaded before the close
 
