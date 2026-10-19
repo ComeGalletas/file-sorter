@@ -1,7 +1,7 @@
-"""TST-008.1: the vision recording format, replay, recorder and lint (TST-008.D3, D7).
+"""TST-008.1: the vision recording format, replay, recorder and lint (TST-008.D3).
 
 Unit tier: every image is synthetic and generated here, every recording lives under `tmp_path`,
-and no model is loaded. The planted SECRET stands in for a text input that must never appear in
+and no model is loaded. The planted SECRET stands in for a name or path that must never appear in
 an error. NSFW recordings hold a score for a plain colour block, nothing more.
 """
 
@@ -24,6 +24,7 @@ from tests.recordings.vision import (
     TEXT_RULE,
     _test_models,
     check_request,
+    check_text_input,
     config_models,
     decode_array,
     encode_array,
@@ -52,9 +53,10 @@ def synthetic_models(extra_vision_models: Any) -> None:
 
 
 SECRET = "zzplantedsecretqx"
+DIGEST = "a" * 64
 
 # A copy of every default prompt in DESIGN.md §4.3 (both tables). CLS-002.2 records replays with
-# these, so the text lint must accept all of them.
+# these, so the prompt text rule must accept all of them.
 DESIGN_PROMPTS = [
     "a photo taken with a camera",
     "a portrait",
@@ -111,6 +113,13 @@ def block(
     return Image.new("RGB", size, color)
 
 
+def named_block() -> Image.Image:
+    """A block that claims to come from a file named SECRET: the key and errors must ignore it."""
+    image = block()
+    image.filename = f"/host/{SECRET}.png"  # type: ignore[attr-defined]
+    return image
+
+
 def assert_private(exc: BaseException) -> None:
     assert SECRET not in str(exc) and SECRET not in repr(exc)
     assert exc.__cause__ is None
@@ -131,38 +140,38 @@ def write_vision(root: Path, model: str, kind: str, value: str, array: Any) -> P
 
 
 def test_key_is_the_sha256_of_the_canonical_json() -> None:
-    text = '{"input":"p","kind":"text","model":"m"}'
-    assert vision_key("m", "text", "p") == hashlib.sha256(text.encode()).hexdigest()
+    text = '{"input":"p","kind":"image","model":"m"}'
+    assert vision_key("m", "image", "p") == hashlib.sha256(text.encode()).hexdigest()
 
 
 def test_key_is_pinned() -> None:
     # Hand-computed once; a change here means every committed recording must be re-keyed.
     assert (
-        vision_key("m", "text", "p")
-        == "61f11ba7fde6fed85d2243362df41d8bba8fc4f6961c172f033a0ef132465418"
+        vision_key("m", "image", "p")
+        == "c1e966916888c133a48f6dcc3528a4ebf8d2768f280d15cf7237cccd02e61b3a"
     )
 
 
 @pytest.mark.parametrize("field", ["model", "kind", "input"])
 def test_every_field_changes_the_key(field: str) -> None:
-    base = {"model": "m", "kind": "text", "input": "p"}
+    base = {"model": "m", "kind": "image", "input": "p"}
     other = {**base, field: "nsfw" if field == "kind" else "other"}
     assert vision_key(**base) != vision_key(**other)
 
 
 def test_non_ascii_is_hashed_as_utf8_not_escaped() -> None:
     text = json.dumps(
-        {"model": "m", "kind": "text", "input": "café – 東京"},
+        {"model": "m", "kind": "image", "input": "café – 東京"},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
     )
-    assert vision_key("m", "text", "café – 東京") == hashlib.sha256(text.encode()).hexdigest()
+    assert vision_key("m", "image", "café – 東京") == hashlib.sha256(text.encode()).hexdigest()
 
 
 def test_lone_surrogate_and_unknown_kind_fail_without_echoing() -> None:
     with pytest.raises(RecordingError) as caught:
-        vision_key("m", "text", f"{SECRET}\ud800")
+        vision_key("m", "image", f"{SECRET}\ud800")
     assert_private(caught.value)
     with pytest.raises(RecordingError) as caught:
         vision_key("m", SECRET, "p")
@@ -289,13 +298,12 @@ def test_a_malformed_response_is_refused_with_fixed_text(response: object) -> No
     assert_private(caught.value)
 
 
-# --- the text input rule ---
+# --- the prompt text rule (prompts.py slots and image request prompts, TST-008.D9) ---
 
 
 @pytest.mark.parametrize("prompt", DESIGN_PROMPTS)
 def test_every_design_seed_prompt_is_accepted(prompt: str) -> None:
-    write = {"model": MODEL, "kind": "text", "input": prompt}
-    assert check_request(write) == write
+    check_text_input(prompt)
 
 
 @pytest.mark.parametrize(
@@ -356,7 +364,7 @@ def test_every_design_seed_prompt_is_accepted(prompt: str) -> None:
 )
 def test_text_outside_the_allowlist_is_refused(text: str) -> None:
     with pytest.raises(RecordingError) as caught:
-        check_request({"model": MODEL, "kind": "text", "input": text})
+        check_text_input(text)
     assert_private(caught.value)
 
 
@@ -365,13 +373,12 @@ def test_text_outside_the_allowlist_is_refused(text: str) -> None:
     ["a person's face", "a snippet of a webpage, chat or app", "PC gear", "3D art", "12 cats, 99"],
 )
 def test_the_allowed_characters_and_two_digits_per_word_pass(text: str) -> None:
-    request = {"model": MODEL, "kind": "text", "input": text}
-    assert check_request(request) == request
+    check_text_input(text)
 
 
 def test_the_text_error_says_exactly_what_the_rule_allows() -> None:
     with pytest.raises(RecordingError) as caught:
-        check_request({"model": MODEL, "kind": "text", "input": "IMG_0042"})
+        check_text_input("IMG_0042")
     assert str(caught.value) == TEXT_RULE
 
 
@@ -383,7 +390,7 @@ def test_the_config_models_are_the_committed_vision_ids() -> None:
     "model", ["google/siglip-so400m-patch14-384", "Falconsai/nsfw_image_detection", MODEL]
 )
 def test_a_config_model_or_a_registered_test_id_is_accepted(model: str) -> None:
-    request = {"model": model, "kind": "param", "input": "logit_bias"}
+    request = {"model": model, "kind": "nsfw", "input": DIGEST}
     assert check_request(request) == request
 
 
@@ -392,7 +399,7 @@ def test_a_registered_test_id_is_gone_after_unregistering() -> None:
     register_test_model("synthetic/unregistered")
     unregister_test_model("synthetic/unregistered")
     with pytest.raises(RecordingError):
-        check_request({"model": "synthetic/unregistered", "kind": "param", "input": "logit_bias"})
+        check_request({"model": "synthetic/unregistered", "kind": "nsfw", "input": DIGEST})
 
 
 @pytest.mark.parametrize(
@@ -459,7 +466,7 @@ def test_a_path_shaped_model_id_is_refused_by_the_request_and_the_recorder(
     model: str, tmp_path: Path
 ) -> None:
     with pytest.raises(RecordingError) as caught:
-        check_request({"model": model, "kind": "param", "input": "logit_bias"})
+        check_request({"model": model, "kind": "nsfw", "input": DIGEST})
     assert_private(caught.value)
 
     class Local(FakeUpstream):
@@ -467,7 +474,7 @@ def test_a_path_shaped_model_id_is_refused_by_the_request_and_the_recorder(
 
     recorder = RecordingVisionBackend("pkg", Local(), TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
-        recorder.embed_texts(["alpha"])
+        recorder.embed_images([block()])
     assert_private(caught.value)
     assert not (tmp_path / "pkg").exists()
 
@@ -482,22 +489,25 @@ def test_an_image_or_nsfw_input_must_be_a_hash(kind: str) -> None:
     assert check_request(good) == good
 
 
-def test_param_inputs_are_the_two_logit_names() -> None:
-    for name in ("logit_scale", "logit_bias"):
-        check_request({"model": MODEL, "kind": "param", "input": name})
-    with pytest.raises(RecordingError):
-        check_request({"model": MODEL, "kind": "param", "input": "temperature"})
+@pytest.mark.parametrize("kind", ["text", "param"])
+def test_the_text_and_param_kinds_are_gone(kind: str) -> None:
+    # CLS-006.3: the VisionBackend no longer embeds texts or exposes the logit params.
+    with pytest.raises(RecordingError, match="not image or nsfw") as caught:
+        check_request({"model": MODEL, "kind": kind, "input": SECRET})
+    assert_private(caught.value)
+    with pytest.raises(RecordingError, match="not image or nsfw"):
+        vision_key(MODEL, kind, DIGEST)
 
 
 @pytest.mark.parametrize(
     "request_body",
     [
         None,
-        {"model": MODEL, "kind": "text"},
-        {"model": MODEL, "kind": "text", "input": "p", "label": "x"},
-        {"model": "", "kind": "text", "input": "p"},
-        {"model": MODEL, "kind": "caption", "input": "p"},
-        {"model": MODEL, "kind": "text", "input": 3},
+        {"model": MODEL, "kind": "image"},
+        {"model": MODEL, "kind": "image", "input": DIGEST, "label": "x"},
+        {"model": "", "kind": "image", "input": DIGEST},
+        {"model": MODEL, "kind": "caption", "input": DIGEST},
+        {"model": MODEL, "kind": "image", "input": 3},
     ],
 )
 def test_a_bad_request_is_refused(request_body: object) -> None:
@@ -509,16 +519,16 @@ def test_a_bad_request_is_refused(request_body: object) -> None:
 
 
 def test_load_returns_the_array_and_hides_input_and_values(tmp_path: Path) -> None:
-    path = write_vision(tmp_path, MODEL, "text", f"{SECRET} prompt", np.array([0.25, 0.5]))
+    path = write_vision(tmp_path, MODEL, "image", DIGEST, np.array([0.25, 0.5]))
     recording = load_vision_recording(path, "recording pkg/x.json")
-    assert recording.kind == "text" and recording.array.tolist() == [0.25, 0.5]
+    assert recording.kind == "image" and recording.array.tolist() == [0.25, 0.5]
     # repr=False on every field keyed by the input (privacy checklist 4).
-    assert SECRET not in repr(recording) and SECRET not in str(recording)
+    assert DIGEST not in repr(recording) and DIGEST not in str(recording)
     assert "0.25" not in repr(recording)
 
 
 def test_load_refuses_a_misnamed_tampered_or_odd_shaped_file(tmp_path: Path) -> None:
-    good = write_vision(tmp_path, MODEL, "text", "alpha", np.array([1.0]))
+    good = write_vision(tmp_path, MODEL, "image", DIGEST, np.array([1.0]))
     renamed = good.with_name("0" * 64 + ".json")
     renamed.write_bytes(good.read_bytes())
     with pytest.raises(RecordingError, match="not named by the key") as caught:
@@ -555,11 +565,8 @@ def raw_file(root: Path, request: dict[str, Any], response: object) -> Path:
 
 
 def test_lint_accepts_every_kind(tmp_path: Path) -> None:
-    write_vision(tmp_path, MODEL, "text", "a photo of a cat", np.ones(4))
     write_vision(tmp_path, MODEL, "image", image_digest(block()), np.ones(4))
     write_vision(tmp_path, MODEL, "nsfw", image_digest(block()), np.float32(0.125))
-    write_vision(tmp_path, MODEL, "param", "logit_scale", np.float32(117.0))
-    write_vision(tmp_path, MODEL, "param", "logit_bias", np.float32(-16.5))
     assert lint_recordings(tmp_path) == []
 
 
@@ -570,7 +577,7 @@ def test_lint_leaves_ollama_files_to_the_old_rules(tmp_path: Path) -> None:
     path.write_text(
         json.dumps({"request": request, "response": {"response": "x"}}), encoding="utf-8"
     )
-    write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    write_vision(tmp_path, MODEL, "image", DIGEST, np.ones(2))
     assert lint_recordings(tmp_path) == []
 
 
@@ -579,10 +586,10 @@ def test_lint_reports_each_bad_vision_file_privately(tmp_path: Path) -> None:
     bad = [
         ({"model": MODEL, "kind": "text", "input": f"{SECRET} folder/x.png"}, ok),
         ({"model": MODEL, "kind": "image", "input": SECRET}, ok),
-        ({"model": MODEL, "kind": "param", "input": "temperature"}, encode_array(1.0)),
+        ({"model": MODEL, "kind": "param", "input": "logit_bias"}, encode_array(1.0)),
         ({"model": MODEL, "kind": "nsfw", "input": "a" * 64}, encode_array(np.ones(3))),
-        ({"model": MODEL, "kind": "text", "input": "alpha", "label": SECRET}, ok),
-        ({"model": MODEL, "kind": "text", "input": "beta"}, {"shape": [2], "dtype": "float64"}),
+        ({"model": MODEL, "kind": "image", "input": DIGEST, "label": SECRET}, ok),
+        ({"model": MODEL, "kind": "image", "input": "b" * 64}, {"shape": [2], "dtype": "float64"}),
     ]
     for request, response in bad:
         raw_file(tmp_path, request, response)
@@ -592,17 +599,17 @@ def test_lint_reports_each_bad_vision_file_privately(tmp_path: Path) -> None:
 
 
 def test_lint_refuses_a_tampered_or_misnamed_vision_file(tmp_path: Path) -> None:
-    path = write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    path = write_vision(tmp_path, MODEL, "image", DIGEST, np.ones(2))
     path.with_name("0" * 64 + ".json").write_bytes(path.read_bytes())
     stored = json.loads(path.read_text(encoding="utf-8"))
-    stored["request"]["input"] = "beta"
+    stored["request"]["input"] = "b" * 64
     path.write_text(json.dumps(stored), encoding="utf-8")
     problems = lint_recordings(tmp_path)
     assert len(problems) == 2 and all("not named by the key" in p for p in problems)
 
 
 def test_lint_refuses_a_link(tmp_path: Path) -> None:
-    good = write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    good = write_vision(tmp_path, MODEL, "image", DIGEST, np.ones(2))
     link = tmp_path / "pkg" / ("2" * 64 + ".json")
     try:
         link.symlink_to(good)
@@ -616,7 +623,7 @@ def test_lint_refuses_a_link(tmp_path: Path) -> None:
 def test_lint_wraps_a_failing_filesystem_call(
     method: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    write_vision(tmp_path, MODEL, "text", "alpha", np.ones(2))
+    write_vision(tmp_path, MODEL, "image", DIGEST, np.ones(2))
 
     def denied(self: Path, *args: Any, **kwargs: Any) -> Any:
         raise PermissionError(13, "Permission denied", str(self))
@@ -640,8 +647,6 @@ class FakeUpstream:
 
     classifier_id = CLASSIFIER
     nsfw_id = NSFW
-    logit_scale = 117.5
-    logit_bias = -16.25
 
     def __init__(self, shift: float = 0.0) -> None:
         self.shift = shift
@@ -651,10 +656,6 @@ class FakeUpstream:
         self.calls += 1
         return np.array([[i.getpixel((0, 0))[0] / 255, 0.5 + self.shift] for i in images])
 
-    def embed_texts(self, texts: Any) -> np.ndarray:
-        self.calls += 1
-        return np.array([[len(t) / 100, 0.25 + self.shift] for t in texts])
-
     def nsfw_scores(self, images: Any) -> np.ndarray:
         self.calls += 1
         return np.array([0.125 + self.shift for _ in images])
@@ -663,10 +664,7 @@ class FakeUpstream:
 def record_all(root: Path, upstream: FakeUpstream | None = None) -> RecordingVisionBackend:
     recorder = RecordingVisionBackend("pkg", upstream or FakeUpstream(), TEST_ID, root=root)
     recorder.embed_images([block(), block((10, 20, 30))])
-    recorder.embed_texts(["a photo of a cat", "an anime character"])
     recorder.nsfw_scores([block()])
-    recorder.logit_scale  # noqa: B018 - reading it records it
-    recorder.logit_bias  # noqa: B018
     return recorder
 
 
@@ -683,11 +681,7 @@ def test_replay_serves_exactly_what_the_recorder_wrote(tmp_path: Path) -> None:
         replay.embed_images(images).tobytes()
         == upstream.embed_images(images).astype(np.float32).tobytes()
     )
-    texts = ["a photo of a cat", "an anime character"]
-    expected = upstream.embed_texts(texts).astype(np.float32)
-    assert replay.embed_texts(texts).tolist() == expected.tolist()
     assert replay.nsfw_scores([block()]).tolist() == [0.125]
-    assert (replay.logit_scale, replay.logit_bias) == (117.5, -16.25)
     assert (replay.classifier_id, replay.nsfw_id) == (CLASSIFIER, NSFW)
     assert replay.failures == []
     assert lint_recordings(tmp_path) == []
@@ -699,17 +693,16 @@ def test_replay_returns_float32_arrays_of_the_right_shape(tmp_path: Path) -> Non
     assert replay.embed_images([block(), block((10, 20, 30))]).shape == (2, 2)
     assert replay.embed_images([block()]).dtype == np.float32
     assert replay.nsfw_scores([block()]).shape == (1,)
-    assert replay.embed_texts([]).shape == (0, 0)
+    assert replay.embed_images([]).shape == (0, 0)
 
 
 def test_a_miss_names_the_key_kind_and_test_and_nothing_else(tmp_path: Path) -> None:
     replay = replayer(tmp_path)
-    text = f"{SECRET} prompt"
     with pytest.raises(RecordingError) as caught:
-        replay.embed_texts([text])
-    key = vision_key(CLASSIFIER, "text", text)
+        replay.embed_images([named_block()])
+    key = vision_key(CLASSIFIER, "image", image_digest(block()))
     message = str(caught.value)
-    assert f"pkg/{key}.json" in message and "kind text" in message
+    assert f"pkg/{key}.json" in message and "kind image" in message
     assert TEST_ID in message and "--record-vision" in message
     assert_private(caught.value)
     assert replay.failures == [message]
@@ -720,13 +713,11 @@ def test_each_miss_kind_is_a_tracked_failure(tmp_path: Path) -> None:
     calls = [
         lambda: replay.embed_images([block()]),
         lambda: replay.nsfw_scores([block()]),
-        lambda: replay.logit_scale,
-        lambda: replay.logit_bias,
     ]
     for call in calls:
         with pytest.raises(RecordingError):
             call()
-    assert len(replay.failures) == 4
+    assert len(replay.failures) == 2
 
 
 def test_a_miss_escapes_except_exception(tmp_path: Path) -> None:
@@ -746,26 +737,26 @@ def test_the_model_id_is_part_of_the_key(tmp_path: Path) -> None:
     record_all(tmp_path)
     other = ReplayVisionBackend("pkg", TEST_ID, "synthetic/other", NSFW, root=tmp_path)
     with pytest.raises(RecordingError):
-        other.embed_texts(["a photo of a cat"])
+        other.embed_images([block()])
     assert other.nsfw_scores([block()]).tolist() == [0.125]
 
 
 def test_a_tampered_recording_fails_privately(tmp_path: Path) -> None:
     record_all(tmp_path)
-    path = tmp_path / "pkg" / f"{vision_key(CLASSIFIER, 'text', 'a photo of a cat')}.json"
+    path = tmp_path / "pkg" / f"{vision_key(CLASSIFIER, 'image', image_digest(block()))}.json"
     stored = json.loads(path.read_text(encoding="utf-8"))
-    stored["request"]["input"] = "a photo of a dog"
+    stored["request"]["input"] = "b" * 64
     path.write_text(json.dumps(stored), encoding="utf-8")
     with pytest.raises(RecordingError, match="not named by the key") as caught:
-        replayer(tmp_path).embed_texts(["a photo of a cat"])
+        replayer(tmp_path).embed_images([block()])
     assert_private(caught.value)
 
 
-def test_replay_refuses_a_path_like_text_without_looking_it_up(tmp_path: Path) -> None:
-    replay = replayer(tmp_path)
+def test_replay_refuses_a_path_like_model_id_without_looking_it_up(tmp_path: Path) -> None:
+    replay = ReplayVisionBackend("pkg", TEST_ID, f"folder/{SECRET}.png", NSFW, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
-        replay.embed_texts([f"folder/{SECRET}.png"])
-    assert str(caught.value).startswith(TEXT_RULE)
+        replay.embed_images([block()])
+    assert "is not one of the vision models" in str(caught.value)
     assert_private(caught.value)
 
 
@@ -788,10 +779,10 @@ def test_backends_hide_inputs_in_repr(tmp_path: Path) -> None:
         RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path),
     )
     with pytest.raises(RecordingError):
-        replay.embed_texts([f"{SECRET} prompt"])
+        replay.embed_images([named_block()])
     for backend in (replay, recorder):
         assert SECRET not in repr(backend) and SECRET not in str(backend)
-    recorder.embed_texts([f"{SECRET} prompt"])
+    recorder.embed_images([named_block()])
     assert SECRET not in repr(recorder)
 
 
@@ -809,17 +800,20 @@ def test_record_refuses_a_different_answer_and_names_the_key(tmp_path: Path) -> 
     upstream = FakeUpstream(shift=TOLERANCE * 10)
     far = RecordingVisionBackend("pkg", upstream, TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError, match="different answer") as caught:
-        far.embed_texts(["a photo of a cat"])
-    assert vision_key(CLASSIFIER, "text", "a photo of a cat") in str(caught.value)
+        far.embed_images([block()])
+    assert vision_key(CLASSIFIER, "image", image_digest(block())) in str(caught.value)
     assert TEST_ID in str(caught.value) and len(far.failures) == 1
     assert_private(caught.value)
     assert {p.name: p.read_bytes() for p in (tmp_path / "pkg").iterdir()} == before
 
 
 def test_record_refuses_inputs_the_lint_would_refuse(tmp_path: Path) -> None:
-    recorder = RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path)
+    class Local(FakeUpstream):
+        classifier_id = f"C:/Users/{SECRET}.png"
+
+    recorder = RecordingVisionBackend("pkg", Local(), TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
-        recorder.embed_texts([f"C:/Users/{SECRET}.png"])
+        recorder.embed_images([named_block()])
     assert_private(caught.value)
     assert not (tmp_path / "pkg").exists()
 
@@ -827,15 +821,15 @@ def test_record_refuses_inputs_the_lint_would_refuse(tmp_path: Path) -> None:
 @pytest.mark.parametrize("bad", ["rows", "scores"])
 def test_record_refuses_an_upstream_answer_of_the_wrong_size(bad: str, tmp_path: Path) -> None:
     class Wrong(FakeUpstream):
-        def embed_texts(self, texts: Any) -> np.ndarray:
-            return np.zeros((len(texts) + 1, 2))
+        def embed_images(self, images: Any) -> np.ndarray:
+            return np.zeros((len(images) + 1, 2))
 
         def nsfw_scores(self, images: Any) -> np.ndarray:
             return np.zeros((len(images), 2))
 
     recorder = RecordingVisionBackend("pkg", Wrong(), TEST_ID, root=tmp_path)
     with pytest.raises(RecordingError) as caught:
-        recorder.embed_texts(["alpha"]) if bad == "rows" else recorder.nsfw_scores([block()])
+        recorder.embed_images([block()]) if bad == "rows" else recorder.nsfw_scores([block()])
     assert_private(caught.value)
     assert not (tmp_path / "pkg").exists()
 
@@ -853,7 +847,7 @@ def test_record_reports_a_failing_filesystem_call_by_key(
 
     monkeypatch.setattr(Path, method, denied)
     with pytest.raises(RecordingError) as caught:
-        recorder.embed_texts(["a photo of a cat"])
+        recorder.embed_images([block()])
     assert str(tmp_path) not in str(caught.value) and tmp_path.name not in str(caught.value)
     assert_private(caught.value)
     assert len(recorder.failures) == 1
@@ -893,7 +887,7 @@ INNER_UNIT = """
 from PIL import Image
 from tests.recordings.vision_backend import ReplayVisionBackend
 
-TEXT = "zzinner" + "secretqx"
+NAME = "zzinner" + "secretqx"
 
 
 def test_replays(vision_backend, extra_vision_models):
@@ -903,7 +897,9 @@ def test_replays(vision_backend, extra_vision_models):
 
 def test_miss(vision_backend, extra_vision_models):
     extra_vision_models("synthetic/c", "synthetic/n")
-    vision_backend("models", "synthetic/c", "synthetic/n").embed_texts([TEXT])
+    image = Image.new("RGB", (3, 3))
+    image.filename = "/host/" + NAME + ".png"
+    vision_backend("models", "synthetic/c", "synthetic/n").embed_images([image])
 
 
 def test_swallowed(vision_backend, extra_vision_models):
@@ -971,7 +967,7 @@ def test_fixture_replays_outside_gpu_and_fails_each_miss_once(inner: pytest.Pyte
     # test_swallowed: its call passes, and its teardown reports the miss as an error.
     result.assert_outcomes(passed=2, failed=1, errors=1)
     output = result.stdout.str() + result.stderr.str()
-    key = vision_key("synthetic/c", "text", INNER_SECRET)
+    key = vision_key("synthetic/c", "image", image_digest(Image.new("RGB", (3, 3))))
     assert f"no recording models/{key}.json" in output
     assert "tests/unit/test_inner_unit.py::test_miss" in output
     assert "Vision recording failure caught by the code under test" in output

@@ -1,14 +1,13 @@
-"""TST-008.1: the vision recording format, the key and the array codec (TST-008.D3, D7).
+"""TST-008.1: the vision recording format, the key and the array codec (TST-008.D3).
 
 One JSON file per request, `tests/recordings/<package>/<key>.json`:
 
-    {"request": {"model": ..., "kind": "image"|"text"|"nsfw"|"param", "input": ...},
+    {"request": {"model": ..., "kind": "image"|"nsfw", "input": ...},
      "response": {"shape": [...], "dtype": "float32", "data": "<base64 little-endian>"}}
 
 The key is the SHA-256 of `json.dumps({model, kind, input}, sort_keys=True, separators=(",", ":"),
-ensure_ascii=False)` in UTF-8. `input` is a text's string, or, for `image` and `nsfw`, the digest
-of the decoded first frame (`image_digest`): never a path or a file name. A `param` (D7) is
-`logit_scale` or `logit_bias`, with a scalar shape.
+ensure_ascii=False)` in UTF-8. `input` is the digest of the decoded first frame
+(`image_digest`): never a path or a file name.
 
 Privacy (DOC-007.D1): recordings come from synthetic inputs only. Every error is fixed text that
 names at most the package, the 64-hex key, the kind and the test id, and is raised unchained.
@@ -31,8 +30,7 @@ from PIL import Image
 
 from tests.recordings.replay import RECORDINGS, RecordingError
 
-KINDS = ("image", "text", "nsfw", "param")
-PARAMS = ("logit_scale", "logit_bias")
+KINDS = ("image", "nsfw")
 REQUEST_FIELDS = {"model", "kind", "input"}
 RESPONSE_FIELDS = {"shape", "dtype", "data"}
 DTYPE = "float32"
@@ -41,7 +39,8 @@ HASH_RE = re.compile(r"[0-9a-f]{64}")
 MAX_ELEMENTS = 4096
 MAX_RANK = 2
 MAX_TEXT_CHARS = 256
-# TST-008.D9: a text input is limited to the characters the DESIGN §4.3 prompts use: ASCII
+# TST-008.D9: a prompt text (a rendered slot, an image request's prompt; no vision recording
+# holds text any more, CLS-006.3) is limited to the characters the DESIGN §4.3 prompts use: ASCII
 # letters, digits, single spaces, comma and apostrophe. No "." and none of ( ) - _ / \ ~ :.
 # No word (split on spaces and commas) holds 3 or more digits. At most 256 characters, no
 # leading or trailing space, at least one letter.
@@ -67,7 +66,7 @@ def _fixed(text: str) -> RecordingError:
 def vision_key(model: str, kind: str, input: str) -> str:
     """The SHA-256 hex digest of the canonical request: a recording's file name (D3)."""
     if kind not in KINDS:
-        raise _fixed("a vision recording kind is not image, text, nsfw or param")
+        raise _fixed("a vision recording kind is not image or nsfw")
     if not isinstance(model, str) or not isinstance(input, str):
         raise _fixed("a vision recording request holds a non-text model or input")
     text = json.dumps(
@@ -164,7 +163,7 @@ def _digits(word: str) -> int:
 
 
 def check_text_input(text: str) -> None:
-    """A text input must pass the allowlist `TEXT_RULE` (TST-008.1.5).
+    """A prompt text must pass the allowlist `TEXT_RULE` (TST-008.1.5).
 
     The lint can't prove a string is synthetic. The rule is the character set the DESIGN §4.3
     prompts use, and nothing more: ASCII letters, digits, single spaces, comma and apostrophe,
@@ -214,7 +213,7 @@ def check_model_id(model: object) -> str:
 
 
 def check_request(request: object) -> dict[str, str]:
-    """A request, checked against the format. The `param` inputs are fixed (D7)."""
+    """A request, checked against the format."""
     if not isinstance(request, Mapping) or set(request) != REQUEST_FIELDS:
         raise _fixed("a vision request must hold exactly model, kind and input")
     model, kind, value = request["model"], request["kind"], request["input"]
@@ -222,19 +221,15 @@ def check_request(request: object) -> dict[str, str]:
     if not isinstance(value, str):
         raise _fixed("a vision request holds a non-text input")
     if kind not in KINDS:
-        raise _fixed("a vision recording kind is not image, text, nsfw or param")
-    if kind in ("image", "nsfw") and not HASH_RE.fullmatch(value):
+        raise _fixed("a vision recording kind is not image or nsfw")
+    if not HASH_RE.fullmatch(value):
         raise _fixed("an image input must be a 64-hex digest, never a path")
-    if kind == "param" and value not in PARAMS:
-        raise _fixed("a param input must be logit_scale or logit_bias")
-    if kind == "text":
-        check_text_input(value)
     return {"model": model, "kind": kind, "input": value}
 
 
 def expected_shape_ok(kind: str, shape: tuple[int, ...]) -> bool:
-    """`param` and `nsfw` are scalars; an `image` or `text` embedding is a 1-D vector."""
-    if kind in ("param", "nsfw"):
+    """An `nsfw` score is a scalar; an `image` embedding is a 1-D vector."""
+    if kind == "nsfw":
         return shape == ()
     return len(shape) == 1 and shape[0] > 0
 
@@ -284,7 +279,6 @@ def is_vision_request(request: object) -> bool:
 
 __all__ = [
     "KINDS",
-    "PARAMS",
     "RECORDINGS",
     "VisionRecording",
     "check_request",
