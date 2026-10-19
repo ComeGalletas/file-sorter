@@ -159,12 +159,6 @@ def first_frame_rgb(image: Image.Image) -> Image.Image:
     return frame
 
 
-def open_working_copy(work: Path, source_hash: str, ext: str) -> Image.Image:
-    """The first frame of one working copy as RGB (R-ING-6, CLS-002.D8)."""
-    with open_working_frames(work, source_hash, ext) as image:
-        return first_frame_rgb(image)
-
-
 _ROWS = """
 select source_hash, short_hash, ext, original_sanitized
   from files
