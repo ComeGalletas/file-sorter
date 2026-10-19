@@ -510,7 +510,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.5.5 — Unit tests on a scripted VLM client; `tests/gpu/models/test_classify_eval.py` re-pointed to the real `models.vlm_safe` on synthetic images
   - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
   - [x] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (2026-10-18, the CLS-004.D11 checkpoint; posted on #136, no PR). It did not pass gate 3, and the human chose CLS-004.D12's amendment and route B′ (CLS-004.D17). The step was numbered .5.6 in the desk's plan; .5.6 went to the review fixes, so the run is .5.7.
-  - [ ] CLS-004.5.8 — The re-run on the box after CLS-004.8 and the human's local prompt files, public form only, "with the provisional H8 local prompts", judged at 80% (TST-009.3)
+  - [x] CLS-004.5.8 — The re-run on the box after CLS-004.8 and the human's local prompt files, public form only, "with the provisional H8 local prompts", judged at 80% (TST-009.3) (2026-10-19, posted on #136, no PR). In the public form: format ok, topic FAIL, NSFW gate FAIL; unrecognized, `suggestive-negative`, node errors, coverage and bug checks ok. Gate 3 is not met; the human decides the next step.
 - [x] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
@@ -600,7 +600,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ### CLS-004.8 (ML, #168)
 
-- **Commits:** .8.1 loader, `vlm_classify` and tests (`CLS-004.8.1`), .8.2 eval wording and tests, .8.3 example files; hashes in the PR.
+- **Commits:** .8.1 loader, `vlm_classify` and tests (`7d18e6c`), .8.2 eval wording and tests (`57efaa6`), .8.3 example files (`3c086f4`), journal (`a17f416`); PR #180, merged as `0e7fabb`.
 - **Built:** `load_effective_prompt` uses `prompts/local/<name>.md` as the whole system text. Front matter and `user`/`user_alt` stay committed. A slot the committed body lacks is refused (fewer slots are allowed). Cap 16384 bytes. `Prompt.addendum*` became `replacement*`. Eval says `local prompts: present|absent` and `with the provisional H8 local prompts`.
 - **Tests:** full default tiers (`make test`): 2366 passed; `make lint` clean. The gpu tier runs at pre-push.
 - **Status:** pending PR. **Reviewer / Privacy auditor:** pending.
@@ -629,7 +629,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ## CLI-006 — Confirmed reading
 
 - **The VLM gets** the category names, plus the seeded categories' definitions, which live in the prompt files (CLS-004.1). A user-added category is offered by its bare name. So a category's `category_prompts` rows and `min_score` change nothing today.
-- **CLI-006.D1 — keep or drop the options** (lead, open until CLI-006.1's plan). The lead's leaning is to keep `--prompt` and `--min-score` accepted and stored, marked unused in `--help`, because DOC-009.D3 keeps the columns, and to drop the columns from `list`. The desk proposes; the lead approves on the issue.
+- **CLI-006.D1 — keep the options** (lead, 2026-10-19, approved on #171): `--prompt`, `--min-score` and `--reset-min-score` stay accepted and stored, marked unused in `--help`; `list` renames the columns `min_score(unused)` and `prompts(unused)`.
 
 ## CLI-006 — Tasks
 

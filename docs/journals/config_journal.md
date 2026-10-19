@@ -154,7 +154,7 @@ references or host paths here. Use hashes.
 
 ## CFG-004 — Tasks
 
-- [x] CFG-004.1 — The two values (CFG-004.1.1 `397a04a`, values only), then the comments and tests (CFG-004.1.2) · #170 · Pipeline · type `balance` · acceptance: `tests/unit/config/test_config.py`
+- [x] CFG-004.1 — The two values (CFG-004.1.1 `397a04a`, values only), then the comments and tests (CFG-004.1.2 `f2d9a15`; PR #178, merged as `499d98a`) · #170 · Pipeline · type `balance` · acceptance: `tests/unit/config/test_config.py`
 
 ## CFG-004 — Results
 
