@@ -274,6 +274,7 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 ## DOC-011 — Tasks
 
 - [x] DOC-011.1 — DESIGN §6, §10, §11, §13 C-28, §14 Q-8 and R-CLS-8; CLAUDE.md; `.claude/roles/ml.md`; README; `docs/PLAN.md`
+- [x] DOC-011.2 — Review round 1: `.claude/roles/qa.md`'s gate lines (80%, single run, DESIGN §11 as the source); R-CLS-8 says the loader appends until the replace mode lands
 
 ## DOC-011 — Results
 
