@@ -18,10 +18,10 @@ the same thing. Nothing is copied from them.
 
 Privacy (TST-008.D1, D6): the default output is the public form, safe to paste: format, topic and
 unrecognized as a verdict and a whole percent, adult and suggestive-negative as ok or FAIL, and
-whether each prompt has a local addendum (present or absent, never its hash: the hash fingerprints
+whether each prompt has a local prompt (present or absent, never its hash: the hash fingerprints
 private text). `--detail` adds one-decimal figures, per-category detail, the effective prompt
-versions with their addendum hashes and the Falconsai cross-check count for the box console, and is
-never pasted or committed. Labels are matched to ledger rows by file name in memory only; the
+versions with their local-prompt hashes and the Falconsai cross-check count for the box console,
+and is never pasted or committed. Labels are matched to ledger rows by file name in memory only; the
 cache holds answers keyed by source hash.
 Every error is fixed text.
 """
@@ -97,26 +97,26 @@ def prompt_file_digest(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
 
 
 def effective_prompts(prompts_dir: Path = PROMPTS_DIR) -> tuple[Prompt, ...]:
-    """The prompts the VLM path uses, with their local addenda when present (CLS-004.6)."""
+    """The prompts the VLM path uses, with their local replacements when present (CLS-004.8)."""
     return tuple(load_effective_prompt(name, prompts_dir) for name in PROMPT_NAMES)
 
 
-def addenda_lines(prompts: Sequence[Prompt]) -> list[str]:
-    """The publishable fact about the addenda: present or absent per prompt, never a hash.
+def local_prompt_lines(prompts: Sequence[Prompt]) -> list[str]:
+    """The publishable fact about the local prompts: present or absent per prompt, never a hash.
 
-    When any is present the report says so (CLS-004.D16: provisional, the human decides).
+    When any is present the report says so (CLS-004.D17: provisional, the human decides).
     """
     lines = [
-        "local addenda: "
-        + ", ".join(f"{p.version} {'present' if p.addendum_hash else 'absent'}" for p in prompts)
+        "local prompts: "
+        + ", ".join(f"{p.version} {'present' if p.replacement_hash else 'absent'}" for p in prompts)
     ]
-    if any(p.addendum_hash for p in prompts):
-        lines.append("with the provisional H8 addenda")
+    if any(p.replacement_hash for p in prompts):
+        lines.append("with the provisional H8 local prompts")
     return lines
 
 
 def versions_line(prompts: Sequence[Prompt]) -> str:
-    """Effective versions with their addendum hashes: the local console only (CLS-004.D16)."""
+    """Effective versions with their local-prompt hashes: the local console only (CLS-004.D17)."""
     return "effective prompts (console only): " + ", ".join(p.effective_version for p in prompts)
 
 
@@ -148,7 +148,7 @@ def cache_key(
     formats: Sequence[str],
     topics: Sequence[str],
 ) -> str:
-    """The cache file's name: the VLM tag, the prompt and addendum digests, `min_level` and the
+    """The cache file's name: the VLM tag, the prompt and local-prompt digests, `min_level` and the
     category names. No label, path or file name is in it."""
     return _digest([model, list(prompt_hashes), min_level.name, list(formats), list(topics)])
 
@@ -441,7 +441,7 @@ def render(collected: Collected, detail: bool = False) -> list[str]:
     verdict = gate.judge(collected.measures, detail)
     lines = [
         f"classify eval, VLM path (CLS-004.5; judged at nsfw.min_level = {collected.min_level})",
-        *addenda_lines(collected.prompts),
+        *local_prompt_lines(collected.prompts),
         f"bug checks: nsfw label {_ok(checks.nsfw_label)}, nsfw input {_ok(checks.nsfw_input)}, "
         f"coverage {_ok(checks.coverage)}",
         *verdict.lines[:-1],

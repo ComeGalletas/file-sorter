@@ -125,9 +125,9 @@ def test_the_harness_runs_end_to_end_and_prints_the_public_form(
 
     # The public form: verdicts, whole percents, ok or FAIL, and the prompt versions as hashes.
     assert re.search(
-        r"^local addenda: classify_v1 (present|absent), nsfw_level_v1 (present|absent)$", out, re.M
+        r"^local prompts: classify_v1 (present|absent), nsfw_level_v1 (present|absent)$", out, re.M
     )
-    assert not re.search(r"[0-9a-f]{8}", out)  # no addendum hash in anything pasteable
+    assert not re.search(r"[0-9a-f]{8}", out)  # no replacement hash in anything pasteable
     assert re.search(r"^bug checks: nsfw label ok, nsfw input ok, coverage ok$", out, re.M)
     assert re.search(r"^format agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
     assert re.search(r"^topic agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
