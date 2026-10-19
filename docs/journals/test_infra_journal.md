@@ -1,6 +1,6 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1); TST-008 proposed · **Milestone:** m1 (TST-003 to TST-007: m2; TST-008: m3) ·
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1); TST-008, TST-010, TST-011 done; TST-009 in progress; TST-012 open · **Milestone:** m1 (TST-003 to TST-007: m2; TST-008 to TST-012: m3) ·
 **Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1), #78 (TST-007.1); M3: #96 (TST-008.1), #95 (TST-008.2), #103 (TST-008.3) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
@@ -546,7 +546,8 @@ references or host paths here. Use hashes.
   - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85% · `923a804`
   - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
   - [x] TST-009.2.4 — Results and self-rating · `8adc3d6` (PR #151, merged as `3a211b3`)
-  - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5
+  - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5 (now after CLS-004.5.8, and judged at 80% once TST-009.3 merges)
+- [ ] TST-009.3 — Gate 3 at format and topic ≥ 80% on a single run (CLS-004.D12 as amended by the human, 2026-10-19): `FORMAT_MIN`/`TOPIC_MIN` 80, the criterion text, the tests that pin 85 (the lead approves the pinned-value edits in `tests/unit/eval/` and `tests/gpu/models/`) · #169 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py`
 
 ## TST-009 — Results
 
@@ -635,8 +636,8 @@ references or host paths here. Use hashes.
 
 - [x] TST-011.1 — `PROMPTS_LOCAL=off` for the default tiers, with tests · #161 · QA · acceptance: `tests/devtools/test_prompts_local_off.py`
   - [x] TST-011.1.1 — the `prompts_local_switch` fixture in `tests/conftest.py`, with the per-tier and subprocess tests (`1b89967`)
-  - [x] TST-011.1.2 — a planted placeholder addendum changes nothing for a default-tier test, against the real `load_effective_prompt`, with a control that it applies once the switch is cleared (hash in `.1.3`'s commit)
-  - [x] TST-011.1.3 — discovered: 13 tests of the addendum loader (CLS-004.6) plant addenda and expect them applied, so they opt out with `@pytest.mark.prompts_local_on` (unit tier only, registered in `pyproject.toml`); a test pins the modules that use it (commit hash in the next commit)
+  - [x] TST-011.1.2 — a planted placeholder addendum changes nothing for a default-tier test, against the real `load_effective_prompt`, with a control that it applies once the switch is cleared (`ad9e289`)
+  - [x] TST-011.1.3 — discovered: 13 tests of the addendum loader (CLS-004.6) plant addenda and expect them applied, so they opt out with `@pytest.mark.prompts_local_on` (unit tier only, registered in `pyproject.toml`); a test pins the modules that use it (`b5ef99f`; PR #165, merged as `59bad64`)
 
 ## TST-011 — Results
 
@@ -647,3 +648,18 @@ references or host paths here. Use hashes.
 - **Found along the way (.1.3):** the autouse switch broke 13 loader tests from CLS-004.6, which set up addenda. They opt out with a marker, and a test pins which modules may.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a test that builds its own `env=` without `os.environ` would not see the switch, and none exists today.
 - **Reviewer and Privacy auditor:** pending.
+
+---
+
+## TST-012 — Requirement (human, the 2026-10-18 repo review)
+
+- **Objective:** Every committed recording is still replayed by some test, and the orphans go.
+- **Details:** `tests/recordings/graph/` holds the SigLIP-era classify scenario's recordings, which nothing replays since CLS-004.4. The recordings lint checks format and content only, so nothing caught them.
+- **Constraint:** deterministic, never skipped; a failure names the orphans by hash. Recordings that the gpu tier records and the default tiers replay count as used.
+- **Implements:** CLAUDE.md §3 (determinism, recordings); TST-005, TST-008.1, TST-009.1, TST-010.
+
+## TST-012 — Tasks
+
+- [ ] TST-012.1 — The orphan-recording check (TST-012.1.1) and the deletion of the orphans it finds (TST-012.1.2), after CLS-006.1 and CLS-006.3 · #175 · QA · acceptance: `tests/devtools/test_recordings.py` or the file the plan names
+
+## TST-012 — Results
