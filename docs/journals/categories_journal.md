@@ -664,7 +664,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - [x] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py` · commits 3e28599 (.1 rules), b7e08f8 (.3 siglip), 7bac465 (.2 vision), 83280fe (.4 docstring)
 - [x] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` · done (2cbf8bf, c0e20e0)
-- [ ] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · after CLS-006.1
+- [x] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · commits 93d3ac5 (.1 backend), e20ed9e (.2 format), 641c6a4 (.3 fakes), 70fb45a (.4 calibration_rows), 0d349e6 (.5 recordings)
 
 ## CLS-006 — Results
 
@@ -678,3 +678,9 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - Status: DONE. Self-rating 9/10, proud: yes. The gap is the one word in `models/vlm_classify.py` that still names `open_working_copy`, left to CLS-006.1 (#172) as the lead said.
 - Tests: `make test` (unit + db + integration) 2364 passed; `make lint` clean. The acceptance test, `tests/db/graph/test_classify_node.py`, is in that run.
+
+### CLS-006.3 (QA)
+
+- Status: DONE_WITH_CONCERNS. Self-rating 9/10, proud: yes. The gap: `check_text_input` and `TEXT_RULE` stay in `tests/recordings/vision.py`, because `prompts.py` (slot values) and the Ollama image-prompt rule still use them (TST-008.D9); only the `text` and `param` kinds and their uses are gone. Follow-up if wanted: move the rule into `prompts.py`.
+- Tests: `make test` 2310 passed with the 53 recordings deleted; `make lint` clean. The acceptance test, `tests/devtools/test_vision_recordings.py`, is in that run. No gpu run: no gpu file touched (the two gpu recording tests use neither `embed_texts` nor the logit params).
+- `test_calibration_rows_are_left_out_of_the_gate_rows` is renamed, not deleted: it keeps its `gate_rows` and `suggestive_negatives` asserts and loses only the `calibration_rows()` line.
