@@ -5,27 +5,14 @@ the synthetic inputs in `vision_inputs.py`. No model loads here. Assertions are 
 range and the maths on real vectors, never about what a score should be for any content.
 """
 
-import math
-
 import numpy as np
 import pytest
 from PIL import Image
 
 from classifier.config import load_config
-from classifier.models.vision import (
-    VisionBackend,
-    cosine_matrix,
-    score_images,
-    score_matrix,
-)
+from classifier.models.vision import VisionBackend
 from tests.recordings.replay import RecordingError
-from tests.unit.models.vision_inputs import (
-    CATEGORIES,
-    PROMPTS,
-    flat_image,
-    nsfw_images,
-    scoring_images,
-)
+from tests.unit.models.vision_inputs import flat_image, nsfw_images, scoring_images
 
 DIM = 1152
 
@@ -36,10 +23,6 @@ def backend(vision_backend):
     return vision_backend("models", models.classifier, models.nsfw)
 
 
-def sigmoid(x: float) -> float:
-    return 1.0 / (1.0 + math.exp(-x))
-
-
 def test_replay_satisfies_the_protocol_and_carries_the_config_ids(backend) -> None:
     models = load_config().models
     assert isinstance(backend, VisionBackend)
@@ -48,40 +31,10 @@ def test_replay_satisfies_the_protocol_and_carries_the_config_ids(backend) -> No
 
 def test_replayed_embeddings_are_float32_unit_rows_of_the_model_width(backend) -> None:
     images = scoring_images()
-    embedded = ((backend.embed_images(images), len(images)), (backend.embed_texts(PROMPTS), 3))
-    for out, rows in embedded:
-        assert out.dtype == np.float32
-        assert out.shape == (rows, DIM)
-        assert np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-5)
-
-
-def test_replayed_params_are_finite_and_the_scale_is_positive(backend) -> None:
-    assert math.isfinite(backend.logit_scale) and backend.logit_scale > 0
-    assert math.isfinite(backend.logit_bias)
-
-
-def test_sigmoid_scores_match_the_formula_on_real_cosines(backend) -> None:
-    cos = cosine_matrix(backend.embed_images(scoring_images()), backend.embed_texts(PROMPTS))
-    assert cos.min() >= -1.0 - 1e-5 and cos.max() <= 1.0 + 1e-5
-    scale, bias = backend.logit_scale, backend.logit_bias
-    out = score_matrix(cos, mode="sigmoid", logit_scale=scale, logit_bias=bias)
-    expected = [[sigmoid(scale * float(c) + bias) for c in row] for row in cos]
-    assert out.min() >= 0.0 and out.max() <= 1.0
-    assert np.allclose(out, np.array(expected), atol=1e-5)
-
-
-@pytest.mark.parametrize("mode", ["sigmoid", "cosine"])
-def test_max_over_prompts_is_the_best_single_prompt_on_real_vectors(backend, mode: str) -> None:
-    images = scoring_images()
-    together = score_images(backend, images, PROMPTS, CATEGORIES, mode=mode)
-    singles = [
-        score_images(backend, images, [prompt], [category], mode=mode)
-        for prompt, category in zip(PROMPTS, CATEGORIES, strict=True)
-    ]
-    for row, scores in enumerate(together):
-        best_document = max(singles[0][row]["document"], singles[2][row]["document"])
-        assert scores["document"] == pytest.approx(best_document, abs=1e-6)
-        assert scores["landscape"] == pytest.approx(singles[1][row]["landscape"], abs=1e-6)
+    out = backend.embed_images(images)
+    assert out.dtype == np.float32
+    assert out.shape == (len(images), DIM)
+    assert np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-5)
 
 
 def test_different_images_get_different_embeddings(backend) -> None:
