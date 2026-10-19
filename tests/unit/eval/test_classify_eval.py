@@ -290,8 +290,8 @@ def test_the_public_form_is_verdicts_whole_percents_and_no_hash():
     assert "with the provisional H8 addenda" in lines
     assert "0a1b2c3d" not in out and not re.search(r"[0-9a-f]{8}", out)
     assert "bug checks: nsfw label ok, nsfw input ok, coverage ok" in lines
-    assert "format agreement: 100% (required >= 85%): ok" in lines
-    assert "topic agreement: 100% (required >= 85%): ok" in lines
+    assert "format agreement: 100% (required >= 80%): ok" in lines
+    assert "topic agreement: 100% (required >= 80%): ok" in lines
     assert "unrecognized format: 0% (required < 10%): ok" in lines
     assert "nsfw gate (adult flagged, safe not flagged): ok" in lines
     assert "suggestive-negative rows safe: ok" in lines
@@ -303,7 +303,7 @@ def test_the_public_form_is_verdicts_whole_percents_and_no_hash():
 def test_failures_say_fail_and_percentages_round_down():
     wrong = outcomes(**{"b_qorvex.png": ("Zhyndel", None, "safe", "safe")})
     out = "\n".join(ev.render(collected(wrong)))
-    assert "format agreement: 75% (required >= 85%): FAIL" in out
+    assert "format agreement: 75% (required >= 80%): FAIL" in out
     leaked = outcomes(**{"d_qorvex.png": ("Qorvex", None, "nsfw", "explicit")})
     out = "\n".join(ev.render(collected(leaked)))
     assert "suggestive-negative rows safe: FAIL" in out

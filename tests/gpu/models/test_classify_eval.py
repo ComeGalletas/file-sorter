@@ -129,8 +129,8 @@ def test_the_harness_runs_end_to_end_and_prints_the_public_form(
     )
     assert not re.search(r"[0-9a-f]{8}", out)  # no addendum hash in anything pasteable
     assert re.search(r"^bug checks: nsfw label ok, nsfw input ok, coverage ok$", out, re.M)
-    assert re.search(r"^format agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
-    assert re.search(r"^topic agreement: \d+% \(required >= 85%\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^format agreement: \d+% \(required >= 80%\): (ok|FAIL)$", out, re.M)
+    assert re.search(r"^topic agreement: \d+% \(required >= 80%\): (ok|FAIL)$", out, re.M)
     assert re.search(r"^unrecognized format: \d+% \(required < 10%\): (ok|FAIL)$", out, re.M)
     assert re.search(r"^nsfw gate \(adult flagged, safe not flagged\): (ok|FAIL)$", out, re.M)
     assert re.search(r"^suggestive-negative rows safe: (ok|FAIL)$", out, re.M)
