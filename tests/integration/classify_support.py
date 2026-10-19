@@ -70,6 +70,9 @@ def make_animated() -> bytes:
 
 def make_config() -> Config:
     data = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8"))
+    # The scenario's made-up scores are not Falconsai's: keep the cross-check off (CLS-004.D5),
+    # whatever values the human has tuned in the shipped config (CFG-004.1).
+    data["nsfw"]["cross_check"] = {"safe_above": None, "adult_below": None}
     return Config.model_validate(data)
 
 

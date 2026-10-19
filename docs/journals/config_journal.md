@@ -154,6 +154,12 @@ references or host paths here. Use hashes.
 
 ## CFG-004 — Tasks
 
-- [ ] CFG-004.1 — The two values (CFG-004.1.1, values only), then the comments (CFG-004.1.2) · #170 · Pipeline · type `balance` · acceptance: `tests/unit/config/test_config.py`
+- [x] CFG-004.1 — The two values (CFG-004.1.1 `397a04a`, values only), then the comments and tests (CFG-004.1.2) · #170 · Pipeline · type `balance` · acceptance: `tests/unit/config/test_config.py`
 
 ## CFG-004 — Results
+
+### CFG-004.1 (Pipeline)
+
+- Tiers: `make test` 2361 passed (unit + db + integration); `make lint` clean.
+- The scenario config in `tests/integration/classify_support.py` keeps the cross-check off, so the integration tests don't depend on the human's tuned values.
+- Status: DONE. Self-rating: 9/10, yes (the gap: no `gpu` run, none needed for a config-only change).

@@ -151,7 +151,7 @@ def test_the_stored_vector_is_the_recorded_embedding(
 
 def test_the_gate_score_never_decides_the_branch(
     schema_dsn: str, tmp_path, vision_backend, ollama_transport
-) -> None:  # CLS-004.D5: Falconsai is a cross-check, and the committed config has it off
+) -> None:  # CLS-004.D5: Falconsai is a cross-check, and the scenario config has it off
     plain = _backend(vision_backend)
     run_classify(schema_dsn, tmp_path / "plain", plain, ollama_transport("models"))
     baseline = _rows(schema_dsn)
