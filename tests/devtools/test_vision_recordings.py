@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from classifier.models.vision import VisionBackend, score_images
+from classifier.models.vision import VisionBackend
 from tests.recordings import vision
 from tests.recordings.replay import RecordingError, lint_recordings, recording_key
 from tests.recordings.vision import (
@@ -881,19 +881,6 @@ def test_both_backends_satisfy_the_real_vision_backend_protocol(tmp_path: Path) 
     assert isinstance(replayer(tmp_path), VisionBackend)
     recorder = RecordingVisionBackend("pkg", FakeUpstream(), TEST_ID, root=tmp_path)
     assert isinstance(recorder, VisionBackend)
-
-
-def test_the_replay_drives_the_real_scoring_path(tmp_path: Path) -> None:
-    record_all(tmp_path)
-    scores = score_images(
-        replayer(tmp_path),
-        [block(), block((10, 20, 30))],
-        ["a photo of a cat", "an anime character"],
-        ["animals", "anime"],
-        mode="sigmoid",
-    )
-    assert len(scores) == 2 and set(scores[0]) == {"animals", "anime"}
-    assert all(0.0 <= v <= 1.0 for row in scores for v in row.values())
 
 
 # --- the shared fixture (tests/conftest.py), run in a synthetic tree with pytester ---

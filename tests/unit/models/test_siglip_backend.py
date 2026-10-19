@@ -22,20 +22,13 @@ SECRET = "/source/Zhyndel-Qorvex/planted-secret.png"
 
 class FakeEncoder:
     dim = DIM
-    logit_scale = 117.5
-    logit_bias = -16.5
 
     def __init__(self) -> None:
         self.image_batches: list[int] = []
-        self.text_batches: list[int] = []
 
     def encode_images(self, images: Sequence[Image.Image]) -> np.ndarray:
         self.image_batches.append(len(images))
         return np.array([[float(i + 1)] * DIM for i in range(len(images))]) * 3.0
-
-    def encode_texts(self, texts: Sequence[str]) -> np.ndarray:
-        self.text_batches.append(len(texts))
-        return np.tile(np.arange(1, DIM + 1, dtype=np.float32), (len(texts), 1)) * 2.0
 
 
 def backend_with(encoder: FakeEncoder, loads: list[str] | None = None) -> SiglipBackend:
@@ -72,19 +65,17 @@ def test_nothing_loads_until_first_use_and_then_once() -> None:
     loads: list[str] = []
     backend = backend_with(FakeEncoder(), loads)
     assert loads == []
-    assert backend.logit_scale == pytest.approx(117.5)
-    backend.embed_texts(["a"])
     backend.embed_images(images(1))
-    assert backend.logit_bias == pytest.approx(-16.5)
+    backend.embed_images(images(2))
     assert loads == ["qorvex/classifier"]
 
 
 def test_embeddings_are_float32_unit_rows_of_the_encoder_width() -> None:
     backend = backend_with(FakeEncoder())
-    for out, rows in ((backend.embed_images(images(3)), 3), (backend.embed_texts(["a", "b"]), 2)):
-        assert out.dtype == np.float32
-        assert out.shape == (rows, DIM)
-        assert np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-6)
+    out = backend.embed_images(images(3))
+    assert out.dtype == np.float32
+    assert out.shape == (3, DIM)
+    assert np.allclose(np.linalg.norm(out, axis=1), 1.0, atol=1e-6)
 
 
 def test_batches_are_capped_at_the_module_constant_and_order_is_kept() -> None:
@@ -93,27 +84,21 @@ def test_batches_are_capped_at_the_module_constant_and_order_is_kept() -> None:
     out = backend.embed_images(images(BATCH_SIZE + 3))
     assert encoder.image_batches == [BATCH_SIZE, 3]
     assert out.shape == (BATCH_SIZE + 3, DIM)
-    backend.embed_texts(["t"] * (2 * BATCH_SIZE))
-    assert encoder.text_batches == [BATCH_SIZE, BATCH_SIZE]
 
 
 def test_empty_input_gives_an_empty_matrix_without_encoding() -> None:
     encoder = FakeEncoder()
     backend = backend_with(encoder)
     assert backend.embed_images([]).shape == (0, DIM)
-    assert backend.embed_texts([]).shape == (0, DIM)
-    assert encoder.image_batches == [] and encoder.text_batches == []
+    assert encoder.image_batches == []
 
 
-def test_non_images_and_non_strings_are_refused_with_fixed_text() -> None:
+def test_non_images_are_refused_with_fixed_text() -> None:
     backend = backend_with(FakeEncoder())
     with pytest.raises(VisionError, match="decoded PIL images only") as image_error:
         backend.embed_images([SECRET])  # type: ignore[list-item]
-    with pytest.raises(VisionError, match="strings only") as text_error:
-        backend.embed_texts([b"bytes"])  # type: ignore[list-item]
-    for error in (image_error.value, text_error.value):
-        assert SECRET not in str(error)
-        assert_unchained(error)
+    assert SECRET not in str(image_error.value)
+    assert_unchained(image_error.value)
 
 
 class BrokenEncoder(FakeEncoder):
@@ -121,12 +106,12 @@ class BrokenEncoder(FakeEncoder):
         super().__init__()
         self.mode = mode
 
-    def encode_texts(self, texts: Sequence[str]) -> np.ndarray:
+    def encode_images(self, images: Sequence[Image.Image]) -> np.ndarray:
         if self.mode == "raise":
             raise OSError(f"cannot read {SECRET}")
         if self.mode == "shape":
-            return np.ones((len(texts) + 1, DIM))
-        return np.full((len(texts), DIM), np.inf)
+            return np.ones((len(images) + 1, DIM))
+        return np.full((len(images), DIM), np.inf)
 
 
 @pytest.mark.parametrize(
@@ -140,16 +125,29 @@ class BrokenEncoder(FakeEncoder):
 def test_encoder_failures_become_unchained_fixed_text(mode: str, text: str) -> None:
     backend = backend_with(BrokenEncoder(mode))
     with pytest.raises(VisionError, match=text) as info:
-        backend.embed_texts([SECRET])
+        backend.embed_images(images(1))
     assert SECRET not in str(info.value) and SECRET not in repr(info.value)
     assert_unchained(info.value)
 
 
+def planted_image() -> Image.Image:
+    """A decoded image that carries SECRET where a backend could echo it."""
+    image = Image.new("RGB", (4, 4))
+    image.info["comment"] = SECRET
+    image.info["filename"] = SECRET
+    return image
+
+
 def test_repr_and_str_hold_no_input() -> None:
     backend = backend_with(FakeEncoder())
-    backend.embed_texts([SECRET])
-    backend.embed_images(images(1))
+    backend.embed_images([planted_image()])
     assert SECRET not in repr(backend) and SECRET not in str(backend)
+    broken = backend_with(BrokenEncoder("raise"))
+    with pytest.raises(VisionError) as info:
+        broken.embed_images([planted_image()])
+    assert SECRET not in repr(broken) and SECRET not in str(broken)
+    assert SECRET not in str(info.value) and SECRET not in repr(info.value)
+    assert_unchained(info.value)
 
 
 class FakeNsfw:
@@ -198,8 +196,6 @@ def test_embedding_never_loads_the_nsfw_gate() -> None:
         nsfw_loader=nsfw_loader,
     )
     backend.embed_images(images(2))
-    backend.embed_texts(["a"])
-    assert backend.logit_scale == pytest.approx(117.5)
     assert loads == []
 
 
@@ -219,20 +215,8 @@ def test_siglip_from_pretrained_calls_are_offline(monkeypatch: pytest.MonkeyPatc
     """MOD-002.2 carried finding (a): `local_files_only=True` on both SigLIP loads."""
     calls: list[tuple[str, dict[str, Any]]] = []
 
-    class Scalar:
-        def float(self) -> "Scalar":
-            return self
-
-        def exp(self) -> "Scalar":
-            return self
-
-        def item(self) -> float:
-            return 1.0
-
     class FakeModel:
         config = types.SimpleNamespace(vision_config=types.SimpleNamespace(hidden_size=DIM))
-        logit_scale = Scalar()
-        logit_bias = Scalar()
 
         def to(self, **kwargs: Any) -> "FakeModel":
             return self

@@ -662,11 +662,17 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-006 — Tasks
 
-- [ ] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py`
+- [x] CLS-006.1 — `classifier/models/`: remove the SigLIP scoring and text code; rewrite the `choose` privacy tests on `decide`; update the docstrings; list the recordings left unused · #172 · ML · acceptance: `tests/unit/models/test_classify_rules.py` · commits 3e28599 (.1 rules), b7e08f8 (.3 siglip), 7bac465 (.2 vision), 83280fe (.4 docstring)
 - [x] CLS-006.2 — `graph/classify.py`'s `open_working_copy`; the `config.py` and `db/models.py` docstrings · #173 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` · done (2cbf8bf, c0e20e0)
 - [ ] CLS-006.3 — The replay backend's text and `param` paths, the `embed_texts` test fakes, `calibration_rows()` · #174 · QA · acceptance: `tests/devtools/test_vision_recordings.py` · after CLS-006.1
 
 ## CLS-006 — Results
+
+### CLS-006.1 (ML)
+
+- **Done:** the SigLIP scoring and text code is gone from `classifier/models/`; the `choose` privacy tests now run on `decide` with the same planted names, folders and scores, and the siglip and vision privacy tests plant real inputs (CLS-006.1.6). The `vlm_classify.py` docstring names `open_working_frames`.
+- **Tests:** `make test` 2299 passed; `make lint` clean; `test_classify_rules.py` 73 passed; `make test-gpu` 48 passed.
+- **Deferred:** the replay backend and `embed_texts` fakes (CLS-006.3); orphaned recordings (TST-012.1), listed by hash in the PR.
 
 ### CLS-006.2 (Pipeline)
 

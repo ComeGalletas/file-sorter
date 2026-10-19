@@ -1,8 +1,9 @@
-"""The SigLIP client (MOD-002.1, R-CLS-2, R-MOD-2, C-5, P-2).
+"""The SigLIP client (MOD-002.1, R-MOD-2, C-5, P-2).
 
 `SiglipBackend` implements the `VisionBackend` seam from `vision.py`. It embeds decoded images
-and plain texts into 1152-d, L2-normalised float32 vectors, and exposes the model's
-`logit_scale` and `logit_bias`; the scoring maths lives in `vision.py` (MOD-002.D2).
+into 1152-d, L2-normalised float32 vectors (CLS-002.D10) and scores them with the Falconsai
+NSFW cross-check (`nsfw.py`). The text tower and the scoring maths were removed in CLS-006.1:
+classification is the VLM's (CLS-004).
 
 - **Offline.** Weights load from the shared `hf` volume with `local_files_only=True`, on top of
   the compose `HF_HUB_OFFLINE=1`. A missing weight fails with fixed text and never downloads
@@ -10,7 +11,7 @@ and plain texts into 1152-d, L2-normalised float32 vectors, and exposes the mode
 - **GPU only** (MOD-002.D4). SigLIP runs in fp16 on CUDA. With no CUDA it refuses with fixed
   text naming the GPU, rather than crawling on CPU.
 - **Lazy and once.** Nothing loads until the first call, and one process loads a model id once.
-- **No paths.** The API takes decoded `PIL.Image` objects and strings, so neither a source path
+- **No paths.** The API takes decoded `PIL.Image` objects, so neither a source path
   nor a raw file name can reach the model (P-2).
 - **Errors** carry fixed text. A torch, transformers or Pillow message is never forwarded: it
   can embed a path or an input.
@@ -31,7 +32,6 @@ from classifier.models.vision import VisionError, l2_normalize
 # CLS-002.D11: a module constant, not a config key. Sized for the 16 GB card with fp16.
 BATCH_SIZE = 16
 # SigLIP was trained with every text padded to 64 tokens; longer prompts are truncated.
-TEXT_MAX_LENGTH = 64
 
 NO_GPU = "SigLIP needs the GPU: no CUDA device is available to this process"
 LOAD_FAILED = (
@@ -39,26 +39,17 @@ LOAD_FAILED = (
 )
 EMBED_FAILED = "the SigLIP model failed while embedding a batch"
 BAD_IMAGE = "embed_images takes decoded PIL images only"
-BAD_TEXT = "embed_texts takes strings only"
 BAD_OUTPUT = "the SigLIP model returned an unexpected embedding shape"
 NON_FINITE = "the SigLIP model returned a non-finite embedding"
 
 
 class Encoder(Protocol):
-    """Raw (un-normalised) embeddings plus the scoring parameters. Faked in unit tests."""
+    """Raw (un-normalised) image embeddings. Faked in unit tests."""
 
     @property
     def dim(self) -> int: ...
 
-    @property
-    def logit_scale(self) -> float: ...
-
-    @property
-    def logit_bias(self) -> float: ...
-
     def encode_images(self, images: Sequence[Image.Image]) -> np.ndarray: ...
-
-    def encode_texts(self, texts: Sequence[str]) -> np.ndarray: ...
 
 
 Loader = Callable[[str], Encoder]
@@ -83,9 +74,6 @@ class _TorchEncoder:
         model = AutoModel.from_pretrained(model_id, local_files_only=True)
         self._model = model.to(device=self._device, dtype=torch.float16).eval()
         self.dim = int(self._model.config.vision_config.hidden_size)
-        # The checkpoint stores log(scale): the multiplier is its exponential.
-        self.logit_scale = float(self._model.logit_scale.float().exp().item())
-        self.logit_bias = float(self._model.logit_bias.float().item())
 
     def _to_numpy(self, features: Any) -> np.ndarray:
         # Newer transformers return an output object rather than the tensor.
@@ -99,19 +87,6 @@ class _TorchEncoder:
         pixels = pixels.to(device=self._device, dtype=torch.float16)
         with torch.inference_mode():
             return self._to_numpy(self._model.get_image_features(pixel_values=pixels))
-
-    def encode_texts(self, texts: Sequence[str]) -> np.ndarray:
-        torch = self._torch
-        tokens = self._processor.tokenizer(
-            list(texts),
-            padding="max_length",
-            max_length=TEXT_MAX_LENGTH,
-            truncation=True,
-            return_tensors="pt",
-        )
-        ids = tokens["input_ids"].to(self._device)
-        with torch.inference_mode():
-            return self._to_numpy(self._model.get_text_features(input_ids=ids))
 
 
 # One load per process and model id (MOD-002.D1).
@@ -174,14 +149,6 @@ class SiglipBackend:
             self._encoder = self._loader(self._classifier_id)
         return self._encoder
 
-    @property
-    def logit_scale(self) -> float:
-        return float(self._get().logit_scale)
-
-    @property
-    def logit_bias(self) -> float:
-        return float(self._get().logit_bias)
-
     def _embed(
         self,
         items: Sequence[Any],
@@ -213,12 +180,6 @@ class SiglipBackend:
             raise VisionError(BAD_IMAGE)
         encoder = self._get()
         return self._embed(list(images), encoder.encode_images, encoder.dim)
-
-    def embed_texts(self, texts: Sequence[str]) -> np.ndarray:
-        if not all(isinstance(text, str) for text in texts):
-            raise VisionError(BAD_TEXT)
-        encoder = self._get()
-        return self._embed(list(texts), encoder.encode_texts, encoder.dim)
 
     def nsfw_scores(self, images: Sequence[Image.Image]) -> np.ndarray:
         # MOD-002.2: the gate loads on the first call, so embedding never pays for it.
