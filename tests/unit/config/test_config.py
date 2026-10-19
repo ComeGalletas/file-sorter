@@ -7,6 +7,7 @@ import yaml
 from pydantic import ValidationError
 
 from classifier.config import Config, ConfigError, NsfwLevel, check_roots, load_config
+from classifier.models.classify_rules import nsfw_cross_check
 
 REPO = Path(__file__).resolve().parents[3]
 REAL_CONFIG = REPO / "config.yaml"
@@ -33,8 +34,8 @@ def test_undecided_values_stay_none() -> None:
 def test_real_config_holds_the_vlm_values() -> None:
     config = Config.model_validate(real_data())
     assert config.nsfw.min_level is NsfwLevel.nudity  # the human's value (CLS-004.D3)
-    assert config.nsfw.cross_check.safe_above is None  # null = cross-check off
-    assert config.nsfw.cross_check.adult_below is None
+    assert config.nsfw.cross_check.safe_above == 0.90  # the human's values (CLS-004.D5, H3)
+    assert config.nsfw.cross_check.adult_below == 0.10
     assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
     assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
 
@@ -470,3 +471,13 @@ def test_inverted_cross_check_error_is_value_free(
         assert "0.1234" not in text
         assert "0.9876" not in text
     assert_value_free(error)
+
+
+def test_real_config_turns_the_cross_check_on() -> None:
+    config = Config.model_validate(real_data())
+    check = config.nsfw.cross_check
+    min_level = config.nsfw.min_level
+    assert nsfw_cross_check(NsfwLevel.safe, min_level, 0.95, check)  # VLM safe, score high
+    assert nsfw_cross_check(NsfwLevel.explicit, min_level, 0.05, check)  # VLM adult, score low
+    assert not nsfw_cross_check(NsfwLevel.safe, min_level, 0.50, check)
+    assert not nsfw_cross_check(NsfwLevel.explicit, min_level, 0.50, check)

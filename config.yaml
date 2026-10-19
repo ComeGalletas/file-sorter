@@ -18,17 +18,17 @@ models:
   text_llm: qwen3-vl:8b              # MVP: one model for caption, judge and local sanitizer (C-1)
   text_embed: bge-m3
 
-classify:
+classify:                          # SigLIP-era keys, kept but unread on the VLM path (DOC-009.D3)
   score: sigmoid                     # sigmoid | cosine (C-5)
   format:                            # required axis (R-CLS-3)
-    default_min_score: null          # calibrated in M3 (R-CLS-8)
+    default_min_score: null          # SigLIP-era key: kept, unread on the VLM path (DOC-009.D3)
     margin: 0.05
   topic:                             # optional axis (R-CLS-3a)
-    default_min_score: null          # calibrated in M3 (R-CLS-8)
+    default_min_score: null          # SigLIP-era key: kept, unread on the VLM path (DOC-009.D3)
     margin: 0.05
 
 nsfw:
-  threshold: 0.70                    # adult = explicit sexual imagery (CLS-001.D12)
+  threshold: 0.70                    # feeds only the Falconsai cross-check score; the VLM level decides adult (C-26)
   min_level: nudity                  # adult = VLM level >= this: suggestive | nudity | explicit (CLS-004.D3)
   cross_check:                       # Falconsai disagreement -> needs_review; null/null = off (CLS-004.D5)
     safe_above: 0.90                 # VLM says safe but the score is >= this
