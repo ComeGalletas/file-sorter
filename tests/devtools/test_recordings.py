@@ -24,6 +24,7 @@ from tests.recordings import prompts as prompts_module
 from tests.recordings.replay import (
     IMAGE_REFUSED,
     MAX_IMAGE_BYTES,
+    SERVED,
     UNKNOWN_FIELD_REFUSED,
     PromptSourceError,
     RecordingError,
@@ -32,6 +33,8 @@ from tests.recordings.replay import (
     canonical_request,
     lint_recordings,
     load_recording,
+    note_served,
+    orphan_recordings,
     package_dir,
     recording_key,
     stored_request,
@@ -1204,3 +1207,142 @@ def test_the_committed_prompts_pass_the_checker_without_a_copy() -> None:
     """The real files: a prompt edit that breaks the checker shows here."""
     for make in (classify_body, classify_hinted, level_body, level_alt):
         assert stored_request(make())["prompt_source"]["sha256"]
+
+
+# --- the orphan check (TST-012.1) ---
+
+
+def test_orphan_recordings_names_only_the_unserved_ones_by_hash_prefix(tmp_path: Path) -> None:
+    used = write_recording(tmp_path, body(), answer())
+    unused = write_recording(tmp_path, body(prompt="another"), answer("x"))
+    served = {f"pkg/{used.stem}"}
+    assert orphan_recordings(served, tmp_path) == [f"pkg/{unused.stem[:8]}"]
+
+
+def test_orphan_recordings_is_empty_when_every_key_is_served(tmp_path: Path) -> None:
+    paths = [write_recording(tmp_path, body(prompt=p), answer()) for p in ("a", "b")]
+    assert orphan_recordings({f"pkg/{p.stem}" for p in paths}, tmp_path) == []
+
+
+def test_orphan_recordings_is_sorted_by_package_then_hash(tmp_path: Path) -> None:
+    for package in ("zeta", "alpha"):
+        for prompt in ("a", "b"):
+            key = recording_key(body(prompt=prompt))
+            (tmp_path / package).mkdir(exist_ok=True)
+            (tmp_path / package / f"{key}.json").write_text("{}", encoding="utf-8")
+    found = orphan_recordings(set(), tmp_path)
+    assert found == sorted(found) and len(found) == 4
+    assert all(item.split("/")[0] in ("alpha", "zeta") for item in found)
+
+
+def test_orphan_recordings_ignores_files_that_are_not_keyed_recordings(tmp_path: Path) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / f"{SECRET}.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "README.md").write_text("x", encoding="utf-8")
+    assert orphan_recordings(set(), tmp_path) == []
+
+
+def test_replay_logs_the_key_it_serves_only_for_the_committed_store(tmp_path: Path) -> None:
+    path = write_recording(tmp_path, body(), answer())
+    generate(ReplayTransport("pkg", TEST_ID, tmp_path))
+    assert f"pkg/{path.stem}" not in SERVED  # a tmp store is not the committed one
+    note_served(tmp_path / "pkg", path.stem, tmp_path)
+    assert f"pkg/{path.stem}" in SERVED
+    SERVED.discard(f"pkg/{path.stem}")
+
+
+# The run gate, in a synthetic tree: a bare run checks, a narrowed or empty-tier run does not.
+
+GATE_INI = """[pytest]
+testpaths = tests
+addopts = -m 'not gpu and not gate' --import-mode=importlib
+"""
+GATE_TEST = "def test_ok():\n    pass\n"
+GATE_SERVES = """
+from classifier.models.ollama import OllamaClient
+
+
+def test_serves(ollama_transport):
+    with OllamaClient("http://localhost", transport=ollama_transport("models")) as client:
+        client.generate_json(model="m", prompt="p", schema={}, options={}, keep_alive=0)
+"""
+
+
+def gate_request(prompt: str) -> dict[str, Any]:
+    return {"model": "m", "prompt": prompt, "format": {}, "options": {}, "keep_alive": 0}
+
+
+@pytest.fixture
+def gated(pytester: pytest.Pytester) -> pytest.Pytester:
+    """The real conftest over a store holding one recording that a test serves."""
+    tests = pytester.path / "tests"
+    (tests / "recordings" / "models").mkdir(parents=True)
+    for tier in ("unit", "db", "integration"):
+        (tests / tier).mkdir()
+        (tests / tier / f"test_{tier}.py").write_text(GATE_TEST, encoding="utf-8")
+    (tests / "unit" / "test_serves.py").write_text(GATE_SERVES, encoding="utf-8")
+    for rel in (
+        "conftest.py",
+        "recordings/replay.py",
+        "recordings/vision.py",
+        "recordings/vision_backend.py",
+    ):
+        (tests / rel).write_text((REPO_TESTS / rel).read_text(encoding="utf-8"), encoding="utf-8")
+    (pytester.path / "pytest.ini").write_text(GATE_INI, encoding="utf-8")
+    request = gate_request("p")
+    path = tests / "recordings" / "models" / f"{recording_key(request)}.json"
+    path.write_text(json.dumps(dict(request=request, response=answer())), encoding="utf-8")
+    return pytester
+
+
+def plant_orphan(gated: pytest.Pytester) -> str:
+    request = gate_request("other")
+    key = recording_key(request)
+    path = gated.path / "tests" / "recordings" / "models" / f"{key}.json"
+    path.write_text(json.dumps(dict(request=request, response=answer())), encoding="utf-8")
+    return key[:8]
+
+
+def run_gated(gated: pytest.Pytester, *args: str) -> tuple[int, str]:
+    result = gated.runpytest_subprocess("-p", "no:cacheprovider", *args)
+    return int(result.ret), result.stdout.str() + result.stderr.str()
+
+
+def test_a_full_default_run_fails_on_an_orphan_and_names_it(gated: pytest.Pytester) -> None:
+    prefix = plant_orphan(gated)
+    code, output = run_gated(gated)
+    assert code == 1
+    assert f"Orphaned recordings: models/{prefix}\n" in output
+    assert "4 passed" in output  # the tests themselves passed
+
+
+def test_a_full_default_run_passes_when_every_recording_is_served(gated: pytest.Pytester) -> None:
+    code, output = run_gated(gated)
+    assert code == 0 and "Orphaned" not in output
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("-k", "test_ok"), ("tests/unit",), ("-m", "unit"), ("-x",), ("--deselect", "tests/db")],
+    ids=["keyword", "path", "marker", "exitfirst", "deselect"],
+)
+def test_a_partial_run_does_not_check(gated: pytest.Pytester, args: tuple[str, ...]) -> None:
+    plant_orphan(gated)
+    code, output = run_gated(gated, *args)
+    assert code == 0 and "Orphaned" not in output
+
+
+def test_a_tier_that_collected_nothing_makes_the_run_partial(gated: pytest.Pytester) -> None:
+    plant_orphan(gated)
+    (gated.path / "tests" / "integration" / "test_integration.py").unlink()
+    code, output = run_gated(gated)
+    assert code == 0 and "Orphaned" not in output
+
+
+def test_a_failing_run_is_not_reported_as_orphaned(gated: pytest.Pytester) -> None:
+    plant_orphan(gated)
+    (gated.path / "tests" / "db" / "test_db.py").write_text(
+        "def test_ok():\n    assert False\n", encoding="utf-8"
+    )
+    code, output = run_gated(gated)
+    assert code == 1 and "Orphaned" not in output
