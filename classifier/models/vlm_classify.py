@@ -5,7 +5,7 @@ format and topic (the schema's enums come from the categories) and one for the N
 A, never given a file name). Both go through `OllamaClient.generate_json` with the prompt files
 `classify_v1` and `nsfw_level_v1`; nothing about sampling, context or images is hard-coded here.
 
-The node opens the image (`open_working_copy`, P-2) and passes the PIL image in. This module reads
+The node opens the image (`open_working_frames`, P-2) and passes the PIL image in. This module reads
 frames from it with `n_frames` and `seek`, converts each frame it uses to RGB itself, scales the
 longest side down to `max_side` (never up) and sends it as JPEG, in memory only.
 

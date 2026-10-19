@@ -130,10 +130,24 @@ def test_encoder_failures_become_unchained_fixed_text(mode: str, text: str) -> N
     assert_unchained(info.value)
 
 
+def planted_image() -> Image.Image:
+    """A decoded image that carries SECRET where a backend could echo it."""
+    image = Image.new("RGB", (4, 4))
+    image.info["comment"] = SECRET
+    image.info["filename"] = SECRET
+    return image
+
+
 def test_repr_and_str_hold_no_input() -> None:
     backend = backend_with(FakeEncoder())
-    backend.embed_images(images(1))
+    backend.embed_images([planted_image()])
     assert SECRET not in repr(backend) and SECRET not in str(backend)
+    broken = backend_with(BrokenEncoder("raise"))
+    with pytest.raises(VisionError) as info:
+        broken.embed_images([planted_image()])
+    assert SECRET not in repr(broken) and SECRET not in str(broken)
+    assert SECRET not in str(info.value) and SECRET not in repr(info.value)
+    assert_unchained(info.value)
 
 
 class FakeNsfw:

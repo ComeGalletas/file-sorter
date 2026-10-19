@@ -664,5 +664,5 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 ### CLS-006.1 (ML)
 
 - **Done:** the SigLIP scoring and text code is gone from `classifier/models/`; the privacy tests now run on `decide` with the same planted secrets. `vlm_classify.py` names no SigLIP scoring, so its docstring is unchanged.
-- **Tests:** `make test` 2299 passed; `make lint` clean; `test_classify_rules.py` 73 passed; `make test-gpu` result in the PR.
+- **Tests:** `make test` 2299 passed; `make lint` clean; `test_classify_rules.py` 73 passed; `make test-gpu` 48 passed.
 - **Deferred:** the replay backend and `embed_texts` fakes (CLS-006.3); orphaned recordings (TST-012.1), listed by hash in the PR.
