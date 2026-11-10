@@ -136,8 +136,9 @@ class Prompt(BaseModel):
             )
         # CLS-004.8: the local replacement is the whole system text; its slots are a subset of
         # the committed body's slots plus `extra_slots` (checked at load), and the user
-        # templates stay the committed ones.
-        source = self.template if self.replacement is None else f"{self.replacement}\n"
+        # templates stay the committed ones. CLS-008.D1: it renders exactly as loaded (stripped),
+        # with no newline added; one trailing newline flipped a borderline NSFW answer.
+        source = self.template if self.replacement is None else self.replacement
         body = _SLOT.sub(lambda m: values[m.group(1)], source)
         # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.
         return self.wrap.replace("{prompt}", body) if self.wrap is not None else body

@@ -310,7 +310,15 @@ def test_replacement_is_the_whole_system_text(tmp_path: Path) -> None:
     write(tmp_path, "demo_v1", GOOD)
     put_replacement(tmp_path, f"\n{REPLACEMENT} {{labels}}\n\n")
     out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
-    assert out == f"{REPLACEMENT} X\n"  # nothing of the committed body is left
+    assert out == f"{REPLACEMENT} X"  # nothing of the committed body is left, nothing added
+
+
+def test_a_replacement_renders_exactly_as_written(tmp_path: Path) -> None:
+    # CLS-008.D1: no trailing newline is added; surrounding blank lines are stripped at load.
+    write(tmp_path, "demo_v1", GOOD)
+    put_replacement(tmp_path, f"{REPLACEMENT}\n\nSecond line {{labels}}.\n")
+    out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
+    assert out == f"{REPLACEMENT}\n\nSecond line X."
 
 
 def test_front_matter_and_user_templates_stay_the_committed_ones(tmp_path: Path) -> None:
@@ -343,7 +351,7 @@ def test_a_replacement_with_both_category_slots_renders_the_lists(tmp_path: Path
     p = load_effective_prompt("classify_v1", tmp_path)
     assert p.slots == {"formats", "topics"}  # the committed declaration
     out = p.render(formats="fa, fb", topics="ta, tb")
-    assert out == "Formats: fa, fb\nTopics: ta, tb\n"
+    assert out == "Formats: fa, fb\nTopics: ta, tb"
 
 
 def test_neutralize_keeps_the_slots_and_breaks_fences_in_a_replacement(tmp_path: Path) -> None:
@@ -360,13 +368,13 @@ def test_a_replacement_keeps_front_matter_lines_as_plain_text(tmp_path: Path) ->
     put_replacement(tmp_path, "---\nseed: 99\n---\n# Heading")
     p = demo(tmp_path)
     assert p.seed == 7
-    assert p.render(labels="X", text="y") == "---\nseed: 99\n---\n# Heading\n"
+    assert p.render(labels="X", text="y") == "---\nseed: 99\n---\n# Heading"
 
 
 def test_a_replacement_may_use_fewer_slots_than_the_committed_body(tmp_path: Path) -> None:
     put_replacement(tmp_path, REPLACEMENT)
     out = demo(tmp_path).render(labels="X", text="y")
-    assert out == f"{REPLACEMENT}\n"
+    assert out == f"{REPLACEMENT}"
 
 
 def test_a_placeholder_replacement_is_not_altered_by_neutralize(tmp_path: Path) -> None:
@@ -387,7 +395,7 @@ def test_raw_wrap_prompt_gets_the_replacement_inside_the_wrapper(tmp_path: Path)
     put_replacement(tmp_path, REPLACEMENT)
     out = load_effective_prompt("demo_v1", tmp_path).render(labels="X", text="y")
     assert out.startswith("<u>")
-    assert out.endswith(f"{REPLACEMENT}\n</u><a>")
+    assert out.endswith(f"{REPLACEMENT}</u><a>")
 
 
 def test_effective_version_carries_an_8_hex_hash(tmp_path: Path) -> None:

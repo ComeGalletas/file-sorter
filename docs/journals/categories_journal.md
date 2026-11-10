@@ -788,3 +788,28 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Tests:** unit 36 in `tests/unit/eval/test_classify_eval.py`, db 3 in `tests/db/eval/test_apply_app_categories.py`; `make lint` clean. The planted-description test uses a local replacement with the slots, so the plant provably reaches the model call before absence is asserted elsewhere.
 - **Not run here:** the real run (the human's descriptions, the VLM) is another desk's.
 - **Status, self-rating, Reviewer and Privacy auditor verdicts:** pending.
+
+---
+
+## CLS-008 — Requirement (human, 2026-11-10)
+
+**Objective:** a local prompt replacement (CLS-004.D17) renders exactly as the human wrote it.
+
+**Details:** CLS-004.5.9 (#136) did not meet gate 3. A box-only diagnosis by the human's session traced the NSFW verdict to one borderline answer that flips on a single trailing newline. `Prompt.render` appended `\n` to the loaded replacement, so the effective system text differed from the human's file by one byte. The human approved the fix after reading the diagnosis.
+
+**Constraint:** written by the human's session at the human's request while no lead session was running. The index row is the lead's (RUN-002.D13). The committed prompts, their recordings and every committed render are unchanged.
+
+## CLS-008 — Confirmed reading
+
+- **CLS-008.D1:** **a local replacement renders as loaded**: the file's text, stripped of surrounding whitespace at load (CLS-004.8), with nothing added. The committed body's own trailing newline is unchanged, because the committed path doesn't use this branch. A wrapped (raw) prompt's replacement also has no newline before the wrapper's closing text; no local replacement for a wrapped prompt exists today. (human, 2026-11-10)
+
+## CLS-008 — Tasks
+
+- [x] CLS-008.1 — `Prompt.render` stops adding a newline to the local replacement; the replacement tests follow, plus a regression test · ML · acceptance: `tests/unit/models/test_prompts.py`
+
+## CLS-008 — Results
+
+- **Tests:** `make test` 2411 passed (unit, db, integration); `make lint` clean. Four existing tests pinned the old trailing newline and now expect none. The new test, `test_a_replacement_renders_exactly_as_written`, pins the exact text.
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; a one-line behavior fix with its regression test. The gap: no test runs a real local file, by design (privacy).
+- **Privacy:** no prompt text, file name or result figure. The diagnosis stays box-only.
