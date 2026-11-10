@@ -304,9 +304,12 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 ## DOC-012 — Tasks
 
-- [ ] DOC-012.1 — DESIGN R-CLS-1, R-CLS-2, R-CLS-7, R-CLS-8, §4.3, §5 and §6
+- [x] DOC-012.1 — DESIGN R-CLS-1, R-CLS-2, R-CLS-7, R-CLS-8, §4.3, §5, §6 and §13 C-29
+- [x] DOC-012.2 — Review round 1: the raw level in R-CLS-1's cross-check (CLS-007.D5), the CHECK wording in R-CLS-7, "effective" in §6's `min_level` comment, the C-29 row, and R-CLS-8 states only the SigLIP decision
 
 ## DOC-012 — Results
 
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; the CLS-007 decisions are cited as the lead's issues state them, and the lead's next docs PR records them in the CLS-007 block.
 - **Triage:** small. Spec text only; no code.
 - **Privacy:** generic wording only. No category description of the human's, no prompt text from the local files, and no result figures.
