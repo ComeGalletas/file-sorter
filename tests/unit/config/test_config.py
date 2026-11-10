@@ -36,6 +36,7 @@ def test_real_config_holds_the_vlm_values() -> None:
     assert config.nsfw.min_level is NsfwLevel.nudity  # the human's value (CLS-004.D3)
     assert config.nsfw.cross_check.safe_above == 0.90  # the human's values (CLS-004.D5, H3)
     assert config.nsfw.cross_check.adult_below == 0.10
+    assert config.nsfw.conservative_traces is True  # the human's value (CLS-007.D3)
     assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
     assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
 

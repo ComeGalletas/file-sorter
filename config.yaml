@@ -33,6 +33,7 @@ nsfw:
   cross_check:                       # Falconsai disagreement -> needs_review; null/null = off (CLS-004.D5)
     safe_above: 0.90                 # VLM says safe but the score is >= this
     adult_below: 0.10                # VLM says adult but the score is <= this
+  conservative_traces: true          # safe + traces -> suggestive, never higher (R-CLS-1, CLS-007.D3; the human's value)
   mode: mirror                       # mirror | separate
   root: Adult
 
