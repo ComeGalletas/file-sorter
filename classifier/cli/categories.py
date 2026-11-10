@@ -13,6 +13,7 @@ path or a count of files. Every error is a fixed text, raised outside any `excep
 """
 
 import math
+import unicodedata
 from typing import Annotated
 
 import psycopg
@@ -40,13 +41,15 @@ _ERR_AXIS = "--axis must be format or topic"
 _ERR_BRANCH = "--branch must be any, safe or nsfw"
 _ERR_SCORE = "--min-score must be a number from 0 to 1"
 _ERR_TEXT = "a name or prompt is empty, has a control character or is not valid text"
+_ERR_DESC_MISSING = "--description is required"
+_ERR_DESC = "the description must be one line of 1 to 200 characters, with no control characters"
 _ERR_PROMPTS = "at least one --prompt is required"
 _ERR_RESERVED = "the unsorted category is protected"
 _ERR_FOLDER = "invalid folder name"
 _ERR_SIBLING = "a sibling category already uses that folder (compared ignoring case)"
 _ERR_PARENT_MISSING = "the parent category does not exist on that axis"
 _ERR_SCORE_BOTH = "--min-score and --reset-min-score cannot be used together"
-_ERR_NOTHING = "nothing to change: pass --folder, --prompt, --min-score or --branch"
+_ERR_NOTHING = "nothing to change: pass --folder, --description, --prompt, --min-score or --branch"
 _ERR_CHILDREN = "the category has children; remove or move them first"
 _ERR_EXISTS = "that category already exists on this axis"
 _ERR_MISSING = "no such category on this axis"
@@ -57,6 +60,7 @@ def _fail(message: str, code: int = 2) -> typer.Exit:
     return typer.Exit(code)
 
 
+_DESC_HELP = "One line, 1 to 200 characters, describing the category to the model (R-CLS-7)."
 _UNUSED_HELP = "Unused on the VLM path (CLS-004.D7), kept for the columns (DOC-009.D3)."
 
 ConfigOption = Annotated[
@@ -90,7 +94,7 @@ def _open(config_path: str | None) -> tuple[Config, psycopg.Connection]:
 def list_categories(
     config_path: ConfigOption = None,
 ) -> None:
-    """List every category: axis, name, folder, branch, parent and the unused min_score, prompts."""
+    """List every category: axis, name, folder, branch, parent, the unused columns, description."""
     _config, conn = _open(config_path)
     problem = None
     rows: list[tuple] = []
@@ -98,7 +102,8 @@ def list_categories(
         with conn:
             rows = conn.execute(
                 "select c.axis, c.name, c.folder, c.min_score, c.branch, p.name, "
-                "(select count(*) from category_prompts cp where cp.category_id = c.id) "
+                "(select count(*) from category_prompts cp where cp.category_id = c.id), "
+                "c.description "
                 "from categories c left join categories p on p.id = c.parent_id "
                 "order by c.axis, c.name"
             ).fetchall()
@@ -108,10 +113,15 @@ def list_categories(
         conn.close()
     if problem is not None:
         raise _fail(problem, 1)
-    typer.echo("axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)")
-    for axis, name, folder, min_score, branch, parent, prompts in rows:
+    typer.echo(
+        "axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)\tdescription"
+    )
+    for axis, name, folder, min_score, branch, parent, prompts, description in rows:
         score = "axis default" if min_score is None else f"{min_score:g}"
-        typer.echo(f"{axis}\t{name}\t{folder}\t{score}\t{branch}\t{parent or '-'}\t{prompts}")
+        typer.echo(
+            f"{axis}\t{name}\t{folder}\t{score}\t{branch}\t{parent or '-'}\t{prompts}"
+            f"\t{description or '-'}"
+        )
 
 
 def _clean(value: str) -> str | None:
@@ -125,6 +135,22 @@ def _clean(value: str) -> str | None:
     if problem or not text or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in text):
         return None
     return text
+
+
+def _valid_description(value: str) -> bool:
+    """CLI-007.D1, the DB-006.D1 rule: one line, not blank, at most 200 characters, no control
+    characters (Cc covers newlines), and text that encodes cleanly (no lone surrogate)."""
+    ok = True
+    try:
+        value.encode("utf-8")  # strict: a lone surrogate raises, its character is never quoted
+    except UnicodeEncodeError:
+        ok = False
+    return (
+        ok
+        and bool(value.strip())
+        and len(value) <= 200
+        and not any(unicodedata.category(ch) == "Cc" for ch in value)
+    )
 
 
 def _check_common(
@@ -240,10 +266,15 @@ def add_category(
     min_score: Annotated[float | None, typer.Option("--min-score", help=_UNUSED_HELP)] = None,
     branch: Annotated[str, typer.Option("--branch", help="any, safe or nsfw.")] = "any",
     parent: Annotated[str | None, typer.Option("--parent", help="Parent name, same axis.")] = None,
+    description: Annotated[str | None, typer.Option("--description", help=_DESC_HELP)] = None,
     config_path: ConfigOption = None,
 ) -> None:
     """Add a category. It applies to the next classify (CLI-004.D2)."""
     problem, prompts = _check_common(axis, branch, min_score, prompt)
+    if problem is None and description is None:
+        problem = _ERR_DESC_MISSING
+    if problem is None and description is not None and not _valid_description(description):
+        problem = _ERR_DESC
     clean_name = _clean(name)
     clean_parent = _clean(parent) if parent is not None else None
     if problem is None and (clean_name is None or (parent is not None and clean_parent is None)):
@@ -275,9 +306,10 @@ def add_category(
         if rules_problem is not None:
             return rules_problem
         row = conn.execute(
-            "insert into categories (axis, name, folder, min_score, branch, parent_id) "
-            "values (%s, %s, %s, %s, %s, %s) returning id",
-            (axis, clean_name, folder, min_score, branch, parent_id),
+            "insert into categories "
+            "(axis, name, folder, min_score, branch, parent_id, description) "
+            "values (%s, %s, %s, %s, %s, %s, %s) returning id",
+            (axis, clean_name, folder, min_score, branch, parent_id, description),
         ).fetchone()
         assert row is not None
         for position, text in enumerate(prompts or []):
@@ -303,10 +335,13 @@ def edit_category(
     min_score: Annotated[float | None, typer.Option("--min-score", help=_UNUSED_HELP)] = None,
     reset_min_score: Annotated[bool, typer.Option("--reset-min-score", help=_UNUSED_HELP)] = False,
     branch: Annotated[str | None, typer.Option("--branch", help="any, safe or nsfw.")] = None,
+    description: Annotated[str | None, typer.Option("--description", help=_DESC_HELP)] = None,
     config_path: ConfigOption = None,
 ) -> None:
-    """Edit a category's folder, prompts, min_score or branch (CLI-004.D2: next classify)."""
+    """Edit a category's folder, description, prompts, min_score or branch (CLI-004.D2)."""
     problem, prompts = _check_common(axis, branch, min_score, prompt)
+    if problem is None and description is not None and not _valid_description(description):
+        problem = _ERR_DESC
     clean_name = _clean(name)
     if problem is None and clean_name is None:
         problem = _ERR_TEXT
@@ -316,6 +351,7 @@ def edit_category(
         problem = _ERR_SCORE_BOTH
     nothing = (
         folder is None
+        and description is None
         and prompts is None
         and min_score is None
         and not reset_min_score
@@ -354,8 +390,9 @@ def edit_category(
         if rules_problem is not None:
             return rules_problem
         conn.execute(
-            "update categories set folder = %s, min_score = %s, branch = %s where id = %s",
-            (new_folder, new_score, new_branch, current.id),
+            "update categories set folder = %s, min_score = %s, branch = %s, "
+            "description = coalesce(%s, description) where id = %s",
+            (new_folder, new_score, new_branch, description, current.id),
         )
         if prompts is not None:
             conn.execute("delete from category_prompts where category_id = %s", (current.id,))

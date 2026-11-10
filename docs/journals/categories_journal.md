@@ -704,9 +704,13 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLI-007 — Tasks
 
-- [ ] CLI-007.1 — `add --description` (required), `edit --description`, `list` shows it; fixed-text, unchained errors that never quote the value · #187 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
+- [x] CLI-007.1 — `add --description` (required), `edit --description`, `list` shows it; fixed-text, unchained errors that never quote the value · #187 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
 
 ## CLI-007 — Results
+
+### CLI-007.1 (Pipeline)
+
+- **Status:** DONE. `make test` 2359 passed (unit + db + integration), `make lint` clean; acceptance `tests/db/cli/test_categories_cli.py` green against DB-006.1's column. Reviewer and Privacy auditor verdicts: pending.
 
 ---
 
