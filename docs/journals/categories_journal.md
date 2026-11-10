@@ -762,7 +762,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [x] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (subtasks .4 `4a04494`, .1 `6f01de4`, .5 `4d89c31`, .6 review round 1: real plants in the privacy tests, the render comment)
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
-- [ ] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
+- [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
 
 ## CLS-007 — Results
 
@@ -781,3 +781,10 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Status:** DONE. **Self-rating:** 9/10; the gap is that no test renders the real local prompt, by design.
 - **Reviewer / Privacy auditor:** see the PR comment on #197.
 - **Deferred:** the eval passing the descriptions and the flag is CLS-007.3.
+
+### CLS-007.3 — Results (ML)
+
+- **Built:** `eval/classify_eval.py` passes `format_definitions` and `topic_definitions` (one map per axis, read from the throwaway schema) to `vlm_classify`, and `nsfw.conservative_traces` to `decide`. `--categories-from-app-db` reads `APP_DB_DSN` read-only and applies descriptions plus app-only categories (parents first; a category with no parent anywhere is skipped and counted). The cache key digests the descriptions and the flag, and cached answers carry `traces`. The output gains `category descriptions: app database | seeded` and `conservative traces: on | off`, plus `categories skipped: N` only with the option.
+- **Tests:** unit 36 in `tests/unit/eval/test_classify_eval.py`, db 3 in `tests/db/eval/test_apply_app_categories.py`; `make lint` clean. The planted-description test uses a local replacement with the slots, so the plant provably reaches the model call before absence is asserted elsewhere.
+- **Not run here:** the real run (the human's descriptions, the VLM) is another desk's.
+- **Status, self-rating, Reviewer and Privacy auditor verdicts:** pending.

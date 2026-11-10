@@ -24,6 +24,14 @@ versions with their local-prompt hashes and the Falconsai cross-check count for 
 and is never pasted or committed. Labels are matched to ledger rows by file name in memory only; the
 cache holds answers keyed by source hash.
 Every error is fixed text.
+
+Categories (CLS-007.3). The throwaway schema holds only the seeded, generic descriptions. With
+`--categories-from-app-db` the run first reads the local app database's categories (the DSN comes
+from `APP_DB_DSN`, passed with `-e`; the connection is read-only) and applies them to the
+throwaway schema: descriptions for categories that exist on the same axis, and the categories only
+the app database has. The descriptions are kept per axis (a name can exist on both) and reach
+`vlm_classify` as `format_definitions` and `topic_definitions`. The DSN, the descriptions and the
+category names are never printed; the report says only where the descriptions came from.
 """
 
 import hashlib
@@ -32,7 +40,7 @@ import math
 import os
 import stat
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -77,6 +85,9 @@ class EvalError(Exception):
 _ERR_NOT_SANITIZED = "an image did not reach the sanitized status: check Ollama and the rules"
 _ERR_PROMPT = "a prompt file cannot be read"
 _ERR_NO_CLIENT = "OLLAMA_HOST is not set: run it in the test container"
+_ERR_NO_APP_DSN = "APP_DB_DSN is not set: pass it with -e at run time"
+_ERR_APP_DB = "the app database cannot be read"
+_APP_DB_OPTIONS = "-c default_transaction_read_only=on"
 
 
 # --- Prompt versions ------------------------------------------------------------------------
@@ -136,9 +147,10 @@ class Answer:
     topic: str | None = field(repr=False)
     level: str = field(repr=False)  # an `NsfwLevel` name
     nsfw: float | None = field(repr=False)
+    traces: bool = field(default=False, repr=False)  # CLS-007.D2: the model's raw flag
 
     def vlm(self) -> VlmAnswer:
-        return VlmAnswer(self.format, self.topic, NsfwLevel[self.level])
+        return VlmAnswer(self.format, self.topic, NsfwLevel[self.level], nsfw_traces=self.traces)
 
 
 def cache_key(
@@ -147,10 +159,25 @@ def cache_key(
     min_level: NsfwLevel,
     formats: Sequence[str],
     topics: Sequence[str],
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
+    conservative_traces: bool = False,
 ) -> str:
-    """The cache file's name: the VLM tag, the prompt and local-prompt digests, `min_level` and the
-    category names. No label, path or file name is in it."""
-    return _digest([model, list(prompt_hashes), min_level.name, list(formats), list(topics)])
+    """The cache file's name: the VLM tag, the prompt and local-prompt digests, `min_level`, the
+    category names, each axis's descriptions and the traces flag, all reduced to one digest. No
+    label, path, file name or description is readable from it."""
+    return _digest(
+        [
+            model,
+            list(prompt_hashes),
+            min_level.name,
+            list(formats),
+            list(topics),
+            sorted((format_definitions or {}).items()),
+            sorted((topic_definitions or {}).items()),
+            bool(conservative_traces),
+        ]
+    )
 
 
 def load_cache(folder: Path, key: str) -> dict[str, Answer]:
@@ -162,6 +189,9 @@ def load_cache(folder: Path, key: str) -> dict[str, Answer]:
             data = json.loads(path.read_bytes().decode("utf-8", errors="surrogatepass"))
             for digest, row in data["answers"].items():
                 topic, score = row["topic"], row["nsfw"]
+                traces = row.get("traces", False)
+                if not isinstance(traces, bool):
+                    raise TypeError  # drops the whole cache
                 level = str(row["level"])
                 NsfwLevel[level]  # an unknown name drops the whole cache
                 out[str(digest)] = Answer(
@@ -169,6 +199,7 @@ def load_cache(folder: Path, key: str) -> dict[str, Answer]:
                     None if topic is None else str(topic),
                     level,
                     None if score is None else float(score),
+                    traces,
                 )
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {}
@@ -179,7 +210,13 @@ def save_cache(folder: Path, key: str, answers: Mapping[str, Answer]) -> bool:
     """Write the cache atomically. False when it cannot be written (never fatal)."""
     payload = {
         "answers": {
-            digest: {"format": a.format, "topic": a.topic, "level": a.level, "nsfw": a.nsfw}
+            digest: {
+                "format": a.format,
+                "topic": a.topic,
+                "level": a.level,
+                "nsfw": a.nsfw,
+                "traces": a.traces,
+            }
             for digest, a in sorted(answers.items())
         }
     }
@@ -193,6 +230,110 @@ def save_cache(folder: Path, key: str, answers: Mapping[str, Answer]) -> bool:
     except OSError:
         return False
     return True
+
+
+# --- The app database's categories (CLS-007.D4) --------------------------------------------
+
+
+@dataclass(frozen=True)
+class AppCategory:
+    """One category of the app database; every field can hold the human's private wording."""
+
+    axis: str = field(repr=False)
+    name: str = field(repr=False)
+    folder: str = field(repr=False)
+    branch: str = field(repr=False)
+    description: str | None = field(repr=False)
+    parent: str | None = field(repr=False)  # the parent's name on the same axis
+
+
+def read_app_categories(dsn: str | None, connect: Callable | None = None) -> list[AppCategory]:
+    """The app database's categories, read-only. Any failure is one fixed text, unchained."""
+    if not dsn:
+        raise EvalError(_ERR_NO_APP_DSN)
+    found = None
+    try:
+        if connect is None:
+            import psycopg
+
+            connect = psycopg.connect
+        with connect(dsn, options=_APP_DB_OPTIONS) as conn:
+            rows = conn.execute(
+                "select c.axis, c.name, c.folder, c.branch, c.description, p.name "
+                "from categories c left join categories p on p.id = c.parent_id "
+                "order by c.id"
+            ).fetchall()
+        found = [
+            AppCategory(
+                str(a),
+                str(n),
+                str(f),
+                str(b),
+                None if d is None else str(d),
+                None if p is None else str(p),
+            )
+            for a, n, f, b, d, p in rows
+        ]
+    except Exception:  # fixed text only: a driver message can carry the DSN
+        found = None
+    if found is None:
+        raise EvalError(_ERR_APP_DB)
+    return found
+
+
+def apply_app_categories(conn, app: Sequence[AppCategory]) -> int:
+    """Copy `app` into the throwaway schema; return how many categories could not be applied.
+
+    A category that exists on its axis takes the app's description. One that only the app has is
+    inserted, parents first. One whose parent is in neither place, or that the schema's own
+    constraints refuse, is skipped and only counted.
+    """
+    import psycopg
+
+    ids = {
+        (str(axis), str(name)): int(i)
+        for i, axis, name in conn.execute("select id, axis, name from categories").fetchall()
+    }
+    pending = []
+    for cat in app:
+        if (cat.axis, cat.name) in ids:
+            conn.execute(
+                "update categories set description = %s where axis = %s and name = %s",
+                (cat.description, cat.axis, cat.name),
+            )
+        else:
+            pending.append(cat)
+    progress = True
+    while pending and progress:
+        progress, waiting = False, []
+        for cat in pending:
+            if cat.parent is not None and (cat.axis, cat.parent) not in ids:
+                waiting.append(cat)
+                continue
+            parent = None if cat.parent is None else ids[(cat.axis, cat.parent)]
+            try:
+                with conn.transaction():
+                    new = conn.execute(
+                        "insert into categories (axis, name, folder, branch, parent_id, "
+                        "description) values (%s, %s, %s, %s, %s, %s) returning id",
+                        (cat.axis, cat.name, cat.folder, cat.branch, parent, cat.description),
+                    ).fetchone()
+                ids[(cat.axis, cat.name)] = int(new[0])
+                progress = True
+            except psycopg.Error:
+                waiting.append(cat)  # counted as skipped below; the driver text is dropped
+        pending = waiting
+    return len(pending)
+
+
+def read_definitions(conn) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    """One name -> description map per axis, as the classify node reads them."""
+    out: dict[str, dict[str, str | None]] = {"format": {}, "topic": {}}
+    for axis, name, description in conn.execute(
+        "select axis, name, description from categories order by id"
+    ).fetchall():
+        out[str(axis)][str(name)] = None if description is None else str(description)
+    return out["format"], out["topic"]
 
 
 # --- The run: ledger, categories, the VLM ---------------------------------------------------
@@ -214,6 +355,9 @@ class Collected:
     prompts: tuple[Prompt, ...] = field(repr=False)  # their hashes are console-only
     min_level: str = field(repr=False)
     cross_checked: int = field(repr=False)  # rows the Falconsai cross-check flags: detail only
+    descriptions: str = field(default="seeded", repr=False)  # `app database` or `seeded`
+    conservative_traces: bool = field(default=False, repr=False)
+    skipped: int | None = field(default=None, repr=False)  # app categories not applied
 
 
 @dataclass(frozen=True)
@@ -300,6 +444,8 @@ def judge_image(
     row: _Row,
     formats: Sequence[str],
     topics: Sequence[str],
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
 ) -> Answer | None:
     """One image's answer the way the classify node asks for it, or None when it has none.
 
@@ -318,10 +464,21 @@ def judge_image(
             score = float(backend.nsfw_scores([rgb])[0])
             rgb.close()
             said = vlm_classify(
-                client, model, frames, hint=row.hint, formats=formats, topics=topics
+                client,
+                model,
+                frames,
+                hint=row.hint,
+                formats=formats,
+                topics=topics,
+                format_definitions=format_definitions,
+                topic_definitions=topic_definitions,
             )
         answer = Answer(
-            said.format, said.topic, said.level.name, score if math.isfinite(score) else None
+            said.format,
+            said.topic,
+            said.level.name,
+            score if math.isfinite(score) else None,
+            said.nsfw_traces,
         )
     except (VlmUnanswered, VlmImageError, WorkingCopyUnreadable):
         answer = None
@@ -338,6 +495,7 @@ def collect(
     nodes=None,
     label_check=nsfw_label_ok,
     prompts_dir: Path = PROMPTS_DIR,
+    app_categories: Sequence[AppCategory] | None = None,
 ) -> Collected:
     """Ingest, sanitize and classify `images` on the VLM path; tally the labels against it.
 
@@ -353,12 +511,16 @@ def collect(
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
         config = gate.load_config(images, results, schema)
         run(config, dry_run=True, nodes=tuple(nodes or harness_nodes()))
+        skipped = None
         with psycopg.connect(schema) as conn:
+            if app_categories is not None:
+                skipped = apply_app_categories(conn, app_categories)
             ledger = conn.execute(
                 "select source_hash, ext, original_sanitized, source_path, duplicate_paths, "
                 "status::text from files order by created_at, source_hash"
             ).fetchall()
             rules = read_rules(conn)
+            format_defs, topic_defs = read_definitions(conn)
         if any(status not in ("sanitized", "skipped") for *_, status in ledger):
             raise EvalError(_ERR_NOT_SANITIZED)
         validate_rules(rules, None)  # as the node does, before any row is judged
@@ -370,7 +532,10 @@ def collect(
         prompts = effective_prompts(prompts_dir)
         hashes = [prompt_file_digest(name, prompts_dir) for name in PROMPT_NAMES]
         hashes += [p.effective_version for p in prompts]
-        key = cache_key(model, hashes, min_level, formats, topics)
+        conservative = bool(config.nsfw.conservative_traces)  # CLS-007.2's key
+        key = cache_key(
+            model, hashes, min_level, formats, topics, format_defs, topic_defs, conservative
+        )
         answers = load_cache(cache_folder, key) if cache_folder is not None else {}
         cached = len(answers)
         work = Path(results) / ".work"
@@ -382,7 +547,9 @@ def collect(
         for row in kept:
             if row.source_hash in answers:
                 continue
-            found = judge_image(client, model, backend, work, row, formats, topics)
+            found = judge_image(
+                client, model, backend, work, row, formats, topics, format_defs, topic_defs
+            )
             if found is not None:  # an unanswered image is not cached: the next run asks again
                 answers[row.source_hash] = found
         if cache_folder is not None and len(answers) != cached:
@@ -391,7 +558,7 @@ def collect(
         for h, _, _, path, duplicates, status in ledger:
             decided = None
             if status == "sanitized":
-                decided = _decide(answers.get(h), rules, config.nsfw)
+                decided = _decide(answers.get(h), rules, config.nsfw, conservative)
                 status = "classified" if decided is not None else "error"
             if decided is None:
                 outcomes.append((path, duplicates, status, None, None, None, None))
@@ -409,16 +576,30 @@ def collect(
             nsfw_input=verify_copies(kept, work),
             coverage=measures.coverage_ok,
         )
-    return Collected(measures, checks, prompts, min_level.name, cross_checked)
+    return Collected(
+        measures,
+        checks,
+        prompts,
+        min_level.name,
+        cross_checked,
+        "app database" if app_categories is not None else "seeded",
+        conservative,
+        skipped,
+    )
 
 
-def _decide(answer: Answer | None, rules: Sequence[CategoryRule], nsfw_config):
+def _decide(
+    answer: Answer | None,
+    rules: Sequence[CategoryRule],
+    nsfw_config,
+    conservative_traces: bool = False,
+):
     """`(choice, level name)`, or None when the image has no usable answer (a ledger `error`)."""
     if answer is None:
         return None
     choice = None
     try:
-        choice = decide(answer.vlm(), rules, answer.nsfw, nsfw_config)
+        choice = decide(answer.vlm(), rules, answer.nsfw, nsfw_config, conservative_traces)
     except ClassifyRulesError:
         choice = None
     return None if choice is None else (choice, answer.level)
@@ -442,6 +623,9 @@ def render(collected: Collected, detail: bool = False) -> list[str]:
     lines = [
         f"classify eval, VLM path (CLS-004.5; judged at nsfw.min_level = {collected.min_level})",
         *local_prompt_lines(collected.prompts),
+        f"category descriptions: {collected.descriptions}",
+        f"conservative traces: {'on' if collected.conservative_traces else 'off'}",
+        *([f"categories skipped: {collected.skipped}"] if collected.skipped is not None else []),
         f"bug checks: nsfw label {_ok(checks.nsfw_label)}, nsfw input {_ok(checks.nsfw_input)}, "
         f"coverage {_ok(checks.coverage)}",
         *verdict.lines[:-1],
@@ -466,21 +650,28 @@ def run_eval(
     detail: bool,
     client=None,
     backend=None,
+    from_app_db: bool = False,
+    app_source: Callable[[str | None], Sequence[AppCategory]] = read_app_categories,
 ) -> list[str]:
     from classifier.config import load_config as load_app_config
     from classifier.models.ollama import OllamaClient
     from classifier.models.siglip import SiglipBackend
 
+    app = app_source(os.environ.get("APP_DB_DSN")) if from_app_db else None
     if backend is None:
         models = load_app_config().models
         backend = SiglipBackend(models.classifier, models.nsfw)  # only the NSFW gate is used
     if client is not None:
-        collected = collect(dsn, images, labels_path, client, backend, cache_folder)
+        collected = collect(
+            dsn, images, labels_path, client, backend, cache_folder, app_categories=app
+        )
     else:
         if not os.environ.get("OLLAMA_HOST"):
             raise EvalError(_ERR_NO_CLIENT)
         with OllamaClient.from_env() as own:
-            collected = collect(dsn, images, labels_path, own, backend, cache_folder)
+            collected = collect(
+                dsn, images, labels_path, own, backend, cache_folder, app_categories=app
+            )
     return render(collected, detail)
 
 
@@ -492,6 +683,11 @@ def main(argv: Sequence[str] | None = None, client=None, backend=None) -> int:
     parser.add_argument("--labels", type=Path, default=LABELS)
     parser.add_argument("--cache-dir", type=Path, default=CACHE_DIR)
     parser.add_argument("--no-cache", action="store_true")
+    parser.add_argument(
+        "--categories-from-app-db",
+        action="store_true",
+        help="use the categories and descriptions of the app database (APP_DB_DSN, read-only)",
+    )
     parser.add_argument("--detail", action="store_true", help="box console only; never paste")
     args = parser.parse_args(argv)
     dsn = os.environ.get("DB_DSN")
@@ -509,6 +705,7 @@ def main(argv: Sequence[str] | None = None, client=None, backend=None) -> int:
             args.detail,
             client,
             backend,
+            from_app_db=args.categories_from_app_db,
         )
     except (EvalError, gate.GateRunError, gate.GateSetupError, fixture_labels.LabelsError) as exc:
         print(f"classify_eval FAIL: {exc}", file=sys.stderr)  # fixed text by construction

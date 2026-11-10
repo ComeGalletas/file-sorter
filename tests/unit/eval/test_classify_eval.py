@@ -24,6 +24,7 @@ import gate_3 as gate  # noqa: E402
 from fixture_labels import parse_labels  # noqa: E402
 
 from classifier.config import NsfwConfig, NsfwLevel  # noqa: E402
+from classifier.models import vlm_classify as vlm_module  # noqa: E402
 from classifier.models.classify_rules import CategoryRule  # noqa: E402
 from classifier.models.ollama import OllamaClient, OllamaUnavailable  # noqa: E402
 from classifier.models.prompts import load_effective_prompt  # noqa: E402
@@ -160,7 +161,7 @@ def test_the_cache_round_trips_answers_by_hash_and_holds_nothing_else(tmp_path):
     on_disk = json.loads((tmp_path / "k.json").read_text(encoding="utf-8"))
     assert set(on_disk) == {"answers"}
     for entry in on_disk["answers"].values():
-        assert set(entry) == {"format", "topic", "level", "nsfw"}
+        assert set(entry) == {"format", "topic", "level", "nsfw", "traces"}
     assert not list(tmp_path.glob("*.tmp"))
 
 
@@ -418,14 +419,16 @@ def test_main_prints_the_report_and_passes_the_flags(monkeypatch, capsys, tmp_pa
     monkeypatch.setenv("DB_DSN", "postgres://synthetic")
     seen = {}
 
-    def fake(dsn, images, labels, cache, detail, client, backend):
-        seen.update(cache=cache, detail=detail, images=images)
+    def fake(dsn, images, labels, cache, detail, client, backend, from_app_db=False):
+        seen.update(cache=cache, detail=detail, images=images, app=from_app_db)
         return ["line one", "line two"]
 
     monkeypatch.setattr(ev, "run_eval", fake)
     assert ev.main(["--images", str(tmp_path), "--detail", "--no-cache"]) == 0
     assert capsys.readouterr().out == "line one\nline two\n"
-    assert seen == {"cache": None, "detail": True, "images": tmp_path}
+    assert seen == {"cache": None, "detail": True, "images": tmp_path, "app": False}
+    assert ev.main(["--images", str(tmp_path), "--categories-from-app-db"]) == 0
+    assert seen["app"] is True
 
 
 def test_there_is_no_sweep_option():
@@ -445,3 +448,181 @@ def test_run_eval_without_a_client_or_host_fails_with_fixed_text(monkeypatch, tm
         ev.run_eval("dsn", tmp_path, tmp_path, None, False, None, FakeBackend())
     assert str(caught.value) == "OLLAMA_HOST is not set: run it in the test container"
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+# --- CLS-007.3: descriptions, traces and the app database -------------------------------------
+
+FMT_TEXT = "plantedfmt_description_qx"
+TOP_TEXT = "plantedtop_description_qx"
+DSN_SECRET = "postgresql://user:plantedpw_zq@host/db"
+
+
+def test_the_descriptions_reach_the_prompt_one_map_per_axis(tmp_path, prompts_dir, monkeypatch):
+    # The committed system text doesn't use the slots (CLS-007.D1), so a local replacement that
+    # does is what proves the plant is sent. `Qorvex` exists on both axes, one wording each.
+    body = "Formats:\n{format_definitions}\nTopics:\n{topic_definitions}\nList: {formats}"
+    (prompts_dir / "local" / "classify_v1.md").write_text(body, encoding="utf-8")
+    real = vlm_module.load_effective_prompt
+    monkeypatch.setattr(vlm_module, "load_effective_prompt", lambda n: real(n, prompts_dir))
+    work = make_work(tmp_path)
+    client, seen = scripted(classify_reply("Qorvex", "Qorvex"), level_reply())
+    ev.judge_image(
+        client,
+        MODEL,
+        FakeBackend(),
+        work,
+        row(),
+        FORMATS,
+        ["Qorvex", "Vrellik"],
+        {"Qorvex": FMT_TEXT, "Zhyndel": None},
+        {"Qorvex": TOP_TEXT},
+    )
+    sent = json.dumps(seen[0])
+    assert f"- Qorvex: {FMT_TEXT}" in sent  # the plant reached the model call
+    assert f"- Qorvex: {TOP_TEXT}" in sent
+    assert sent.index(FMT_TEXT) != sent.index(TOP_TEXT)
+    assert FMT_TEXT not in json.dumps(seen[1]) and TOP_TEXT not in json.dumps(seen[1])
+
+
+def test_the_traces_flag_is_read_from_the_answer_and_cached(tmp_path):
+    work = make_work(tmp_path)
+    reply = level_reply() | {"traces": True}
+    client, _ = scripted(classify_reply(), reply)
+    found = ev.judge_image(client, MODEL, FakeBackend(), work, row(), FORMATS, TOPICS)
+    assert found is not None and found.traces is True
+    ev.save_cache(tmp_path / "c", "k", {HASH: found})
+    assert ev.load_cache(tmp_path / "c", "k")[HASH].traces is True
+    # an older cache has no `traces` and reads as False; a non-boolean drops the cache
+    folder = tmp_path / "old"
+    folder.mkdir()
+    old = {"format": "Qorvex", "topic": None, "level": "safe", "nsfw": None}
+    (folder / "k.json").write_text(json.dumps({"answers": {HASH: old}}), encoding="utf-8")
+    assert ev.load_cache(folder, "k")[HASH].traces is False
+    bad = old | {"traces": "yes"}
+    (folder / "k.json").write_text(json.dumps({"answers": {HASH: bad}}), encoding="utf-8")
+    assert ev.load_cache(folder, "k") == {}
+
+
+def test_the_cache_key_follows_the_descriptions_and_the_flag():
+    base = ("m", ["p"], NsfwLevel.nudity, ["a"], ["b"])
+
+    def key(**kw):
+        return ev.cache_key(*base, **kw)
+
+    first = key(format_definitions={"a": "one"}, topic_definitions={"b": "two"})
+    assert first != key(format_definitions={"a": "one!"}, topic_definitions={"b": "two"})
+    assert first != key(format_definitions={"a": "one"}, topic_definitions={"b": "two!"})
+    # the same text on the other axis is a different key: the maps are per axis
+    assert first != key(format_definitions={"b": "two"}, topic_definitions={"a": "one"})
+    assert first != key(
+        format_definitions={"a": "one"}, topic_definitions={"b": "two"}, conservative_traces=True
+    )
+    assert "one" not in first and "two" not in first
+
+
+def test_the_floor_reaches_decide_through_the_flag():
+    cfg = NsfwConfig.model_validate({"min_level": "suggestive", "mode": "mirror", "root": "Adult"})
+    flagged = ev.Answer("Qorvex", None, "safe", None, traces=True)
+    assert ev._decide(flagged, rules(), cfg)[0].branch == "safe"
+    assert ev._decide(flagged, rules(), cfg, True)[0].branch == "nsfw"
+    assert ev._decide(ev.Answer("Qorvex", None, "safe", None), rules(), cfg, True)[0].branch == (
+        "safe"
+    )
+
+
+class FakeApp:
+    """A stand-in for a psycopg connection that holds the categories table."""
+
+    def __init__(self, rows, fail: bool = False):
+        self.rows, self.fail, self.options = rows, fail, None
+
+    def __call__(self, dsn, options=None):
+        self.options = options
+        if self.fail:
+            raise RuntimeError(f"cannot reach {dsn}")
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def execute(self, sql):
+        assert sql.lstrip().startswith("select")  # read-only: nothing else is ever sent
+        rows = self.rows
+        return type("Result", (), {"fetchall": lambda _self: rows})()
+
+
+def test_the_app_categories_are_read_read_only_per_row():
+    fake = FakeApp(
+        [
+            ("format", "Qorvex", "f1", "any", FMT_TEXT, None),
+            ("topic", "Xandoz", "t", "safe", None, "Vrellik"),
+        ]
+    )
+    found = ev.read_app_categories(DSN_SECRET, fake)
+    assert "default_transaction_read_only=on" in fake.options
+    assert [(c.axis, c.name, c.description, c.parent) for c in found] == [
+        ("format", "Qorvex", FMT_TEXT, None),
+        ("topic", "Xandoz", None, "Vrellik"),
+    ]
+    assert FMT_TEXT not in repr(found) + str(found[0])
+
+
+def test_an_unreachable_app_database_is_fixed_text_and_unchained():
+    with pytest.raises(ev.EvalError) as caught:
+        ev.read_app_categories(DSN_SECRET, FakeApp([], fail=True))
+    assert str(caught.value) == "the app database cannot be read"
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert "plantedpw_zq" not in repr(caught.value) + str(caught.value)
+    with pytest.raises(ev.EvalError) as missing:
+        ev.read_app_categories(None)
+    assert str(missing.value) == "APP_DB_DSN is not set: pass it with -e at run time"
+    assert missing.value.__cause__ is None and missing.value.__context__ is None
+
+
+def test_run_eval_reads_the_app_database_only_when_asked(monkeypatch, tmp_path):
+    monkeypatch.setenv("APP_DB_DSN", DSN_SECRET)
+    asked, got = [], {}
+
+    def source(dsn):
+        asked.append(dsn)
+        return [ev.AppCategory("format", "Qorvex", "f", "any", FMT_TEXT, None)]
+
+    def fake_collect(*_a, app_categories=None, **_k):
+        got["app"] = app_categories
+        return collected(outcomes())
+
+    monkeypatch.setattr(ev, "collect", fake_collect)
+    client, _ = scripted()
+    args = ("dsn", tmp_path, tmp_path, None, False, client, FakeBackend())
+    ev.run_eval(*args, app_source=source)
+    assert asked == [] and got["app"] is None
+    lines = ev.run_eval(*args, from_app_db=True, app_source=source)
+    assert asked == [DSN_SECRET] and got["app"][0].description == FMT_TEXT
+    assert "category descriptions: seeded" in lines  # the stub collect says what it was given
+
+
+def test_the_report_says_where_the_descriptions_came_from_and_nothing_more():
+    import dataclasses
+
+    seeded = ev.render(collected(outcomes()))
+    assert "category descriptions: seeded" in seeded
+    assert "conservative traces: off" in seeded
+    assert not any(line.startswith("categories skipped") for line in seeded)
+    app = dataclasses.replace(
+        collected(outcomes()), descriptions="app database", conservative_traces=True, skipped=2
+    )
+    out = ev.render(app, True)
+    assert "category descriptions: app database" in out
+    assert "conservative traces: on" in out
+    assert "categories skipped: 2" in out
+    text = "\n".join(out)
+    assert FMT_TEXT not in text and "Qorvex" not in text.split("bug checks")[0]
+
+
+def test_app_types_hold_nothing_planted_in_their_reprs():
+    cat = ev.AppCategory(SECRET, SECRET, SECRET, SECRET, SECRET, SECRET)
+    assert SECRET not in repr(cat) + str(cat)
+    assert SECRET not in repr(ev.Answer("a", None, "safe", None, traces=True))
