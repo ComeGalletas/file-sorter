@@ -22,7 +22,7 @@ INI = Path(__file__).resolve().parents[3] / "classifier" / "db" / "alembic.ini"
 HASH = "a" * 64
 CATEGORY_COLUMNS = {
     "id": False, "axis": False, "name": False, "folder": False, "min_score": True,
-    "branch": False, "parent_id": True, "created_at": False,
+    "branch": False, "parent_id": True, "created_at": False, "description": True,
 }  # fmt: skip
 PROMPT_COLUMNS = {"id": False, "category_id": False, "position": False, "prompt": False}
 INSERT_CATEGORY = "insert into categories (axis, name, folder) values (%s, %s, %s) returning id"
@@ -113,7 +113,7 @@ def test_upgrade_adds_the_tables_and_the_column(alembic_cfg: Config, schema: str
     assert types == {"image_vec": "vector(1152)", "min_score": "real"}
 
     assert [c[0] for c in _constraints(schema, "categories", "c")] == [
-        "categories_axis", "categories_branch",
+        "categories_axis", "categories_branch", "categories_description",
     ]  # fmt: skip
     assert _constraints(schema, "categories", "f") == [
         ("fk_categories_parent_id_categories", "categories", "a")

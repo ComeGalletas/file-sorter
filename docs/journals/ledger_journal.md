@@ -218,6 +218,16 @@ references or host paths here. Use hashes.
 
 ## DB-006 — Tasks
 
-- [ ] DB-006.1 — Migration `0006`: `categories.description` (CHECK, seeded from DESIGN §4.3) and `files.nsfw_traces`; the ORM fields (`description` with `repr=False`) · #186 · Pipeline · acceptance: `tests/db/ledger/test_category_description_migration.py`
+- [x] DB-006.1 — (3a82752, 7db6682, 7ae9f6f) Migration `0006`: `categories.description` (CHECK, seeded from DESIGN §4.3) and `files.nsfw_traces`; the ORM fields (`description` with `repr=False`) · #186 · Pipeline · acceptance: `tests/db/ledger/test_category_description_migration.py`
 
 ## DB-006 — Results
+
+### DB-006.1 (Pipeline)
+
+- Migration `0006` (down_revision `0005`, one head): `categories.description` (text, null) with the CHECK `categories_description`, the 18 defaults seeded by (axis, name) from DESIGN §4.3, and `files.nsfw_traces` (boolean, null). Downgrade drops both columns and the constraint.
+- The CHECK covers non-blank, at most 200 characters, and **no control character** (``-``, ``: line breaks and tabs included), matching the CLI rule exactly (lead's go-ahead). NUL can't be stored in `text`.
+- A refused downgrade (0005's `nsfw_disagreement` guard) now rolls back the whole run, 0006's step included, so the revision stays at head. `test_review_reason_migration.py` expects `0006` accordingly.
+- ORM: `Category.description` and `File.nsfw_traces`; `Category.__repr__` already omitted user text, and a planted-secret repr test covers it.
+- Tests: acceptance file 20 cases (head, upgrade, seeds, nulls, CHECK accepts/refuses, traces, repr, downgrade and back). Three older tests updated for the new column and constraint.
+- `make test`: 2344 passed, 48 deselected. `make lint`: clean. No gpu or eval tier (no models or prompts touched).
+- Completion: DONE. Self-rating: 9/10, proud: yes. The gap is a seed text check that only spot-checks DESIGN §4.3 verbatim, because DESIGN.md isn't mounted in the test container.

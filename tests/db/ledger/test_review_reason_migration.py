@@ -100,9 +100,10 @@ def test_the_downgrade_is_refused_while_a_row_holds_the_reason(
         root = root.__cause__ or root.__context__
     assert REFUSED in str(root)
 
-    # Nothing changed: same revision, same constraint, row untouched (fresh connection).
+    # Nothing changed: the whole downgrade rolled back (0006's step included), so the revision is
+    # still head; same constraint, row untouched (fresh connection).
     with _connect(schema) as fresh:
-        assert fresh.execute("select version_num from alembic_version").fetchall() == [("0005",)]
+        assert fresh.execute("select version_num from alembic_version").fetchall() == [("0006",)]
         assert fresh.execute("select review_reason from files").fetchall() == [
             ("nsfw_disagreement",)
         ]

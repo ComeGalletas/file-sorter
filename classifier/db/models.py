@@ -116,6 +116,8 @@ class File(Base):
     image_vec: Mapped[Any | None] = mapped_column(Vector(1152))
     # CLS-004.D3: the VLM's NSFW level; null until classified (DB-004.D1, no backfill).
     nsfw_level: Mapped[str | None] = mapped_column(Text)
+    # DB-006.1: null = not rated (an older row); CLS-007.2 writes it.
+    nsfw_traces: Mapped[bool | None] = mapped_column(Boolean)
 
 
 class SanitizeLog(Base):
@@ -158,6 +160,11 @@ class Category(Base):
     __table_args__ = (
         CheckConstraint("axis in ('format', 'topic')", name="categories_axis"),
         CheckConstraint("branch in ('any', 'safe', 'nsfw')", name="categories_branch"),
+        CheckConstraint(
+            "description is null or (description ~ '[^[:space:]]' "
+            "and char_length(description) <= 200 and description !~ '[\\x01-\\x1f\\x7f]')",
+            name="categories_description",
+        ),
         UniqueConstraint("axis", "name", name="uq_categories_axis_name"),
         # FOP-002.D4: siblings differ by case-insensitive folder; top-level counts as parent 0.
         Index(
@@ -179,9 +186,11 @@ class Category(Base):
         ForeignKey("categories.id", name="fk_categories_parent_id_categories")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # DB-006.1: the human's private wording; never in a repr, log or error.
+    description: Mapped[str | None] = mapped_column(Text)
 
     def __repr__(self) -> str:
-        # Names and folders can be user-added, so they stay out of logs and tracebacks.
+        # Names, folders and descriptions can be user-added: out of logs and tracebacks.
         return f"Category(id={self.id!r}, axis={self.axis!r})"
 
 
