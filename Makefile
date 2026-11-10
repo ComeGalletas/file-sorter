@@ -72,3 +72,18 @@ format: ## ruff format in place
 gate-%: ## Milestone gate N, e.g. make gate-3 (starts ollama, RUN-011)
 	@$(OLLAMA_UP) >/dev/null 2>&1 || true   # RUN-013.D2: the tests then fail naming it
 	$(TEST) python scripts/gate_$*.py
+
+# TST-013.D1: gate 3 measures the human's local categories and descriptions. From the main
+# checkout it starts the app `db` and passes the flag; the DSN is built here from .env and handed
+# over by name (`-e APP_DB_DSN`), so it is never echoed. A worktree has no app database, so it
+# runs with the seeded descriptions, and the output says which.
+gate-3: ## Milestone gate 3, with the local app database's categories (main checkout; TST-013)
+	@$(OLLAMA_UP) >/dev/null 2>&1 || true
+ifeq ($(WT_NAME),)
+	@$(COMPOSE) up -d --wait db >/dev/null
+	@DB_PASSWORD="$$(sed -n 's/^DB_PASSWORD=//p' .env | tr -d '\r')"; \
+	 export APP_DB_DSN="postgresql://classifier:$${DB_PASSWORD}@db:5432/classifier"; \
+	 $(COMPOSE) --profile test run --rm -e APP_DB_DSN test python scripts/gate_3.py --categories-from-app-db
+else
+	$(TEST) python scripts/gate_3.py
+endif

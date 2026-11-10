@@ -671,3 +671,36 @@ references or host paths here. Use hashes.
 - Tests: `tests/devtools/test_recordings.py` 184 passed (pytester gate: orphan fails and is named; every key served passes; `-k`, path, `-m`, `-x`, `--deselect`, an empty tier and a failing run don't check). `make test` 2324 passed, red before the deletion and green after. `make lint` clean.
 - Status: DONE. Self-rating 9/10, proud: yes. Gap: the gate compares `-m` with the `addopts` one, so a changed `addopts` marker expression is followed automatically but a `-p` plugin that narrows selection by other means is not detected.
 
+
+---
+
+## TST-013 — Requirement (human, 2026-11-10)
+
+**Objective:** gate 3 measures the human's own category descriptions, as it already measures the human's local prompt files.
+
+**Details:** after CLS-008.1 (#200), the eval with the app database's descriptions passed every gate 3 criterion (CLS-004.5.10, #136). `make gate-3` failed format, because the gate's fresh schema carries only the generic seeded descriptions. A box-only gate run with the app database's categories copied in passed every criterion, with the same figures as the eval. The human chose to make the gate read them.
+
+**Constraint:** written by the human's session at the human's request while no lead session was running. QA owns `scripts/gate_3.py`; the index row is the lead's (RUN-002.D13).
+
+## TST-013 — Confirmed reading
+
+- **TST-013.D1:** **`scripts/gate_3.py --categories-from-app-db`** copies the local app database's categories and descriptions into the gate's fresh schema before the run.
+  - It reuses the eval's reader and copier (CLS-007.3): read-only, from `APP_DB_DSN`, with fixed-text errors.
+  - A category that can't be applied fails the gate.
+  - The output adds one content-free line, `category descriptions: app database | seeded`.
+  - `make gate-3` from the main checkout starts the app `db` and passes the flag, with the DSN built in the recipe and handed over by name, never echoed. A worktree has no app database, so it runs seeded and says so.
+  - DESIGN §11 notes that the gate measures the human's local configuration.
+
+  (human, 2026-11-10)
+
+## TST-013 — Tasks
+
+- [x] TST-013.1 — `--categories-from-app-db` in `scripts/gate_3.py`, the `gate-3` Makefile rule, DESIGN §11, tests · QA · acceptance: `tests/unit/gate/test_gate_3_runner.py`
+
+## TST-013 — Results
+
+- **Tests:** the acceptance file passes 15, 6 of them new. They cover: the flag without a DSN; a read failure printed as fixed text only, with a planted DSN that never appears; the categories reaching the run, with the source line and no planted description in the output; no read without the flag; a skipped category failing the gate; unchained errors.
+- **Real run:** `make gate-3` through the new rule (main-checkout branch) with the app database: gate 3 PASS, with the source line "category descriptions: app database"; no DSN in the output. Figures stay on the box.
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; the gap: the Makefile rule itself has no automated test (it needs the app database).
+- **Privacy:** no description, category name, DSN or result figure in the repo or the output.
