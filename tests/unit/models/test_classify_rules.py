@@ -481,3 +481,57 @@ def test_the_cross_check_returns_a_flag_never_a_branch():
     assert check(NsfwLevel.safe, 0.99) is True
     assert branch_for_level(NsfwLevel.explicit, NsfwLevel.nudity) == "nsfw"
     assert check(NsfwLevel.explicit, 0.0) is True
+
+
+# ---- the conservative floor (CLS-007.D3) and the raw cross-check (CLS-007.D5)
+
+
+def floored(level, traces, *, on, score=None, nsfw=NSFW, fmt="qorvex"):
+    answer = VlmAnswer(fmt, None, level, nsfw_traces=traces)
+    return rules_mod.decide(answer, VALL, score, nsfw, conservative_traces=on)
+
+
+def test_nsfw_traces_defaults_to_false_and_is_kept_beside_the_raw_level():
+    assert VlmAnswer("qorvex", None, NsfwLevel.safe).nsfw_traces is False
+    answer = VlmAnswer("qorvex", None, NsfwLevel.safe, nsfw_traces=True)
+    assert (answer.level, answer.nsfw_traces) == (NsfwLevel.safe, True)
+
+
+def test_the_floor_raises_safe_with_traces_to_suggestive_only_when_on():
+    suggestive_is_adult = ncfg("suggestive", OFF)
+    assert floored(NsfwLevel.safe, True, on=True, nsfw=suggestive_is_adult).branch == "nsfw"
+    assert floored(NsfwLevel.safe, True, on=False, nsfw=suggestive_is_adult).branch == "safe"
+    assert floored(NsfwLevel.safe, False, on=True, nsfw=suggestive_is_adult).branch == "safe"
+
+
+def test_the_floor_never_goes_above_suggestive():
+    # At the human's `nudity`, a floored safe image stays safe, and a higher level is untouched.
+    assert floored(NsfwLevel.safe, True, on=True).branch == "safe"
+    assert floored(NsfwLevel.suggestive, True, on=True).branch == "safe"
+    assert floored(NsfwLevel.nudity, True, on=True).branch == "nsfw"
+    deep = ncfg("explicit", OFF)
+    assert floored(NsfwLevel.safe, True, on=True, nsfw=deep).branch == "safe"
+    assert floored(NsfwLevel.suggestive, True, on=True, nsfw=deep).branch == "safe"
+    assert floored(NsfwLevel.nudity, True, on=True, nsfw=deep).branch == "safe"
+
+
+def test_the_floor_is_off_by_default():
+    answer = VlmAnswer("qorvex", None, NsfwLevel.safe, nsfw_traces=True)
+    got = rules_mod.decide(answer, VALL, None, ncfg("suggestive", OFF))
+    assert got.branch == "safe"
+
+
+def test_the_cross_check_compares_the_raw_level_not_the_floored_one():
+    # CLS-007.D5: raw safe + traces, floor on, a high Falconsai score still disagrees; the
+    # branch stays safe at `nudity` because the floored level is only suggestive.
+    for on in (True, False):
+        got = floored(NsfwLevel.safe, True, on=on, score=0.95)
+        assert (got.needs_review, got.review_reason) == (True, "nsfw_disagreement")
+        assert got.branch == "safe"
+
+
+def test_a_floored_level_does_not_trigger_the_adult_half_of_the_cross_check():
+    # Effective suggestive at min_level suggestive is adult, but the raw level is safe, so a
+    # low Falconsai score (agreeing with "safe") is no disagreement.
+    got = floored(NsfwLevel.safe, True, on=True, score=0.05, nsfw=ncfg("suggestive", BOTH))
+    assert got.branch == "nsfw" and got.needs_review is False
