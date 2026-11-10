@@ -601,7 +601,7 @@ def test_run_eval_reads_the_app_database_only_when_asked(monkeypatch, tmp_path):
     assert asked == [] and got["app"] is None
     lines = ev.run_eval(*args, from_app_db=True, app_source=source)
     assert asked == [DSN_SECRET] and got["app"][0].description == FMT_TEXT
-    assert "category descriptions: seeded" in lines  # the stub collect says what it was given
+    assert FMT_TEXT not in "\n".join(lines)
 
 
 def test_the_report_says_where_the_descriptions_came_from_and_nothing_more():
@@ -611,18 +611,40 @@ def test_the_report_says_where_the_descriptions_came_from_and_nothing_more():
     assert "category descriptions: seeded" in seeded
     assert "conservative traces: off" in seeded
     assert not any(line.startswith("categories skipped") for line in seeded)
-    app = dataclasses.replace(
-        collected(outcomes()), descriptions="app database", conservative_traces=True, skipped=2
+    # CLS-007.4.2: plant a secret where the human's private wording could ride in (a local
+    # prompt's body and user message), and prove it is held by what render receives. render
+    # reads only `effective_version` and `replacement_hash` today, so the body and user plants
+    # guard against a future read; the hash check below is what render does show.
+    private = load_effective_prompt("classify_v1").model_copy(
+        update={"template": FMT_TEXT, "user": FMT_TEXT, "replacement_hash": "feedc0de"}
     )
-    out = ev.render(app, True)
-    assert "category descriptions: app database" in out
-    assert "conservative traces: on" in out
-    assert "categories skipped: 2" in out
-    text = "\n".join(out)
-    assert FMT_TEXT not in text and "Qorvex" not in text.split("bug checks")[0]
+    base = collected(outcomes())
+    app = dataclasses.replace(
+        base,
+        prompts=(private, *base.prompts[1:]),
+        descriptions="app database",
+        conservative_traces=True,
+        skipped=2,
+    )
+    assert FMT_TEXT in app.prompts[0].template and FMT_TEXT in app.prompts[0].user
+    for detail in (False, True):
+        out = ev.render(app, detail)
+        text = "\n".join(out)
+        assert "category descriptions: app database" in out
+        assert "conservative traces: on" in out
+        assert "categories skipped: 2" in out
+        assert FMT_TEXT not in text and "Qorvex" not in text.split("bug checks")[0]
+        assert ("feedc0de" in text) is detail  # the local hash is console-only
 
 
 def test_app_types_hold_nothing_planted_in_their_reprs():
     cat = ev.AppCategory(SECRET, SECRET, SECRET, SECRET, SECRET, SECRET)
+    held = (cat.axis, cat.name, cat.folder, cat.branch, cat.description, cat.parent)
+    assert all(SECRET in value for value in held)  # every plant is really held
     assert SECRET not in repr(cat) + str(cat)
-    assert SECRET not in repr(ev.Answer("a", None, "safe", None, traces=True))
+    # Every Answer field that could carry a value holds a plant, and the plant is really there.
+    answer = ev.Answer(SECRET, SECRET + "_t", SECRET + "_l", 0.7391846, traces=True)
+    assert SECRET in answer.format and SECRET in answer.topic and SECRET in answer.level
+    assert answer.nsfw == 0.7391846
+    text = repr(answer) + str(answer)
+    assert SECRET not in text and "0.7391846" not in text and "True" not in text

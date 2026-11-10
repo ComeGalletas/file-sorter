@@ -765,8 +765,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - [x] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (subtasks .4 `4a04494`, .1 `6f01de4`, .5 `4d89c31`, .6 review round 1: real plants in the privacy tests, the render comment)
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
-- [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
-- [ ] CLS-007.4 — The follow-ups from #198's review: the app-database `update` wrapped like the insert, the eval's privacy tests given real plants, one end-to-end `collect` test with `app_categories`, and the CLS-007.3 journal hash · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
+- [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtask .1 `d98b2a6`)
+- [x] CLS-007.4 — The eval's review fixes: a refused description update is skipped and counted; real plants in the privacy tests; `collect` end to end with the app's categories · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtasks .1 `cc906fc`, .2 `b3e3200`, .3 `5372073`, .4 `28e2f04` the journal tick, .5 review round 1: the plants proved held)
 
 ## CLS-007 — Results
 
@@ -792,6 +792,13 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Tests:** unit 36 in `tests/unit/eval/test_classify_eval.py`, db 3 in `tests/db/eval/test_apply_app_categories.py`; `make lint` clean. The planted-description test uses a local replacement with the slots, so the plant provably reaches the model call before absence is asserted elsewhere.
 - **Not run here:** the real run (the human's descriptions, the VLM) is another desk's.
 - **Status, self-rating, Reviewer and Privacy auditor verdicts:** pending.
+
+### CLS-007.4 — Results (ML)
+
+- **Built:** `apply_app_categories` runs the description update in a savepoint with the same `psycopg.Error` catch as the insert; a refusal counts as skipped and the driver text is dropped. The `Answer` repr test plants a value in every field; the `render` test feeds a planted local prompt body and user message in the public and console forms; the stub-collect assertion is replaced by an absence check. One integration test runs `collect` with a fake app source: an app description and an app-only category reach the model request, and three runs write three cache files.
+- **Tests:** `make lint` clean; the three touched files pass in this desk's test project: unit 36, `tests/db/eval/test_apply_app_categories.py` 4, `tests/integration/eval` 1. The full `make test` ran green (2413).
+- **Not run:** the real eval, and no gpu tier (`classifier/models/` and `prompts/` untouched).
+- **Status, self-rating, Reviewer and Privacy auditor verdicts:** in the PR.
 
 ---
 

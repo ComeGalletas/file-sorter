@@ -286,7 +286,7 @@ def apply_app_categories(conn, app: Sequence[AppCategory]) -> int:
 
     A category that exists on its axis takes the app's description. One that only the app has is
     inserted, parents first. One whose parent is in neither place, or that the schema's own
-    constraints refuse, is skipped and only counted.
+    constraints refuse (an insert or a description update), is skipped and only counted.
     """
     import psycopg
 
@@ -295,12 +295,17 @@ def apply_app_categories(conn, app: Sequence[AppCategory]) -> int:
         for i, axis, name in conn.execute("select id, axis, name from categories").fetchall()
     }
     pending = []
+    refused = 0
     for cat in app:
         if (cat.axis, cat.name) in ids:
-            conn.execute(
-                "update categories set description = %s where axis = %s and name = %s",
-                (cat.description, cat.axis, cat.name),
-            )
+            try:
+                with conn.transaction():
+                    conn.execute(
+                        "update categories set description = %s where axis = %s and name = %s",
+                        (cat.description, cat.axis, cat.name),
+                    )
+            except psycopg.Error:
+                refused += 1  # CLS-007.4.1: counted as skipped; the driver text is dropped
         else:
             pending.append(cat)
     progress = True
@@ -323,7 +328,7 @@ def apply_app_categories(conn, app: Sequence[AppCategory]) -> int:
             except psycopg.Error:
                 waiting.append(cat)  # counted as skipped below; the driver text is dropped
         pending = waiting
-    return len(pending)
+    return refused + len(pending)
 
 
 def read_definitions(conn) -> tuple[dict[str, str | None], dict[str, str | None]]:
