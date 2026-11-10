@@ -113,6 +113,8 @@ class NsfwConfig(_Section):
     threshold: float | None = None  # obsolete (CLS-004.D3): replaced by min_level
     min_level: NsfwLevel  # required: the VLM path has no default (CLS-004.D3)
     cross_check: CrossCheckConfig = CrossCheckConfig()
+    # CLS-007.D3: a `safe` level with traces counts as `suggestive`, never higher; off by default.
+    conservative_traces: bool = False
     mode: Literal["mirror", "separate"]
     root: str
 
