@@ -759,8 +759,16 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-007 — Tasks
 
-- [ ] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py`
+- [x] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (subtasks .4 `4a04494`, .1 `6f01de4`, .5 `4d89c31`, .6 review round 1: real plants in the privacy tests, the render comment)
+  - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [ ] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
 - [ ] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
 
 ## CLS-007 — Results
+
+### CLS-007.1 — Results (ML)
+
+- **Tests:** `make test` 2349 passed (unit, db, integration); `make lint` clean. New unit tests: definition rendering, order and fallback, injection inertness, newline collapse before `neutralize`, a local replacement using both slots, `traces` validation and retry, the floor, the raw-level cross-check (CLS-007.D5), planted-description repr and error checks.
+- **Recordings:** the 10 VLM scenario recordings keyed to the old prompt hashes were deleted and 10 re-recorded with `--record-ollama` against the committed prompts (the git-ignored local files set aside during the run). The gpu tier runs at pre-push.
+- **Front-matter key:** `extra_slots` in `classify_v1.md` (lead approved).
+- **Deferred:** the node passing `definitions` and `conservative_traces` is CLS-007.2; the eval is CLS-007.3.

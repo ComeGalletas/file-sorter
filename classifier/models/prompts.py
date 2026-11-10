@@ -79,6 +79,9 @@ class Prompt(BaseModel):
     user: str | None = Field(default=None, repr=False)
     user_alt: str | None = Field(default=None, repr=False)
     output_schema: dict[str, Any] = Field(alias="schema")
+    # CLS-007.D1: slots the loader fills even when the committed body doesn't use them, so a
+    # local replacement (CLS-004.D17) may. The committed body stays as it is.
+    extra_slots: tuple[str, ...] = ()
     template: str
     # CLS-004.8: set only by `load_effective_prompt`, never by a prompt file. The text is the
     # human's local system text, so it stays out of every repr; the hash is what gets recorded.
@@ -126,12 +129,14 @@ class Prompt(BaseModel):
 
     def render(self, **values: str) -> str:
         """The template with every slot filled, in one pass: a value is never re-scanned."""
-        if set(values) != self.slots:
+        # The body's slots are required; `extra_slots` (CLS-007.D1) are accepted, never required.
+        if not self.slots <= set(values) <= self.slots | set(self.extra_slots):
             raise PromptError(
                 f"prompt {self.version} takes slots {sorted(self.slots)}, got {sorted(values)}"
             )
         # CLS-004.8: the local replacement is the whole system text; its slots are a subset of
-        # the committed ones (checked at load), and the user templates stay the committed ones.
+        # the committed body's slots plus `extra_slots` (checked at load), and the user
+        # templates stay the committed ones.
         source = self.template if self.replacement is None else f"{self.replacement}\n"
         body = _SLOT.sub(lambda m: values[m.group(1)], source)
         # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.
@@ -242,14 +247,14 @@ def load_effective_prompt(name: str, prompts_dir: Path = PROMPTS_DIR) -> Prompt:
 
     The replacement is the whole system text (CLS-004.D17). The front matter and the user
     templates stay the committed file's, and the replacement may use only the slots the committed
-    body declares. `load_prompt` itself never reads `local/`, and `*.example.md` files are never
-    loaded: only the exact name is.
+    body uses or declares in `extra_slots` (CLS-007.D1). `load_prompt` itself never reads
+    `local/`, and `*.example.md` files are never loaded: only the exact name is.
     """
     prompt = load_prompt(name, prompts_dir)
     text = _read_replacement(prompts_dir / LOCAL_DIR / f"{name}.md", name)
     if text is None:
         return prompt
-    undeclared = not set(_SLOT.findall(text)) <= prompt.slots
+    undeclared = not set(_SLOT.findall(text)) <= prompt.slots | set(prompt.extra_slots)
     if undeclared:  # raised outside any except; fixed text, as the slot name is the human's text
         raise PromptError(f"local prompt for {name} uses a slot the committed prompt lacks")
     digest = hashlib.sha256(text.encode("utf-8", "surrogatepass")).hexdigest()[:8]

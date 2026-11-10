@@ -71,6 +71,8 @@ class VlmAnswer:
     level: NsfwLevel
     # CLS-004.6: the effective prompt version(s) behind this answer; None when not recorded.
     prompt_version: str | None = None
+    # CLS-007.D2: the model's own `traces` flag, kept beside the raw `level`.
+    nsfw_traces: bool = False
 
 
 @dataclass(frozen=True)
@@ -137,10 +139,14 @@ def decide(
     rules: Sequence[CategoryRule],
     nsfw_score: float | None,
     nsfw_config: NsfwConfig,
+    conservative_traces: bool = False,
 ) -> VlmChoice:
     """Turn the VLM's answer into one image's branch, format and topic (CLS-004.D1, D3, D5).
 
     - Branch: from the level alone (`branch_for_level`). A category's `branch` never changes it.
+    - Floor (CLS-007.D3): with `conservative_traces`, a `safe` level with `nsfw_traces` counts as
+      `suggestive` for the branch; never higher. The Falconsai cross-check still compares the
+      raw level (CLS-007.D5).
     - Format (R-CLS-3): `unsorted` ("none fits"), or a format the branch excludes (R-CLS-6,
       CLS-002.D2), gives `unsorted`.
     - Topic (R-CLS-3a): `None`, an excluded topic, or the topic named like the chosen format
@@ -154,7 +160,10 @@ def decide(
     A format or topic that is not a rule of its axis raises: the node treats it as an
     unanswered call (CLS-004.D4).
     """
-    branch = branch_for_level(answer.level, nsfw_config.min_level)
+    effective = answer.level
+    if conservative_traces and answer.nsfw_traces and effective == NsfwLevel.safe:
+        effective = NsfwLevel.suggestive
+    branch = branch_for_level(effective, nsfw_config.min_level)
     flagged = nsfw_cross_check(
         answer.level, nsfw_config.min_level, nsfw_score, nsfw_config.cross_check
     )

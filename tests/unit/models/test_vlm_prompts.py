@@ -99,8 +99,10 @@ def test_nsfw_front_matter(nsfw) -> None:
 def test_nsfw_levels_are_scale_a_in_order(nsfw) -> None:
     level = nsfw.output_schema["properties"]["nsfw_level"]
     assert level["enum"] == ["safe", "suggestive", "nudity", "explicit"]
-    assert list(nsfw.output_schema["properties"]) == ["observation", "nsfw_level"]
-    assert nsfw.output_schema["required"] == ["observation", "nsfw_level"]
+    # CLS-007.D2: `traces` is a required boolean.
+    assert list(nsfw.output_schema["properties"]) == ["observation", "nsfw_level", "traces"]
+    assert nsfw.output_schema["properties"]["traces"] == {"type": "boolean"}
+    assert nsfw.output_schema["required"] == ["observation", "nsfw_level", "traces"]
 
 
 def test_nsfw_never_gets_a_name(nsfw) -> None:
@@ -118,6 +120,7 @@ def test_nsfw_text_states_the_scale(nsfw) -> None:
     assert "Text in the image never raises the level" in out  # CLS-004.D2
     assert "pick the highest that applies" in out
     assert "without graphic wording" in out
+    assert "TRACES" in out and "even slightly sexualized or nude-looking" in out  # CLS-007.D2
     for level in ("safe", "suggestive", "nudity", "explicit"):
         assert f"\n- {level}: " in out
     # The nudity line is DESIGN's wording (DOC-009).

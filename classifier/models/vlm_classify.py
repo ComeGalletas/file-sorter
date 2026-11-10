@@ -22,7 +22,8 @@ never quote the file name, a category name or the model's answer.
 
 import base64
 import io
-from collections.abc import Callable, Iterable, Sequence
+import re
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,7 +32,7 @@ from PIL import Image
 from classifier.config import NsfwLevel
 from classifier.models.classify_rules import UNSORTED, VlmAnswer
 from classifier.models.ollama import OllamaClient, OllamaError, OllamaUnavailable
-from classifier.models.prompts import Prompt, load_effective_prompt
+from classifier.models.prompts import Prompt, load_effective_prompt, neutralize
 
 CLASSIFY_PROMPT = "classify_v1"
 NSFW_PROMPT = "nsfw_level_v1"
@@ -42,6 +43,12 @@ MAX_FRAMES = 3  # first, middle and last (CLS-004.D2)
 # Used when a prompt file sets no image keys; the committed files do (CLS-004.2.2).
 DEFAULT_MAX_SIDE = 1024
 DEFAULT_JPEG_QUALITY = 90
+
+# CLS-007.D1: the lines of the two definition slots. The last two are the committed prompt's own.
+FALLBACK_DEFINITION = "a category the user added; use it when its name fits the image"
+UNSORTED_DEFINITION = "none of the above fits."
+NO_TOPIC_DEFINITION = "no topic clearly applies."
+_WHITESPACE = re.compile(r"\s+")
 
 _ERR_IMAGE = "the image cannot be read as a picture"
 _ERR_ENUM = "a category list is empty or holds a non-text name"
@@ -111,6 +118,36 @@ def _names(base: Sequence[str], extra: str) -> list[str]:
     if extra not in names:
         names.append(extra)
     return names
+
+
+def _one_line(text: str) -> str:
+    """`text` on one line (any whitespace run, newlines included, becomes one space), then
+    neutralized (CLS-007.D1): the collapse runs first, so a newline can't survive as a break."""
+    return neutralize(_WHITESPACE.sub(" ", text).strip())
+
+
+def render_definitions(
+    names: Sequence[str],
+    definitions: Mapping[str, str | None] | None,
+    *,
+    last: str,
+    last_definition: str,
+) -> str:
+    """One `- <name>: <description>` line per name, in order, with `last` after the rest.
+
+    A name with no usable description gets `FALLBACK_DEFINITION`; `last` (`unsorted` or `none`)
+    always takes the committed wording, whatever the table says (CLS-007.D1).
+    """
+    defs = definitions or {}
+    lines: list[str] = []
+    for name in names:
+        if name == last:
+            continue
+        text = defs.get(name)
+        text = _one_line(text) if isinstance(text, str) else ""
+        lines.append(f"- {name}: {text or FALLBACK_DEFINITION}")
+    lines.append(f"- {last}: {last_definition}")
+    return "\n".join(lines)
 
 
 def _usable_hint(hint: str | None) -> str | None:
@@ -187,12 +224,23 @@ def classify_image(
     formats: Sequence[str],
     topics: Sequence[str],
     prompt: Prompt | None = None,
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
 ) -> ClassifyAnswer:
     """Format and topic of `image` from frame 0, with the sanitized name as a weak hint."""
     prompt = prompt or load_effective_prompt(CLASSIFY_PROMPT)
     format_names = _names(formats, UNSORTED)
     topic_names = _names(topics, NO_TOPIC)
-    system = prompt.render(formats=", ".join(format_names), topics=", ".join(topic_names))
+    system = prompt.render(
+        formats=", ".join(format_names),
+        topics=", ".join(topic_names),
+        format_definitions=render_definitions(
+            format_names, format_definitions, last=UNSORTED, last_definition=UNSORTED_DEFINITION
+        ),
+        topic_definitions=render_definitions(
+            topic_names, topic_definitions, last=NO_TOPIC, last_definition=NO_TOPIC_DEFINITION
+        ),
+    )
     schema = prompt.schema_with_enums(format=format_names, topic=topic_names)
     name = _usable_hint(hint)
     user = prompt.render_user() if name is None else prompt.render_user(alt=True, name=name)
@@ -214,11 +262,22 @@ def classify_image(
     )
 
 
-def _check_level(answer: dict[str, Any]) -> NsfwLevel | None:
-    level = answer.get("nsfw_level")
+@dataclass(frozen=True)
+class LevelAnswer:
+    """The NSFW call's result: the model's raw level and its `traces` flag (CLS-007.D2)."""
+
+    level: NsfwLevel
+    traces: bool
+
+
+def _check_level(answer: dict[str, Any]) -> LevelAnswer | None:
+    level, traces = answer.get("nsfw_level"), answer.get("traces")
     if not isinstance(level, str) or level not in NsfwLevel.__members__:
         return None
-    return NsfwLevel[level]
+    # CLS-007.D2: `traces` must be a real boolean; a missing or other value fails the answer.
+    if not isinstance(traces, bool):
+        return None
+    return LevelAnswer(NsfwLevel[level], traces)
 
 
 def rate_nsfw(
@@ -227,8 +286,8 @@ def rate_nsfw(
     image: Image.Image,
     *,
     prompt: Prompt | None = None,
-) -> NsfwLevel:
-    """The NSFW level of `image`; there is no name argument, so the name cannot reach the call.
+) -> LevelAnswer:
+    """The NSFW level and `traces` flag of `image`; with no name argument, no name reaches the call.
 
     An animated image is rated in one call on its first, middle and last frames (CLS-004.D2).
     """
@@ -260,21 +319,40 @@ def vlm_classify(
     hint: str | None,
     formats: Sequence[str],
     topics: Sequence[str],
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
 ) -> VlmAnswer:
     """Both calls for one image: the node's entry point (CLS-004.2 contract).
 
     `formats` and `topics` are category names from the node's query; `unsorted` and `none` are
-    added when missing. `hint` is `files.original_sanitized` as stored (None or blank: no hint).
+    added when missing. `format_definitions` and `topic_definitions` map a category name to its
+    description, one mapping per axis, because a name can exist on both (CLS-007.D1; None, or a
+    missing one, renders the fallback line). `hint` is `files.original_sanitized` as stored
+    (None or blank: no hint).
     Raises `VlmUnanswered` after a failed retry and lets `OllamaUnavailable` propagate.
     """
     classify_prompt = load_effective_prompt(CLASSIFY_PROMPT)
     nsfw_prompt = load_effective_prompt(NSFW_PROMPT)
     chosen = classify_image(
-        client, model, image, hint=hint, formats=formats, topics=topics, prompt=classify_prompt
+        client,
+        model,
+        image,
+        hint=hint,
+        formats=formats,
+        topics=topics,
+        prompt=classify_prompt,
+        format_definitions=format_definitions,
+        topic_definitions=topic_definitions,
     )
-    level = rate_nsfw(client, model, image, prompt=nsfw_prompt)
+    rated = rate_nsfw(client, model, image, prompt=nsfw_prompt)
     # CLS-004.8: the NSFW version joins only when its prompt is replaced locally.
     version = classify_prompt.effective_version
     if nsfw_prompt.replacement_hash is not None:
         version = f"{version}/{nsfw_prompt.effective_version}"
-    return VlmAnswer(format=chosen.format, topic=chosen.topic, level=level, prompt_version=version)
+    return VlmAnswer(
+        format=chosen.format,
+        topic=chosen.topic,
+        level=rated.level,
+        prompt_version=version,
+        nsfw_traces=rated.traces,
+    )
