@@ -612,7 +612,9 @@ def test_the_report_says_where_the_descriptions_came_from_and_nothing_more():
     assert "conservative traces: off" in seeded
     assert not any(line.startswith("categories skipped") for line in seeded)
     # CLS-007.4.2: plant a secret where the human's private wording could ride in (a local
-    # prompt's body and user message), and prove it is held by what render receives.
+    # prompt's body and user message), and prove it is held by what render receives. render
+    # reads only `effective_version` and `replacement_hash` today, so the body and user plants
+    # guard against a future read; the hash check below is what render does show.
     private = load_effective_prompt("classify_v1").model_copy(
         update={"template": FMT_TEXT, "user": FMT_TEXT, "replacement_hash": "feedc0de"}
     )
@@ -637,9 +639,12 @@ def test_the_report_says_where_the_descriptions_came_from_and_nothing_more():
 
 def test_app_types_hold_nothing_planted_in_their_reprs():
     cat = ev.AppCategory(SECRET, SECRET, SECRET, SECRET, SECRET, SECRET)
+    held = (cat.axis, cat.name, cat.folder, cat.branch, cat.description, cat.parent)
+    assert all(SECRET in value for value in held)  # every plant is really held
     assert SECRET not in repr(cat) + str(cat)
     # Every Answer field that could carry a value holds a plant, and the plant is really there.
     answer = ev.Answer(SECRET, SECRET + "_t", SECRET + "_l", 0.7391846, traces=True)
-    assert SECRET in answer.format and answer.nsfw == 0.7391846
+    assert SECRET in answer.format and SECRET in answer.topic and SECRET in answer.level
+    assert answer.nsfw == 0.7391846
     text = repr(answer) + str(answer)
     assert SECRET not in text and "0.7391846" not in text and "True" not in text

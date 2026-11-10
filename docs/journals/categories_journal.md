@@ -766,7 +766,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
 - [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtask .1 `d98b2a6`)
-- [x] CLS-007.4 — The eval's review fixes: a refused description update is skipped and counted; real plants in the privacy tests; `collect` end to end with the app's categories · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtasks .1 `cc906fc`, .2 `b3e3200`, .3 `5372073`, .4 this journal tick)
+- [x] CLS-007.4 — The eval's review fixes: a refused description update is skipped and counted; real plants in the privacy tests; `collect` end to end with the app's categories · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtasks .1 `cc906fc`, .2 `b3e3200`, .3 `5372073`, .4 `28e2f04` the journal tick, .5 review round 1: the plants proved held)
 
 ## CLS-007 — Results
 
