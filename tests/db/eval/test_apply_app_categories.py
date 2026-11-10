@@ -66,3 +66,29 @@ def test_a_category_the_schema_refuses_is_skipped_and_the_rest_continue(db):
     assert ev.apply_app_categories(db, [bad, cat("topic", "Goodone", "Go")]) == 1
     topics = names(db, "topic")
     assert "Badbranch" not in topics and "Goodone" in topics
+
+
+def test_a_refused_description_update_is_skipped_and_the_driver_text_is_dropped(db, capsys):
+    import psycopg
+
+    seeded = db.execute("select axis, name from categories where axis = 'format' order by id")
+    first, second = [name for _, name in seeded.fetchall()][:2]
+    db.execute(f"alter table categories add constraint zq_refuse check (description <> '{PLANT}')")
+    # The plant reaches the constraint: the driver's own text for a direct update carries it.
+    try:
+        with db.transaction():
+            db.execute("update categories set description = %s where name = %s", (PLANT, first))
+        driver_text = ""
+    except psycopg.Error as exc:
+        driver_text = str(exc)
+    assert PLANT in driver_text
+
+    app = [cat("format", first, "x", PLANT), cat("format", second, "x", "kept wording")]
+    returned = ev.apply_app_categories(db, app)
+
+    assert returned == 1
+    formats = names(db, "format")
+    assert formats[first] != PLANT and formats[second] == "kept wording"
+    assert db.execute("select 1").fetchone() == (1,)  # the connection is still usable
+    shown = capsys.readouterr()
+    assert PLANT not in repr(returned) + shown.out + shown.err
