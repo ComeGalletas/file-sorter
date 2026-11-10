@@ -511,6 +511,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
   - [x] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (2026-10-18, the CLS-004.D11 checkpoint; posted on #136, no PR). It did not pass gate 3, and the human chose CLS-004.D12's amendment and route B′ (CLS-004.D17). The step was numbered .5.6 in the desk's plan; .5.6 went to the review fixes, so the run is .5.7.
   - [x] CLS-004.5.8 — The re-run on the box after CLS-004.8 and the human's local prompt files, public form only, "with the provisional H8 local prompts", judged at 80% (TST-009.3) (2026-10-19, posted on #136, no PR). In the public form: format ok, topic FAIL, NSFW gate FAIL; unrecognized, `suggestive-negative`, node errors, coverage and bug checks ok. Gate 3 is not met; the human decides the next step.
+  - [ ] CLS-004.5.9 — The re-run after CLS-007 and the human's rewritten local files and descriptions, public form only, "with the provisional H8 local prompts"; on a fail, report and stop (the human, 2026-11-10)
 - [x] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
@@ -684,3 +685,78 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - Status: DONE_WITH_CONCERNS. Self-rating 9/10, proud: yes. The gap: `check_text_input` and `TEXT_RULE` stay in `tests/recordings/vision.py`, because `prompts.py` (slot values) and the Ollama image-prompt rule still use them (TST-008.D9); only the `text` and `param` kinds and their uses are gone. Follow-up if wanted: move the rule into `prompts.py`.
 - Tests: `make test` 2310 passed with the 53 recordings deleted; `make lint` clean. The acceptance test, `tests/devtools/test_vision_recordings.py`, is in that run. No gpu run: no gpu file touched (the two gpu recording tests use neither `embed_texts` nor the logit params).
 - `test_calibration_rows_are_left_out_of_the_gate_rows` is renamed, not deleted: it keeps its `gate_rows` and `suggestive_negatives` asserts and loses only the `calibration_rows()` line.
+
+---
+
+## CLI-007 — Requirement (human, the M3 dynamic-categories follow-up, 2026-11-10)
+
+- **Objective:** Every category the human adds carries a short description the classify prompt can show.
+- **Details:**
+  - `categories add` requires `--description`;
+  - `edit --description` changes it;
+  - `list` shows it.
+- **Constraint:** the human's descriptions stay in the local database. The CLI never echoes one in an error or a log.
+- **Implements:** R-CLS-7; serves CLS-007.
+
+## CLI-007 — Confirmed reading
+
+- **CLI-007.D1 — validation** (human: "one line, at most 200 characters, validated and neutralized like the name hint"; the split is the lead's reading): the CLI validates the same rule as DB-006.D1, plus no control characters and valid text, and stores the text as given. Neutralizing happens where it renders into a prompt (CLS-007.1), as for the name hint.
+
+## CLI-007 — Tasks
+
+- [ ] CLI-007.1 — `add --description` (required), `edit --description`, `list` shows it; fixed-text, unchained errors that never quote the value · #187 · Pipeline · acceptance: `tests/db/cli/test_categories_cli.py`
+
+## CLI-007 — Results
+
+---
+
+## CLS-007 — Requirement (human, the M3 dynamic-categories follow-up, 2026-11-10)
+
+- **Objective:** The classify prompt shows each category as a `- name: description` line, generated at run time, and the NSFW call can cautiously raise `safe` to `suggestive`.
+- **Details:**
+  - two new classify slots, `{format_definitions}` and `{topic_definitions}`, one line per category in table order, with `unsorted` and `none` last;
+  - a category without a description renders as "a category the user added; use it when its name fits the image";
+  - the `nsfw_level` schema gains a boolean `traces`;
+  - with `nsfw.conservative_traces: true` (the human's value), `safe` with traces becomes `suggestive`, never higher;
+  - `files.nsfw_traces` is stored, so the floor can be re-applied or turned off without re-running the model.
+- **Constraint:**
+  - The committed prompts stay generic.
+  - The human's session rewrites the local B′ files (CLS-004.D17) to use the new slots and the traces line; the human approved that wording.
+  - CLS-004.5.9's re-run is reported "with the provisional H8 local prompts".
+  - If it fails, no prompt or value changes beyond what's tested: report and stop.
+  - G1 waits for the human even if the re-run passes.
+- **Implements:** R-CLS-1, R-CLS-2, R-CLS-8; extends CLS-004.
+
+## CLS-007 — Confirmed reading
+
+- **CLS-007.D1 — the definition slots** (lead, 2026-11-10).
+  - The committed `classify_v1.md` body is unchanged (CLAUDE.md §1.7).
+  - Its front matter declares the two slots as available, so a local replacement may use them, and the loader always fills them.
+  - Descriptions are neutralized like the name hint.
+  - `unsorted` and `none` take the committed prompt's own wording.
+  - `vlm_classify` gets the descriptions through a new keyword argument; `formats` and `topics` are unchanged.
+- **CLS-007.D2 — `traces`** (human: "traces in the nsfw_level schema"; the line is the lead's, provisional).
+  - The committed `nsfw_level_v1.md` gains a required boolean `traces` and one generic definition line, from the human's proposal.
+  - A missing or non-boolean value is an answer failure, which takes the one retry.
+- **CLS-007.D3 — the floor** (human: `nsfw.conservative_traces: true`; the storage is the lead's reading of "re-applied or turned off later").
+  - The ledger stores the model's raw `nsfw_level` and `nsfw_traces`.
+  - `decide` computes the effective level and the branch from them.
+  - The floor raises only `safe` to `suggestive`, so at `min_level: nudity` it never changes the Adult cut.
+- **CLS-007.D4 — the eval reads the human's descriptions** (lead, 2026-11-10, provisional).
+  - The eval runs in a throwaway schema seeded with the generic text. `--categories-from-app-db` copies the local app database's categories and descriptions into it, from a DSN passed at run time (`APP_DB_DSN`).
+  - The default output says only `category descriptions: app database | seeded` and `conservative traces: on | off`.
+- **DESIGN** (§4.3's "describing user-added categories is a possible follow-up", §5, §6, R-CLS-7) needs a human-side DOC PR. It was asked of the human's session.
+
+## CLS-007 — Plan
+
+1. **In parallel:** DB-006.1 (Pipeline), CLI-007.1 (Pipeline), CLS-007.1 (ML; it takes the descriptions as inputs and needs no column).
+2. **Then:** CLS-007.2 (Pipeline: the config key and the node), then CLS-007.3 (ML: the eval).
+3. **Then:** the human's session writes the local files and the local descriptions, and CLS-004.5.9 re-runs (ML, on #136).
+
+## CLS-007 — Tasks
+
+- [ ] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py`
+- [ ] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
+- [ ] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
+
+## CLS-007 — Results
