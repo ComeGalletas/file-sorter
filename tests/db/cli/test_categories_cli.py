@@ -80,9 +80,12 @@ def test_list_shows_the_columns_and_the_seeded_unsorted(cli: None) -> None:
     result = run("list")
     assert result.exit_code == 0
     lines = result.output.splitlines()
-    assert lines[0] == ("axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)")
+    assert lines[0] == (
+        "axis\tname\tfolder\tmin_score(unused)\tbranch\tparent\tprompts(unused)\tdescription"
+    )
     unsorted = [ln for ln in lines if ln.startswith("format\tunsorted\t")]
-    assert unsorted == ["format\tunsorted\tUnsorted\taxis default\tany\t-\t0"]
+    assert len(unsorted) == 1
+    assert unsorted[0].startswith("format\tunsorted\tUnsorted\taxis default\tany\t-\t0\t")
 
 
 def _rows(dsn: str, sql: str, *params: object) -> list[tuple]:
@@ -90,8 +93,12 @@ def _rows(dsn: str, sql: str, *params: object) -> list[tuple]:
         return conn.execute(sql, params).fetchall()
 
 
+DESC = "A synthetic stand-in description"
+
+
 def add(*args: str):
-    return run("add", *args)
+    extra = () if "--description" in args else ("--description", DESC)  # CLI-007.1
+    return run("add", *args, *extra)
 
 
 def test_add_creates_the_category_and_its_prompts_in_order(cli: None, schema_dsn: str) -> None:
@@ -110,7 +117,7 @@ def test_add_creates_the_category_and_its_prompts_in_order(cli: None, schema_dsn
         ("Qorvex Dir", pytest.approx(0.4), "safe", 1, "two qorvex"),
     ]  # noqa: E501
     listed = run("list").output
-    assert "topic\tQorvex\tQorvex Dir\t0.4\tsafe\t-\t2" in listed
+    assert f"topic\tQorvex\tQorvex Dir\t0.4\tsafe\t-\t2\t{DESC}" in listed
 
 
 def test_add_without_a_prompt_succeeds_and_stores_none(cli: None, schema_dsn: str) -> None:
@@ -252,7 +259,7 @@ def test_edit_can_reset_min_score_and_keeps_other_fields(cli: None) -> None:
 @pytest.mark.parametrize(
     ("args", "text"),
     [
-        ([], "nothing to change: pass --folder, --prompt, --min-score or --branch"),
+        ([], "nothing to change: pass --folder, --description, --prompt, --min-score or --branch"),
         (["--min-score", "0.2", "--reset-min-score"],
          "--min-score and --reset-min-score cannot be used together"),
         (["--folder", "a/b"], "invalid folder name"),
@@ -328,7 +335,7 @@ def test_errors_never_echo_typed_values_and_are_unchained(cli: None) -> None:
     assert secret not in result.output
     # Called directly, the Exit the command raises has no cause or context.
     with pytest.raises(typer.Exit) as raised:
-        add_category(secret, "topic", "a/" + secret, [secret], None, "any", None, CONFIG)
+        add_category(secret, "topic", "a/" + secret, [secret], None, "any", None, secret, CONFIG)
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
 
@@ -345,3 +352,79 @@ def test_a_missing_config_is_fixed_text(cli: None) -> None:
     result = runner.invoke(app, ["categories", "list", "--config", "/nope/qorvex.yaml"])
     assert result.exit_code == 2
     assert "qorvex" not in result.output
+
+
+def _desc_of(dsn: str, name: str) -> list[tuple]:
+    return _rows(dsn, "select description from categories where name = %s", name)
+
+
+def test_add_requires_a_description_with_fixed_text(cli: None, schema_dsn: str) -> None:
+    result = run("add", "Qorvex", "--axis", "topic", "--folder", "Qv")
+    _fails(result, "--description is required")
+    assert _rows(schema_dsn, "select count(*) from categories where name = 'Qorvex'") == [(0,)]
+
+
+def test_add_and_edit_store_the_description_and_list_shows_it(cli: None, schema_dsn: str) -> None:
+    first = add("Qorvex", "--axis", "topic", "--folder", "Qv", "--description", "first")
+    assert first.exit_code == 0, first.output
+    assert _desc_of(schema_dsn, "Qorvex") == [("first",)]
+    assert "topic\tQorvex\tQv\taxis default\tany\t-\t0\tfirst" in run("list").output
+    result = edit("Qorvex", "--description", "  second one ")
+    assert result.exit_code == 0, result.output
+    assert _desc_of(schema_dsn, "Qorvex") == [("  second one ",)]  # stored as given
+    assert edit("Qorvex", "--folder", "Qv2").exit_code == 0  # another edit leaves it alone
+    assert _desc_of(schema_dsn, "Qorvex") == [("  second one ",)]
+
+
+def test_list_shows_a_dash_for_a_null_description(cli: None, schema_dsn: str) -> None:
+    assert add("Qorvex", "--axis", "topic", "--folder", "Qv").exit_code == 0
+    with psycopg.connect(schema_dsn) as conn:
+        conn.execute("update categories set description = null where name = 'Qorvex'")
+    assert "topic\tQorvex\tQv\taxis default\tany\t-\t0\t-" in run("list").output
+
+
+_DESC_ERR = "the description must be one line of 1 to 200 characters, with no control characters"
+_BAD = {
+    "blank": "   ",
+    "empty": "",
+    "long": "x" * 201,
+    "newline": "line one\nline two",
+    "return": "a\rb",
+    "tab": "a\tb",
+    "nul": "a\x00b",
+    "del": "a\x7fb",
+    "c1": "a\x85b",
+    "surrogate": "a\ud800b",
+}
+
+
+@pytest.mark.parametrize("bad", list(_BAD))
+def test_add_and_edit_refuse_a_bad_description(cli: None, schema_dsn: str, bad: str) -> None:
+    value = _BAD[bad]
+    _fails(add("Zhyndel", "--axis", "topic", "--folder", "Zh", "--description", value), _DESC_ERR)
+    assert _desc_of(schema_dsn, "Zhyndel") == []
+    assert add("Qorvex", "--axis", "topic", "--folder", "Qv").exit_code == 0
+    _fails(edit("Qorvex", "--description", value), _DESC_ERR)
+    assert _desc_of(schema_dsn, "Qorvex") == [(DESC,)]
+
+
+def test_a_description_of_exactly_200_characters_is_accepted(cli: None, schema_dsn: str) -> None:
+    value = "é" * 200
+    assert add("Qorvex", "--axis", "topic", "--folder", "Qv", "--description", value).exit_code == 0
+    assert _desc_of(schema_dsn, "Qorvex") == [(value,)]
+
+
+def test_description_errors_never_quote_the_value_and_are_unchained(cli: None) -> None:
+    secret = "zzsecretzz"
+    for value in (secret + "\n" + secret, secret * 40, secret + "\ud800"):
+        result = add("Qorvex", "--axis", "topic", "--folder", "Qv", "--description", value)
+        assert result.exit_code == 2
+        assert secret not in result.output
+        with pytest.raises(typer.Exit) as raised:
+            add_category("Qorvex", "topic", "Qv", None, None, "any", None, value, CONFIG)
+        assert raised.value.__cause__ is None
+        assert raised.value.__context__ is None
+    with pytest.raises(typer.Exit) as raised:  # missing
+        add_category("Qorvex", "topic", "Qv", None, None, "any", None, None, CONFIG)
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
