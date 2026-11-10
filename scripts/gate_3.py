@@ -12,8 +12,14 @@ path relative to the images folder, in memory only (TST-008.D4).
 
 The vocabularies the labels are checked against are the names in the `categories` table of the
 gate's own fresh schema after `alembic upgrade head`: the committed configuration (the seed plus
-the approved overrides of the later migrations). Categories the human adds to the local database
-through the category CLI are not measured.
+the approved overrides of the later migrations).
+
+With `--categories-from-app-db` (TST-013.D1), the gate first copies the local app database's
+categories and their descriptions into that fresh schema, the way the eval does (CLS-007.3; the
+DSN comes from `APP_DB_DSN`, the connection is read-only). The gate then measures the human's own
+configuration, like the local prompt files it already uses. A category that can't be applied
+fails the gate. `make gate-3` from the main checkout passes the flag; the output says only where
+the descriptions came from, never a description, a name or the DSN.
 
 Measures (TST-008.D4; the figures come from exact integer ratios, only the printed one is rounded):
   - format: rows with a format whose ledger format equals it; `unsorted` or none is a miss;
@@ -387,6 +393,42 @@ def read_vocabularies(dsn: str) -> tuple[frozenset[str], frozenset[str]]:
     return formats, topics
 
 
+APP_FLAG = "--categories-from-app-db"
+_ERR_APP_APPLY = "some categories of the app database could not be applied"
+
+
+def read_app(dsn: str | None) -> list[Any]:
+    """The app database's categories (TST-013.D1). A failure is the eval's fixed text, re-raised
+    outside any `except` as a setup error, unchained: a driver message can carry the DSN."""
+    from eval.classify_eval import EvalError, read_app_categories
+
+    problem = None
+    found: list[Any] = []
+    try:
+        found = read_app_categories(dsn)
+    except EvalError as exc:
+        problem = str(exc)
+    if problem is not None:
+        raise GateSetupError(problem)
+    return found
+
+
+def apply_app(schema: str, app: Sequence[Any], connect: Any = None) -> None:
+    """Copy `app` into the fresh schema; any category that can't be applied fails the gate.
+    `connect` is a test seam (default `psycopg.connect`)."""
+    from eval.classify_eval import apply_app_categories
+
+    if connect is None:
+        import psycopg
+
+        connect = psycopg.connect
+    with connect(schema) as conn:
+        skipped = apply_app_categories(conn, app)
+        conn.commit()
+    if skipped:
+        raise GateSetupError(_ERR_APP_APPLY)
+
+
 def run_pipeline(
     dsn: str,
     images: Path,
@@ -394,9 +436,11 @@ def run_pipeline(
     nodes: Sequence[Any],
     rules_path: Path | None = None,
     vision: Any = None,
+    app: Sequence[Any] | None = None,
 ) -> Measures:
     """Ingest -> sanitize -> classify into a fresh schema and a removed temp results tree
-    (TST-005.D6), then tally the labels against the ledger (TST-008.D4)."""
+    (TST-005.D6), then tally the labels against the ledger (TST-008.D4). `app` is the app
+    database's categories (TST-013.D1), applied to the fresh schema first."""
     import tempfile
 
     import psycopg
@@ -405,6 +449,8 @@ def run_pipeline(
     from tests.integration.schema_support import migrated_schema
 
     with migrated_schema(dsn) as schema, tempfile.TemporaryDirectory() as results:
+        if app is not None:
+            apply_app(schema, app)
         formats, topics = read_vocabularies(schema)
         labels = fixture_labels.load_labels(labels_path, formats=formats, topics=topics)
         config = load_config(images, results, schema, rules_path)
@@ -435,14 +481,19 @@ def main(
     `vision=None` the classify node builds the real SigLIP and NSFW backends (CLS-002.2)."""
     import os
 
-    detail = "--detail" in (sys.argv[1:] if argv is None else argv)
+    args = sys.argv[1:] if argv is None else argv
+    detail = "--detail" in args
+    from_app = APP_FLAG in args
     try:
         dsn = check_prerequisites(os.environ.get("DB_DSN"), images)
+        app = read_app(os.environ.get("APP_DB_DSN")) if from_app else None
         if registry is None:
             from classifier.graph import nodes as graph_nodes
 
             registry = graph_nodes.REGISTRY
-        measures = run_pipeline(dsn, images, labels_path, gate_nodes(registry), rules_path, vision)
+        measures = run_pipeline(
+            dsn, images, labels_path, gate_nodes(registry), rules_path, vision, app
+        )
     except (GateSetupError, GateRunError, fixture_labels.LabelsError) as exc:  # fixed text
         print(f"gate 3 FAIL: {exc}", file=sys.stderr)
         return 1
@@ -450,7 +501,8 @@ def main(
         print(f"gate 3 FAIL: run errored ({type(exc).__name__})", file=sys.stderr)
         return 1
     verdict = judge(measures, detail)
-    print("\n".join((*verdict.lines, *verdict.detail)))
+    source = f"category descriptions: {'app database' if from_app else 'seeded'}"
+    print("\n".join((source, *verdict.lines, *verdict.detail)))
     return 0 if verdict.passed else 1
 
 

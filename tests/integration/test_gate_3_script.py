@@ -147,7 +147,7 @@ def agreeing_rows(learned: dict[str, tuple]) -> list[str]:
     return rows
 
 
-PUBLIC_LINES = 8
+PUBLIC_LINES = 9  # TST-013.D1: the category-descriptions line comes first
 
 
 def test_the_node_flags_only_the_double_and_writes_formats(
@@ -169,8 +169,9 @@ def test_a_run_on_agreeing_labels_prints_the_public_form(
     out = capsys.readouterr()
     lines = out.out.splitlines()
     assert len(lines) == PUBLIC_LINES and out.err == ""
-    assert lines[0].startswith("format agreement: 100% ") and lines[0].endswith(": ok")
-    assert lines[3:7] == [
+    assert lines[0] == "category descriptions: seeded"
+    assert lines[1].startswith("format agreement: 100% ") and lines[1].endswith(": ok")
+    assert lines[4:8] == [
         "nsfw gate (adult flagged, safe not flagged): ok",
         "suggestive-negative rows safe: ok",
         "node errors: ok",
@@ -188,7 +189,7 @@ def test_a_missed_adult_label_fails_the_nsfw_line_without_a_digit(
     labels = write_labels(tmp_path, rows)
     assert gate(images, labels, rules_path, vision) == 1
     lines = capsys.readouterr().out.splitlines()
-    assert lines[3] == "nsfw gate (adult flagged, safe not flagged): FAIL"
+    assert lines[4] == "nsfw gate (adult flagged, safe not flagged): FAIL"
     assert lines[-1] == "gate 3 FAIL"
 
 
@@ -225,7 +226,7 @@ def test_detail_stays_behind_the_flag(
     assert out.splitlines()[:PUBLIC_LINES] == plain.splitlines()
     assert "DETAIL" in out and "never paste" in out
     assert "secret" not in out
-    assert not re.search(r"\d", plain.splitlines()[3] + plain.splitlines()[4])
+    assert not re.search(r"\d", plain.splitlines()[4] + plain.splitlines()[5])
 
 
 def test_the_source_folder_is_left_alone(tmp_path, images, rules_path, vision, monkeypatch) -> None:
