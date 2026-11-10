@@ -324,15 +324,16 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 ## DOC-013 — Confirmed reading
 
-- **DOC-013.D1:** DESIGN R-CLS-7 says the database CHECK matches the CLI rule, since DB-006.1's CHECK also refuses control characters. R-CLS-2 names the front-matter key, `extra_slots`, and says the loader refuses any other slot, as CLS-007.1 merged it. (the human's session, 2026-11-10, at the lead's request)
+- **DOC-013.D1:** DESIGN R-CLS-7 says the database CHECK covers non-blank, the length, ASCII control characters and line breaks, and the CLI also refuses the C1 control characters (DB-006.1's CHECK refuses ASCII controls, not C1). R-CLS-2 names the front-matter key, `extra_slots`, and says the loader refuses any other slot, as CLS-007.1 merged it. (the human's session, 2026-11-10, at the lead's request)
 
 ## DOC-013 — Tasks
 
 - [x] DOC-013.1 — DESIGN R-CLS-2 and R-CLS-7
+- [x] DOC-013.2 — Review round 1: R-CLS-7 names the CHECK's ASCII controls and the CLI's C1 controls instead of "matches"
 
 ## DOC-013 — Results
 
 - **Status:** DONE.
-- **Self-rating:** 10/10, yes; two sentences, both checked against `main`.
+- **Self-rating:** 9/10, yes; round 1 caught an overstatement (C1 controls), now fixed and checked against migration 0006.
 - **Triage:** small. Spec text only.
 - **Privacy:** generic wording only.
