@@ -134,7 +134,9 @@ def test_add_without_a_prompt_succeeds_and_stores_none(cli: None, schema_dsn: st
 
 def test_help_marks_prompt_and_min_score_unused(cli: None) -> None:
     for verb in ("add", "edit"):
-        text = " ".join(run(verb, "--help").output.split())
+        # TST-014.D1: Rich wraps help text inside a box, so a phrase can be split by a `│`
+        # border; drop the border characters before collapsing whitespace.
+        text = " ".join(run(verb, "--help").output.replace("│", " ").split())
         assert "Unused on the VLM path (CLS-004.D7)" in text
         assert "DOC-009.D3" in text
 

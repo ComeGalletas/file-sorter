@@ -704,3 +704,27 @@ references or host paths here. Use hashes.
 - **Status:** DONE.
 - **Self-rating:** 9/10, yes; the gap: the Makefile rule itself has no automated test (it needs the app database).
 - **Privacy:** no description, category name, DSN or result figure in the repo or the output.
+
+---
+
+## TST-014 — Requirement (human's session, 2026-11-10)
+
+**Objective:** the default tiers pass again after the app image is rebuilt with current dependency versions.
+
+**Details:** on the human's instruction, the Docker build cache and the unused images were pruned. The rebuilt `file-sorter-app:dev` resolved `rich` 15.0.0 and `typer` 0.29.0, since `pyproject.toml` sets minimums only. Their help box wraps the `--prompt`/`--min-score` text so that a `│` border splits the phrase `test_help_marks_prompt_and_min_score_unused` looks for. The pre-push hook then blocked every push.
+
+**Constraint:** written by the human's session while the lead was parked; the index row is the lead's (RUN-002.D13).
+
+## TST-014 — Confirmed reading
+
+- **TST-014.D1:** help-text tests strip Rich's box border characters before collapsing whitespace, so the check doesn't depend on how a dependency wraps the box. Pinning `rich`/`typer` is left to the lead (a RUN item), if wanted. (the human's session, 2026-11-10)
+
+## TST-014 — Tasks
+
+- [x] TST-014.1 — `tests/db/cli/test_categories_cli.py` drops `│` before matching · QA · acceptance: `tests/db/cli/test_categories_cli.py`
+
+## TST-014 — Results
+
+- **Tests:** the acceptance file passes 59; `make lint` is clean; the pre-push hook ran the default tiers.
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes. The gap: other future help-text tests need the same care; there's only one today.
