@@ -281,3 +281,31 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Status:** DONE.
 - **Triage:** small. Spec, rule and brief text; no code.
 - **Privacy:** no counts, file names or per-image remarks. The checkpoint result appears only as "after the repo's checkpoint run".
+
+---
+
+## DOC-012 — Requirement (human, 2026-11-10)
+
+**Objective:** bring DESIGN in line with the human's M3 follow-up decisions of 2026-11-10: categories described to the model at run time, and the cautious `traces` option for the NSFW level.
+
+**Details:** the lead's issues DB-006.1 (#186), CLI-007.1 (#187), CLS-007.1 (#188) and CLS-007.2 (#189) build it; the lead asked the human's session for the spec change. It doesn't block the code.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13). The CLS-007, DB-006 and CLI-007 decisions themselves are recorded in the lead's journal blocks.
+
+## DOC-012 — Confirmed reading
+
+- **DOC-012.D1:** DESIGN follows the human's 2026-11-10 decisions as the lead's issues state them. (human, 2026-11-10)
+  - **R-CLS-1:** the required `traces` answer and `nsfw.conservative_traces` (safe with traces counts as suggestive, never higher). The branch uses the effective level; the ledger keeps the raw level and `files.nsfw_traces`.
+  - **R-CLS-2:** the `{format_definitions}` and `{topic_definitions}` slots, the fallback line for a category with no description, and neutralizing.
+  - **R-CLS-7:** `add` requires `--description`, `edit --description`, `list` shows it, and the one-line, 200-character rule.
+  - **R-CLS-8 and §4.3's closing paragraph:** the human's own category descriptions stay in the local database; the seeded defaults are the generic ones. The stale "until the replace mode lands" sentence now points at CLS-004.D17.
+  - **§5:** `categories.description` and `files.nsfw_traces`. **§6:** `nsfw.conservative_traces: true`.
+
+## DOC-012 — Tasks
+
+- [ ] DOC-012.1 — DESIGN R-CLS-1, R-CLS-2, R-CLS-7, R-CLS-8, §4.3, §5 and §6
+
+## DOC-012 — Results
+
+- **Triage:** small. Spec text only; no code.
+- **Privacy:** generic wording only. No category description of the human's, no prompt text from the local files, and no result figures.
