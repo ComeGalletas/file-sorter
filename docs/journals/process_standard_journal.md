@@ -296,6 +296,7 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 - **DOC-012.D1:** DESIGN follows the human's 2026-11-10 decisions as the lead's issues state them. (human, 2026-11-10)
   - **R-CLS-1:** the required `traces` answer and `nsfw.conservative_traces` (safe with traces counts as suggestive, never higher). The branch uses the effective level; the ledger keeps the raw level and `files.nsfw_traces`.
+    The Falconsai cross-check compares against the raw level (CLS-007.D5, lead, provisional, 2026-11-10).
   - **R-CLS-2:** the `{format_definitions}` and `{topic_definitions}` slots, the fallback line for a category with no description, and neutralizing.
   - **R-CLS-7:** `add` requires `--description`, `edit --description`, `list` shows it, and the one-line, 200-character rule.
   - **R-CLS-8 and §4.3's closing paragraph:** the human's own category descriptions stay in the local database; the seeded defaults are the generic ones. The stale "until the replace mode lands" sentence now points at CLS-004.D17.
