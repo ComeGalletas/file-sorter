@@ -224,7 +224,8 @@ def classify_image(
     formats: Sequence[str],
     topics: Sequence[str],
     prompt: Prompt | None = None,
-    definitions: Mapping[str, str | None] | None = None,
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
 ) -> ClassifyAnswer:
     """Format and topic of `image` from frame 0, with the sanitized name as a weak hint."""
     prompt = prompt or load_effective_prompt(CLASSIFY_PROMPT)
@@ -234,10 +235,10 @@ def classify_image(
         formats=", ".join(format_names),
         topics=", ".join(topic_names),
         format_definitions=render_definitions(
-            format_names, definitions, last=UNSORTED, last_definition=UNSORTED_DEFINITION
+            format_names, format_definitions, last=UNSORTED, last_definition=UNSORTED_DEFINITION
         ),
         topic_definitions=render_definitions(
-            topic_names, definitions, last=NO_TOPIC, last_definition=NO_TOPIC_DEFINITION
+            topic_names, topic_definitions, last=NO_TOPIC, last_definition=NO_TOPIC_DEFINITION
         ),
     )
     schema = prompt.schema_with_enums(format=format_names, topic=topic_names)
@@ -318,14 +319,16 @@ def vlm_classify(
     hint: str | None,
     formats: Sequence[str],
     topics: Sequence[str],
-    definitions: Mapping[str, str | None] | None = None,
+    format_definitions: Mapping[str, str | None] | None = None,
+    topic_definitions: Mapping[str, str | None] | None = None,
 ) -> VlmAnswer:
     """Both calls for one image: the node's entry point (CLS-004.2 contract).
 
     `formats` and `topics` are category names from the node's query; `unsorted` and `none` are
-    added when missing. `definitions` maps a category name to its description (CLS-007.D1;
-    None, or a missing one, renders the fallback line). `hint` is `files.original_sanitized` as
-    stored (None or blank: no hint).
+    added when missing. `format_definitions` and `topic_definitions` map a category name to its
+    description, one mapping per axis, because a name can exist on both (CLS-007.D1; None, or a
+    missing one, renders the fallback line). `hint` is `files.original_sanitized` as stored
+    (None or blank: no hint).
     Raises `VlmUnanswered` after a failed retry and lets `OllamaUnavailable` propagate.
     """
     classify_prompt = load_effective_prompt(CLASSIFY_PROMPT)
@@ -338,7 +341,8 @@ def vlm_classify(
         formats=formats,
         topics=topics,
         prompt=classify_prompt,
-        definitions=definitions,
+        format_definitions=format_definitions,
+        topic_definitions=topic_definitions,
     )
     rated = rate_nsfw(client, model, image, prompt=nsfw_prompt)
     # CLS-004.8: the NSFW version joins only when its prompt is replaced locally.

@@ -525,7 +525,9 @@ SLOT_BODY = "Formats:\n{format_definitions}\nTopics:\n{topic_definitions}\nList:
 def test_the_committed_body_is_unchanged_by_the_definitions() -> None:
     client, seen = scripted(classify_reply())
     prompt = load_prompt("classify_v1")
-    classify(client, definitions=DEFS, topics=["none", *TOPICS])  # `none` listed first
+    classify(
+        client, format_definitions=DEFS, topic_definitions=DEFS, topics=["none", *TOPICS]
+    )  # `none` listed first
     assert seen[0]["system"] == prompt.render(
         formats="Qorvex, Zhyndel, unsorted", topics="none, Vrellik, Xandoz"
     )
@@ -594,7 +596,7 @@ def test_a_local_replacement_using_both_slots_renders_with_user_categories_in_th
     answer = classify(
         client,
         formats=[*FORMATS, "Plimbo"],  # a user-added category with no description
-        definitions={"Qorvex": "q\nq", "Plimbo": None},
+        format_definitions={"Qorvex": "q\nq", "Plimbo": None},
     )
     system = seen[0]["system"]
     fallback = FALLBACK_DEFINITION
@@ -643,15 +645,15 @@ def test_a_planted_description_never_reaches_a_repr_or_an_error() -> None:
         hint=None,
         formats=FORMATS,
         topics=TOPICS,
-        definitions={"Qorvex": SECRET},
+        format_definitions={"Qorvex": SECRET},
     )
     assert f"- Qorvex: {SECRET}" in seen[0]["system"]  # the plant is real: it was sent
     assert SECRET not in repr(answer) and SECRET not in str(answer)
-    chosen = classify(scripted(classify_reply())[0], definitions={"Qorvex": SECRET})
+    chosen = classify(scripted(classify_reply())[0], format_definitions={"Qorvex": SECRET})
     assert SECRET not in repr(chosen) and SECRET not in str(chosen)
     bad, bad_seen = scripted(httpx.Response(500), httpx.Response(500))
     with pytest.raises(VlmUnanswered) as excinfo:
-        classify(bad, definitions={"Qorvex": SECRET})
+        classify(bad, format_definitions={"Qorvex": SECRET})
     assert all(f"- Qorvex: {SECRET}" in body["system"] for body in bad_seen)
     assert SECRET not in str(excinfo.value) and SECRET not in repr(excinfo.value)
     assert excinfo.value.__cause__ is None and excinfo.value.__context__ is None
@@ -668,7 +670,7 @@ def test_the_definitions_go_to_the_classify_call_only() -> None:
         hint=None,
         formats=FORMATS,
         topics=TOPICS,
-        definitions={"Qorvex": SECRET},
+        format_definitions={"Qorvex": SECRET},
     )
     assert f"- Qorvex: {SECRET}" in seen[0]["system"]  # the plant is real: it was sent
     assert SECRET not in json.dumps(seen[1])
@@ -708,3 +710,31 @@ def test_vlm_classify_carries_the_traces_flag() -> None:
     client, _ = scripted(classify_reply(), level_reply("safe", True))
     answer = vlm_classify(client, MODEL, picture(), hint=None, formats=FORMATS, topics=TOPICS)
     assert answer.level is NsfwLevel.safe and answer.nsfw_traces is True
+
+
+# --- CLS-007.1.7: one description mapping per axis -----------------------------------------
+
+
+@pytest.mark.prompts_local_on
+@pytest.mark.usefixtures("slot_prompts")
+def test_a_name_on_both_axes_shows_its_own_description_in_each_slot() -> None:
+    # `Qorvex` is a format and a topic here, as `memes` and `documents` are in the seeds.
+    client, seen = scripted(classify_reply("Zhyndel", "Qorvex"))
+    classify(
+        client,
+        topics=["Qorvex", "Xandoz"],
+        format_definitions={"Qorvex": "the format wording"},
+        topic_definitions={"Qorvex": "the topic wording", "Xandoz": "other topic wording"},
+    )
+    formats_part, topics_part = seen[0]["system"].split("Topics:\n")
+    assert "- Qorvex: the format wording" in formats_part
+    assert "the topic wording" not in formats_part
+    assert "- Qorvex: the topic wording" in topics_part
+    assert "the format wording" not in topics_part
+    assert "- unsorted: none of the above fits." in formats_part
+    assert "- none: no topic clearly applies." in topics_part
+
+
+def test_an_axis_without_its_own_mapping_gets_the_fallback_line() -> None:
+    out = render_definitions(["Qorvex"], None, last="none", last_definition="d")
+    assert out.startswith(f"- Qorvex: {FALLBACK_DEFINITION}")
