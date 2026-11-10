@@ -135,7 +135,8 @@ class Prompt(BaseModel):
                 f"prompt {self.version} takes slots {sorted(self.slots)}, got {sorted(values)}"
             )
         # CLS-004.8: the local replacement is the whole system text; its slots are a subset of
-        # the committed ones (checked at load), and the user templates stay the committed ones.
+        # the committed body's slots plus `extra_slots` (checked at load), and the user
+        # templates stay the committed ones.
         source = self.template if self.replacement is None else f"{self.replacement}\n"
         body = _SLOT.sub(lambda m: values[m.group(1)], source)
         # Only the wrapper is scanned for {prompt}, so the body can't inject a second one.

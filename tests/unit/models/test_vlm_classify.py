@@ -620,8 +620,22 @@ def test_the_slots_are_declared_not_used_and_an_undeclared_one_is_refused(tmp_pa
     assert excinfo.value.__cause__ is None and excinfo.value.__context__ is None
 
 
+@pytest.fixture
+def slot_prompts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A local replacement that uses both definition slots, so a planted description is sent.
+
+    The committed system text doesn't use the slots (CLS-007.D1), so without this a test could
+    pass even when `definitions` were dropped.
+    """
+    _local_dir(tmp_path, SLOT_BODY)
+    real = vlm_module.load_effective_prompt
+    monkeypatch.setattr(vlm_module, "load_effective_prompt", lambda n: real(n, tmp_path))
+
+
+@pytest.mark.prompts_local_on  # TST-011.1: it plants a local prompt and expects it applied
+@pytest.mark.usefixtures("slot_prompts")
 def test_a_planted_description_never_reaches_a_repr_or_an_error() -> None:
-    client, _ = scripted(classify_reply(), level_reply())
+    client, seen = scripted(classify_reply(), level_reply())
     answer = vlm_classify(
         client,
         MODEL,
@@ -631,14 +645,20 @@ def test_a_planted_description_never_reaches_a_repr_or_an_error() -> None:
         topics=TOPICS,
         definitions={"Qorvex": SECRET},
     )
+    assert f"- Qorvex: {SECRET}" in seen[0]["system"]  # the plant is real: it was sent
     assert SECRET not in repr(answer) and SECRET not in str(answer)
-    bad, _ = scripted(httpx.Response(500), httpx.Response(500))
+    chosen = classify(scripted(classify_reply())[0], definitions={"Qorvex": SECRET})
+    assert SECRET not in repr(chosen) and SECRET not in str(chosen)
+    bad, bad_seen = scripted(httpx.Response(500), httpx.Response(500))
     with pytest.raises(VlmUnanswered) as excinfo:
         classify(bad, definitions={"Qorvex": SECRET})
+    assert all(f"- Qorvex: {SECRET}" in body["system"] for body in bad_seen)
     assert SECRET not in str(excinfo.value) and SECRET not in repr(excinfo.value)
     assert excinfo.value.__cause__ is None and excinfo.value.__context__ is None
 
 
+@pytest.mark.prompts_local_on
+@pytest.mark.usefixtures("slot_prompts")
 def test_the_definitions_go_to_the_classify_call_only() -> None:
     client, seen = scripted(classify_reply(), level_reply())
     vlm_classify(
@@ -650,6 +670,7 @@ def test_the_definitions_go_to_the_classify_call_only() -> None:
         topics=TOPICS,
         definitions={"Qorvex": SECRET},
     )
+    assert f"- Qorvex: {SECRET}" in seen[0]["system"]  # the plant is real: it was sent
     assert SECRET not in json.dumps(seen[1])
 
 
