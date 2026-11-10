@@ -511,7 +511,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.5.6 — Review fixes: the default output shows plain prompt versions, `local addenda: present|absent` and, when present, `with the provisional H8 addenda`; the `+<8 hex>` shows only behind `--detail`; the `prompt_digest` stand-in is replaced by `load_effective_prompt` (#163)
   - [x] CLS-004.5.7 — The real run on the box, public form only, "with the provisional H8 addenda" (2026-10-18, the CLS-004.D11 checkpoint; posted on #136, no PR). It did not pass gate 3, and the human chose CLS-004.D12's amendment and route B′ (CLS-004.D17). The step was numbered .5.6 in the desk's plan; .5.6 went to the review fixes, so the run is .5.7.
   - [x] CLS-004.5.8 — The re-run on the box after CLS-004.8 and the human's local prompt files, public form only, "with the provisional H8 local prompts", judged at 80% (TST-009.3) (2026-10-19, posted on #136, no PR). In the public form: format ok, topic FAIL, NSFW gate FAIL; unrecognized, `suggestive-negative`, node errors, coverage and bug checks ok. Gate 3 is not met; the human decides the next step.
-  - [ ] CLS-004.5.9 — The re-run after CLS-007 and the human's rewritten local files and descriptions, public form only, "with the provisional H8 local prompts"; on a fail, report and stop (the human, 2026-11-10)
+  - [x] CLS-004.5.9 — The re-run after CLS-007 and the human's rewritten local files and descriptions, public form only, "with the provisional H8 local prompts"; on a fail, report and stop (the human, 2026-11-10) (2026-11-10, posted on #136, no PR). In the public form: format ok, topic ok, NSFW gate FAIL; everything else ok. Reported and stopped, as the human instructed. CLS-008.1 (#200) followed.
+  - [x] CLS-004.5.10 — The re-run after CLS-008.1 (2026-11-10, posted on #136 by the human's session, no PR): every gate 3 criterion passes. G1 stays with the human.
 - [x] CLS-004.6 — Load an optional git-ignored local prompt addendum, `prompts/local/<version>.md`, with a hashed effective version and committed `*.example.md` files (CLS-004.D16, H8) · #148 · ML · acceptance: `tests/unit/models/test_prompts.py`
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
@@ -749,6 +750,8 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **CLS-007.D4 — the eval reads the human's descriptions** (lead, 2026-11-10, provisional).
   - The eval runs in a throwaway schema seeded with the generic text. `--categories-from-app-db` copies the local app database's categories and descriptions into it, from a DSN passed at run time (`APP_DB_DSN`).
   - The default output says only `category descriptions: app database | seeded` and `conservative traces: on | off`.
+- **CLS-007.D5 — the Falconsai cross-check compares the raw level** (lead, 2026-11-10, provisional; DESIGN R-CLS-1 follows, DOC-012). The two conditions are "raw safe with score ≥ `safe_above`" and "raw ≥ `min_level` with score ≤ `adult_below`". With the floored level, a safe image with traces could never trip the first.
+- **CLS-007.D6 — the eval cache may hold category names** (lead, 2026-11-10, provisional; ruled on #198 over the privacy auditor's FAIL). `eval/.cache/` is git-ignored and stays on the box, like the local ledger, which stores the same names in `files.format` and `files.topic`. Descriptions are only digested into the cache key, never stored.
 - **DESIGN** (§4.3's "describing user-added categories is a possible follow-up", §5, §6, R-CLS-7) needs a human-side DOC PR. It was asked of the human's session.
 
 ## CLS-007 — Plan
@@ -763,6 +766,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
 - [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
+- [ ] CLS-007.4 — The follow-ups from #198's review: the app-database `update` wrapped like the insert, the eval's privacy tests given real plants, one end-to-end `collect` test with `app_categories`, and the CLS-007.3 journal hash · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
 
 ## CLS-007 — Results
 
