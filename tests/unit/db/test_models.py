@@ -15,7 +15,7 @@ KEY_COLUMNS = {
     "topic_scores", "caption", "prompt_version", "reference_id", "template", "proposed_path",
     "output_path", "output_hash", "needs_review", "review_reason", "has_sensitive_text",
     "error", "created_at", "updated_at", "original_sanitized", "image_vec",
-    "nsfw_level",
+    "nsfw_level", "nsfw_traces",
 }  # fmt: skip
 FILLED_AT_INGEST = {
     "source_hash", "short_hash", "source_path", "duplicate_paths", "source_mtime", "ext",
@@ -67,7 +67,7 @@ def test_category_tables_mirror_0003() -> None:
     cats = Category.__table__
     assert {c.name: c.nullable for c in cats.columns} == {
         "id": False, "axis": False, "name": False, "folder": False, "min_score": True,
-        "branch": False, "parent_id": True, "created_at": False,
+        "branch": False, "parent_id": True, "created_at": False, "description": True,
     }  # fmt: skip
     prompts = CategoryPrompt.__table__
     assert {c.name for c in prompts.columns} == {"id", "category_id", "position", "prompt"}
