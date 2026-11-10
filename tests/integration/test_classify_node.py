@@ -68,7 +68,8 @@ def _backend(vision_backend):
 def _rows(dsn: str) -> dict[str, dict[str, object]]:
     with psycopg.connect(dsn) as conn:
         cursor = conn.execute(
-            "select source_hash, status, branch, nsfw_score, nsfw_level, format, topic,"
+            "select source_hash, status, branch, nsfw_score, nsfw_level, nsfw_traces, format,"
+            " topic,"
             " format_scores, topic_scores, needs_review, review_reason, image_vec::text, error"
             " from files"
         )
@@ -79,7 +80,7 @@ def _rows(dsn: str) -> dict[str, dict[str, object]]:
 def _expected(dsn, backend, results, config, ollama_transport, label: str):
     """The row the node must write for `label`, from the client, `decide` and the same replay."""
     with psycopg.connect(dsn) as conn:
-        rules = _load_rules(conn)
+        rules, _ = _load_rules(conn)
     digest = source_hash(label)
     frames = open_working_frames(results / ".work", digest, "png")
     first = first_frame_rgb(frames)
@@ -93,7 +94,8 @@ def _expected(dsn, backend, results, config, ollama_transport, label: str):
             formats=list(FORMATS),
             topics=list(TOPICS),
         )
-    return answer, nsfw, decide(answer, rules, nsfw, config.nsfw)
+    traces = config.nsfw.conservative_traces
+    return answer, nsfw, decide(answer, rules, nsfw, config.nsfw, conservative_traces=traces)
 
 
 def _check_rows(dsn, backend, results, config, ollama_transport, rows) -> None:
@@ -107,6 +109,7 @@ def _check_rows(dsn, backend, results, config, ollama_transport, rows) -> None:
             choice.topic,
         )
         assert row["nsfw_level"] == answer.level.name
+        assert row["nsfw_traces"] == answer.nsfw_traces  # CLS-007.D2
         assert row["nsfw_score"] == pytest.approx(nsfw, abs=1e-6)
         assert (row["needs_review"], row["review_reason"]) == (
             choice.needs_review,

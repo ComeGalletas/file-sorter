@@ -35,8 +35,10 @@ from classifier.graph.classify import (
 )
 from classifier.graph.nodes import NodeContext
 from classifier.graph.sanitize import WorkDirError
+from classifier.models import vlm_classify as vlm_module
 from classifier.models.classify_rules import VlmAnswer
 from classifier.models.ollama import OllamaUnavailable
+from classifier.models.prompts import PROMPTS_DIR
 from classifier.models.siglip import BATCH_SIZE
 from classifier.models.vision import VisionError
 from classifier.models.vlm_classify import VlmImageError
@@ -85,6 +87,7 @@ class Script:
     format: str = "Qorvex"
     topic: str = "none"
     level: str = "safe"
+    traces: bool = False
     fail: str | None = None  # "http": every call gets a 500; "down": Ollama is unreachable
 
 
@@ -110,7 +113,11 @@ class FakeOllama:
         if script.fail == "http":
             return httpx.Response(500)
         if "nsfw_level" in body["format"]["properties"]:
-            answer = {"observation": "synthetic cues", "nsfw_level": script.level, "traces": False}
+            answer = {
+                "observation": "synthetic cues",
+                "nsfw_level": script.level,
+                "traces": script.traces,
+            }
         else:
             answer = {
                 "observation": "synthetic cues",
@@ -193,7 +200,7 @@ def _ctx(
 
 def _row(db: psycopg.Connection, source_hash: str) -> dict[str, object]:
     cursor = db.execute(
-        "select status, branch, nsfw_score, nsfw_level, format, topic, format_scores,"
+        "select status, branch, nsfw_score, nsfw_level, nsfw_traces, format, topic, format_scores,"
         " topic_scores, needs_review, review_reason, image_vec is not null as has_vec, error"
         " from files where source_hash = %s",
         (source_hash,),
@@ -609,3 +616,123 @@ def test_no_thresholds_means_no_cross_check(
     h = _add(db, folders[1], 43, red=0, green=255)
     classify(db, _ctx(folders, config, FakeVision(), FakeOllama({0: Script(level="safe")})))
     assert _row(db, h)["needs_review"] is False
+
+
+PLANT_FORMAT = "Plantwhisk lorem"  # synthetic description plants (CLS-007.D1)
+PLANT_TOPIC = "Plantgrove ipsum"
+
+
+def _text(request: dict) -> str:
+    """Every text field of one Ollama request (never the images)."""
+    return str(request.get("prompt", "")) + str(request.get("system", ""))
+
+
+@pytest.fixture
+def slot_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The classify prompt with a system text that uses both definition slots.
+
+    The committed body doesn't use them (CLS-007.D1); only a local replacement does, so the test
+    sets one in memory and never reads `prompts/local/`.
+    """
+    real = vlm_module.load_effective_prompt
+
+    def load(name: str) -> object:
+        prompt = real(name, PROMPTS_DIR)
+        if name != vlm_module.CLASSIFY_PROMPT:
+            return prompt
+        text = "Formats:\n{format_definitions}\nTopics:\n{topic_definitions}\n{formats} {topics}"
+        return prompt.model_copy(update={"replacement": text, "replacement_hash": "0badc0de"})
+
+    monkeypatch.setattr(vlm_module, "load_effective_prompt", load)
+
+
+def _describe(db: psycopg.Connection, axis: str, name: str, description: str) -> None:
+    db.execute(
+        "update categories set description = %s where axis = %s and name = %s",
+        (description, axis, name),
+    )
+
+
+@pytest.mark.usefixtures("categories", "slot_prompt")
+def test_a_shared_name_carries_each_axis_its_own_description(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    caplog: pytest.LogCaptureFixture,
+) -> None:  # CLS-007.D1, CLS-007.2
+    _describe(db, "format", "Qorvex", PLANT_FORMAT)
+    _describe(db, "topic", "Qorvex", PLANT_TOPIC)
+    h = _add(db, folders[1], 20)
+    ollama = FakeOllama({0: Script("Qorvex", "Qorvex")})
+    with caplog.at_level(logging.DEBUG):
+        classify(db, _ctx(folders, config, FakeVision(), ollama))
+    (call,) = ollama.calls("classify")
+    text = _text(call)
+    assert PLANT_FORMAT in text and PLANT_TOPIC in text  # the plants reached the prompt
+    lines = [ln for ln in text.splitlines() if ln.lstrip().startswith("- Qorvex")]
+    assert any(PLANT_FORMAT in ln for ln in lines)
+    assert any(PLANT_TOPIC in ln for ln in lines)
+    assert not any(PLANT_FORMAT in ln and PLANT_TOPIC in ln for ln in lines)  # kept apart
+    for plant in (PLANT_FORMAT, PLANT_TOPIC):
+        assert plant not in caplog.text
+        assert plant not in _text(ollama.calls("nsfw")[0])
+    assert _row(db, h)["status"] == "classified"
+
+
+@pytest.mark.usefixtures("categories", "slot_prompt")
+def test_a_missing_description_renders_the_fallback_line(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:
+    _add(db, folders[1], 21)
+    ollama = FakeOllama({0: Script()})
+    classify(db, _ctx(folders, config, FakeVision(), ollama))
+    assert "- Zhyndel: " in _text(ollama.calls("classify")[0])
+
+
+@pytest.mark.usefixtures("categories")
+def test_the_raw_level_and_traces_are_stored_and_the_branch_is_unchanged_at_nudity(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:  # CLS-007.D2, D3: at min_level nudity the floor can't flip the branch
+    assert config.nsfw.conservative_traces is True
+    h = _add(db, folders[1], 22)
+    ollama = FakeOllama({0: Script(level="safe", traces=True)})
+    classify(db, _ctx(folders, config, FakeVision(), ollama))
+    row = _row(db, h)
+    assert (row["nsfw_level"], row["nsfw_traces"], row["branch"]) == ("safe", True, "safe")
+
+
+@pytest.mark.usefixtures("categories")
+@pytest.mark.parametrize(
+    ("conservative", "traces", "branch"),
+    [(True, True, "nsfw"), (False, True, "safe"), (True, False, "safe")],
+)
+def test_the_floor_moves_the_branch_at_min_level_suggestive_but_not_the_stored_level(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    conservative: bool,
+    traces: bool,
+    branch: str,
+) -> None:  # CLS-007.D3
+    config.nsfw.min_level = NsfwLevel.suggestive
+    config.nsfw.conservative_traces = conservative
+    h = _add(db, folders[1], 23)
+    ollama = FakeOllama({0: Script(level="safe", traces=traces)})
+    result = classify(db, _ctx(folders, config, FakeVision(), ollama))
+    row = _row(db, h)
+    assert (row["branch"], row["nsfw_level"], row["nsfw_traces"]) == (branch, "safe", traces)
+    assert result.adult == (branch == "nsfw")
+
+
+@pytest.mark.usefixtures("categories")
+def test_the_cross_check_compares_the_raw_level_not_the_floored_one(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:  # CLS-007.D5
+    config.nsfw.min_level = NsfwLevel.suggestive
+    config.nsfw.cross_check.safe_above = 0.90
+    h = _add(db, folders[1], 24, green=255)  # Falconsai score 1.0
+    ollama = FakeOllama({0: Script(level="safe", traces=True)})
+    classify(db, _ctx(folders, config, FakeVision(), ollama))
+    row = _row(db, h)
+    assert row["branch"] == "nsfw"  # the floor made it adult ...
+    assert row["needs_review"] is True  # ... yet the raw `safe` still disagrees with the score

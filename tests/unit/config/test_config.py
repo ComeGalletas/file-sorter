@@ -36,6 +36,7 @@ def test_real_config_holds_the_vlm_values() -> None:
     assert config.nsfw.min_level is NsfwLevel.nudity  # the human's value (CLS-004.D3)
     assert config.nsfw.cross_check.safe_above == 0.90  # the human's values (CLS-004.D5, H3)
     assert config.nsfw.cross_check.adult_below == 0.10
+    assert config.nsfw.conservative_traces is True  # the human's value (CLS-007.D3)
     assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
     assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
 
@@ -350,6 +351,19 @@ def with_nsfw(**changes: object) -> dict:
 
 def cross_check(**values: object) -> dict:
     return with_nsfw(cross_check=values)
+
+
+def test_conservative_traces_defaults_off_and_takes_a_bool() -> None:  # CLS-007.D3
+    data = with_nsfw()
+    data["nsfw"].pop("conservative_traces", None)
+    assert Config.model_validate(data).nsfw.conservative_traces is False
+    assert Config.model_validate(with_nsfw(conservative_traces=True)).nsfw.conservative_traces
+
+
+@pytest.mark.parametrize("value", ["maybe", 1.5, None, []])
+def test_conservative_traces_refuses_a_non_bool(value: object) -> None:
+    with pytest.raises(ValidationError):
+        Config.model_validate(with_nsfw(conservative_traces=value))
 
 
 def test_level_enum_is_ordered_with_safe_below_all() -> None:

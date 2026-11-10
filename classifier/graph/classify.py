@@ -166,14 +166,14 @@ select source_hash, short_hash, ext, original_sanitized
  order by created_at, source_hash
 """
 _RULES = """
-select id, axis, name, folder, min_score, branch, parent_id
+select id, axis, name, folder, min_score, branch, parent_id, description
   from categories
  order by id
 """
 _CLASSIFIED = """
 update files
-   set status = 'classified', branch = %s, nsfw_score = %s, nsfw_level = %s, format = %s,
-       topic = %s, format_scores = null, topic_scores = null, needs_review = %s,
+   set status = 'classified', branch = %s, nsfw_score = %s, nsfw_level = %s, nsfw_traces = %s,
+       format = %s, topic = %s, format_scores = null, topic_scores = null, needs_review = %s,
        review_reason = %s, image_vec = %s::vector, error = null, updated_at = now()
  where source_hash = %s and status = 'sanitized'
 """
@@ -187,8 +187,18 @@ class _Row:
     hint: str | None = field(repr=False)  # `original_sanitized`: the only name a model may see
 
 
-def _load_rules(conn: psycopg.Connection) -> list[CategoryRule]:
-    return [
+@dataclass(frozen=True)
+class _Definitions:
+    """Category descriptions, one name → text map per axis (CLS-007.D1): a name can exist on both
+    axes with different texts. Never logged or put in a repr (the text is the human's wording)."""
+
+    format: Mapping[str, str | None] = field(repr=False)
+    topic: Mapping[str, str | None] = field(repr=False)
+
+
+def _load_rules(conn: psycopg.Connection) -> tuple[list[CategoryRule], _Definitions]:
+    fetched = conn.execute(_RULES).fetchall()
+    rules = [
         CategoryRule(
             id=int(i),
             axis=str(axis),
@@ -198,8 +208,12 @@ def _load_rules(conn: psycopg.Connection) -> list[CategoryRule]:
             branch=str(branch),
             parent_id=None if parent is None else int(parent),
         )
-        for i, axis, name, folder, min_score, branch, parent in conn.execute(_RULES).fetchall()
+        for i, axis, name, folder, min_score, branch, parent, _ in fetched
     ]
+    described: dict[str, dict[str, str | None]] = {"format": {}, "topic": {}}
+    for _, axis, name, *_rest, description in fetched:
+        described[str(axis)][str(name)] = None if description is None else str(description)
+    return rules, _Definitions(described["format"], described["topic"])
 
 
 def _backend(ctx: "NodeContext") -> VisionBackend:
@@ -232,13 +246,13 @@ def classify(conn: psycopg.Connection, ctx: "NodeContext") -> ClassifyResult:
     if not rows:  # a re-run: nothing sanitized, nothing touched (P-4)
         log.info("classify: 0 classified, 0 error")
         return ClassifyResult()
-    rules = _load_rules(conn)
+    rules, definitions = _load_rules(conn)
     validate_rules(rules, None)  # CLS-002.D4, CLS-004.D7: refuses before any row changes
     work = check_work_dir(ctx.source_root, ctx.results_root)
     backend = _backend(ctx)
     # One client for the whole node: ollama_transport is the test seam, as in sanitize.
     with OllamaClient.from_env(transport=ctx.ollama_transport) as client:
-        return _batches(conn, rows, work, rules, backend, client, config)
+        return _batches(conn, rows, work, rules, definitions, backend, client, config)
 
 
 def _open(work: Path, row: _Row) -> tuple[Image.Image, Image.Image] | None:
@@ -254,6 +268,7 @@ def _judge(
     client: OllamaClient,
     config: Config,
     rules: Sequence[CategoryRule],
+    definitions: _Definitions,
     row: _Row,
     frames: Image.Image,
     formats: Sequence[str],
@@ -274,8 +289,14 @@ def _judge(
             hint=row.hint,
             formats=formats,
             topics=topics,
+            format_definitions=definitions.format,
+            topic_definitions=definitions.topic,
         )
-        return answer, decide(answer, rules, score, config.nsfw)
+        # CLS-007.D3: decide applies the floor to the branch; the raw level is what we store.
+        choice = decide(
+            answer, rules, score, config.nsfw, conservative_traces=config.nsfw.conservative_traces
+        )
+        return answer, choice
     except (VlmUnanswered, ClassifyRulesError):
         failure = VLM_UNANSWERED
     except VlmImageError:
@@ -288,6 +309,7 @@ def _batches(
     rows: Sequence[_Row],
     work: Path,
     rules: Sequence[CategoryRule],
+    definitions: _Definitions,
     backend: VisionBackend,
     client: OllamaClient,
     config: Config,
@@ -317,7 +339,7 @@ def _batches(
             raise VisionError(_BAD_SHAPE)
         for (row, frames, _), vector, nsfw_score in zip(opened, vectors, nsfw, strict=True):
             score = float(nsfw_score) if math.isfinite(float(nsfw_score)) else None
-            judged = _judge(client, config, rules, row, frames, formats, topics, score)
+            judged = _judge(client, config, rules, definitions, row, frames, formats, topics, score)
             if isinstance(judged, str):  # a fixed reason: this file errors, the batch goes on
                 mark_error(conn, row.source_hash, judged, from_statuses=(_SANITIZED,))
                 reasons[judged] += 1
@@ -327,7 +349,8 @@ def _batches(
             write = (
                 choice.branch,
                 score,
-                answer.level.name,
+                answer.level.name,  # the raw level, never the floored one (CLS-007.D2)
+                answer.nsfw_traces,
                 choice.format,
                 choice.topic,
                 choice.needs_review,
