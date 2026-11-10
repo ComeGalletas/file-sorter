@@ -81,4 +81,4 @@ def test_an_animated_image_is_rated(client: OllamaClient, model: str) -> None:
         level = rate_nsfw(client, model, animated())
     except (OllamaError, VlmUnanswered) as exc:
         pytest.fail(f"{type(exc).__name__}: {exc}; prerequisites: {PREREQS}")
-    assert isinstance(level, NsfwLevel)
+    assert isinstance(level.level, NsfwLevel) and isinstance(level.traces, bool)
