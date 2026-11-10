@@ -110,7 +110,7 @@ class FakeOllama:
         if script.fail == "http":
             return httpx.Response(500)
         if "nsfw_level" in body["format"]["properties"]:
-            answer = {"observation": "synthetic cues", "nsfw_level": script.level}
+            answer = {"observation": "synthetic cues", "nsfw_level": script.level, "traces": False}
         else:
             answer = {
                 "observation": "synthetic cues",

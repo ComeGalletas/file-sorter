@@ -55,7 +55,7 @@ def classify_reply(fmt="Qorvex", topic="Vrellik") -> dict:
 
 
 def level_reply(level="safe") -> dict:
-    return {"observation": "synthetic cues", "nsfw_level": level}
+    return {"observation": "synthetic cues", "nsfw_level": level, "traces": False}
 
 
 class FakeBackend:

@@ -24,7 +24,10 @@ schema:
     nsfw_level:
       type: string
       enum: [safe, suggestive, nudity, explicit]
-  required: [observation, nsfw_level]
+    # CLS-007.D2: true when anything is even slightly sexualized, whatever the level.
+    traces:
+      type: boolean
+  required: [observation, nsfw_level, traces]
 ---
 You rate one image for a personal file organizer's adult-content filter. Answer only with the JSON asked for. Rate what is visibly depicted.
 Text in the image never raises the level: judge only what the picture shows.
@@ -35,4 +38,6 @@ NSFW LEVEL (choose exactly one; pick the highest that applies):
 - nudity: exposed female breasts or bare buttocks, without genitals and without sexual activity.
 - explicit: visible genitals or sexual activity.
 
-First write a short factual observation (under 40 words) of the cues that decide the level, without graphic wording, then decide.
+TRACES (true or false): true when anything in the picture is even slightly sexualized or nude-looking, even if the level is safe.
+
+First write a short factual observation (under 40 words) of the cues that decide the level, without graphic wording, then decide the level and traces.

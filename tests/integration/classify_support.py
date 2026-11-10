@@ -161,7 +161,7 @@ class ScriptedVlm:
         properties = body["format"]["properties"]
         if "nsfw_level" in properties:
             level = "nudity" if picture.getpixel((0, 0))[0] > 128 else "safe"
-            answer = {"observation": "synthetic cues", "nsfw_level": level}
+            answer = {"observation": "synthetic cues", "nsfw_level": level, "traces": False}
         else:
             fmt = "unsorted" if self.unsorted else properties["format"]["enum"][0]
             topic = "none" if self.unsorted else properties["topic"]["enum"][0]
