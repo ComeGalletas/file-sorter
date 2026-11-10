@@ -761,7 +761,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 - [x] CLS-007.1 — The definition slots, the `traces` answer and its validation, `decide(..., conservative_traces)`, the re-recorded VLM recordings · #188 · ML · acceptance: `tests/unit/models/test_vlm_classify.py` (subtasks .4 `4a04494`, .1 `6f01de4`, .5 `4d89c31`, .6 review round 1: real plants in the privacy tests, the render comment)
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
-- [ ] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py`
+- [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
 - [ ] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py`
 
 ## CLS-007 — Results
@@ -772,3 +772,12 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Recordings:** the 10 VLM scenario recordings keyed to the old prompt hashes were deleted and 10 re-recorded with `--record-ollama` against the committed prompts (the git-ignored local files set aside during the run). The gpu tier runs at pre-push.
 - **Front-matter key:** `extra_slots` in `classify_v1.md` (lead approved).
 - **Deferred:** the node passing `definitions` and `conservative_traces` is CLS-007.2; the eval is CLS-007.3.
+
+### CLS-007.2 (Pipeline)
+
+- **Tests:** `make lint` clean. `make test` before the last fix: 2397 passed, 1 failed (the integration test calling the private rules loader); fixed in .4, and `tests/integration/test_classify_node.py` then passed (7). Acceptance `tests/db/graph/test_classify_node.py`: 38 passed. `tests/unit/config`: 98 passed. The pre-push hook passed. No gpu tier (`classifier/models/` and `prompts/` untouched).
+- **New tests:** a name on both axes keeps its own description; a missing description renders the fallback line; the raw level and `nsfw_traces` are stored; at `min_level` nudity the floor leaves the branch alone while the stored level stays `safe`; at `min_level` suggestive the floor flips the branch with the flag on and not with it off or without traces; the Falconsai cross-check uses the raw level (CLS-007.D5); planted descriptions reach the prompt and are absent from logs and the NSFW call.
+- **Test seam:** the committed `classify_v1` body has no definition slots, so the node tests set a replacement system text in memory; nothing reads `prompts/local/`.
+- **Status:** DONE. **Self-rating:** 9/10; the gap is that no test renders the real local prompt, by design.
+- **Reviewer / Privacy auditor:** see the PR comment on #197.
+- **Deferred:** the eval passing the descriptions and the flag is CLS-007.3.
