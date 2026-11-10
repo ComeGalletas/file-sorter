@@ -313,3 +313,27 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Self-rating:** 9/10, yes; the CLS-007 decisions are cited as the lead's issues state them, and the lead's next docs PR records them in the CLS-007 block.
 - **Triage:** small. Spec text only; no code.
 - **Privacy:** generic wording only. No category description of the human's, no prompt text from the local files, and no result figures.
+
+---
+
+## DOC-013 — Requirement (human, 2026-11-10)
+
+**Objective:** two follow-up lines to DOC-012, now that DB-006.1 (#193) and CLS-007.1 (#194) have merged.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-013 — Confirmed reading
+
+- **DOC-013.D1:** DESIGN R-CLS-7 says the database CHECK covers non-blank, the length, ASCII control characters and line breaks, and the CLI also refuses the C1 control characters (DB-006.1's CHECK refuses ASCII controls, not C1). R-CLS-2 names the front-matter key, `extra_slots`, and says the loader refuses any other slot, as CLS-007.1 merged it. (the human's session, 2026-11-10, at the lead's request)
+
+## DOC-013 — Tasks
+
+- [x] DOC-013.1 — DESIGN R-CLS-2 and R-CLS-7
+- [x] DOC-013.2 — Review round 1: R-CLS-7 names the CHECK's ASCII controls and the CLI's C1 controls instead of "matches"
+
+## DOC-013 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; round 1 caught an overstatement (C1 controls), now fixed and checked against migration 0006.
+- **Triage:** small. Spec text only.
+- **Privacy:** generic wording only.
