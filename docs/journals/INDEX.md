@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-003 · SAN-005 · CLS-007 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-001 · MOD-003 · PIPE-002 · CFG-005 · RUN-019 · DB-006 · CLI-007 · TST-013 · DOC-012
+**Next free:** ING-003 · SAN-005 · CLS-008 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-001 · MOD-003 · PIPE-002 · CFG-005 · RUN-019 · DB-007 · CLI-008 · TST-013 · DOC-012
 
 ## Work items
 
@@ -86,6 +86,9 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | CLI-006 | `classifier categories` stops requiring and showing the unused SigLIP prompts and `min_score` | CLI, CLS | refactor | done (PR #179) | m3 | #171 | [categories_journal.md](categories_journal.md) | — | 2026-10-19 |
 | CLS-006 | Remove the dead SigLIP scoring and text code (models, node, replay, labels loader) with its tests and docstrings | CLS, MOD, PIPE, TST | refactor | done (PRs #181, #182, #183) | m3 | #172, #173, #174 | [categories_journal.md](categories_journal.md) | — | 2026-10-19 |
 | TST-012 | An orphan-recording check, and the orphaned recordings deleted | TST | feature | done (PR #184) | m3 | #175 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-10-19 |
+| DB-006 | Migration `0006`: `categories.description` (seeded from DESIGN §4.3) and `files.nsfw_traces` | DB, CLS | feature | proposed | m3 | #186 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
+| CLI-007 | `categories add` requires `--description`; `edit` changes it; `list` shows it | CLI, CLS | feature | proposed | m3 | #187 | [categories_journal.md](categories_journal.md) | — | 2026-11-10 |
+| CLS-007 | Category definition lines in the classify prompt, the NSFW `traces` answer and the `nsfw.conservative_traces` floor | CLS, MOD, PIPE, CFG | feature | proposed | m3 | #188, #189, #190 | [categories_journal.md](categories_journal.md) | — | 2026-11-10 |
 
 ## Plans and designs
 

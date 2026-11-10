@@ -199,3 +199,25 @@ references or host paths here. Use hashes.
   `make test` 2264 passed, 52 deselected. `make lint` clean.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: "unchained" is asserted at the root of what Alembic surfaces, not on the migration's own exception object.
 - **Reviewer and Privacy auditor:** APPROVE and PASS (PR #159). An optional follow-up for the G1 list is calling `downgrade()` directly with a mocked bind.
+
+---
+
+## DB-006 — Requirement (human, the M3 dynamic-categories follow-up, 2026-11-10)
+
+- **Objective:** Give every category a short description the classify prompt can show, and keep the NSFW `traces` answer on the ledger.
+- **Details:**
+  - `categories.description`: one line, at most 200 characters, seeded for the defaults with DESIGN §4.3's generic text;
+  - `files.nsfw_traces`: a boolean, null when the image hasn't been rated.
+- **Constraint:** the human's own descriptions are set locally through the CLI (CLI-007) and live only in the local database, never in the repo.
+- **Implements:** DESIGN §4.3, §5; serves CLS-007.
+
+## DB-006 — Confirmed reading
+
+- **DB-006.D1 — the description rule** (lead, 2026-11-10, matching the human's "one line, at most 200 characters"): nullable `text`, with a CHECK that a value is non-blank, at most 200 characters and without a line break. The CLI checks the same rule (CLI-007.D1). User-added categories stay null until described.
+- **DB-006.D2 — the downgrade** (lead, provisional): a plain drop of both columns. This is development tooling, and the description values live only in a local database.
+
+## DB-006 — Tasks
+
+- [ ] DB-006.1 — Migration `0006`: `categories.description` (CHECK, seeded from DESIGN §4.3) and `files.nsfw_traces`; the ORM fields (`description` with `repr=False`) · #186 · Pipeline · acceptance: `tests/db/ledger/test_category_description_migration.py`
+
+## DB-006 — Results
