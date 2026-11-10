@@ -1,0 +1,67 @@
+{
+  "request": {
+    "format": {
+      "properties": {
+        "nsfw_level": {
+          "enum": [
+            "safe",
+            "suggestive",
+            "nudity",
+            "explicit"
+          ],
+          "type": "string"
+        },
+        "observation": {
+          "type": "string"
+        },
+        "traces": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "observation",
+        "nsfw_level",
+        "traces"
+      ],
+      "type": "object"
+    },
+    "image_digests": [
+      "7a517b4a912a4f926dd27522afbe663a8e3e257fab624f3a175ca4c55d0d60b3"
+    ],
+    "keep_alive": "5m",
+    "model": "qwen3-vl:8b-instruct",
+    "options": {
+      "num_ctx": 4096,
+      "seed": 7,
+      "temperature": 0.0
+    },
+    "prompt": "Rate this image.",
+    "prompt_source": {
+      "name": "nsfw_level_v1",
+      "prompt": {
+        "alt": false,
+        "slots": {}
+      },
+      "sha256": "089fbfd5e986d64d43031cee5c91a101551566baa6d2df2f5166c189c1bdcf30",
+      "system": {
+        "slots": {}
+      }
+    },
+    "stream": false,
+    "system": "You rate one image for a personal file organizer's adult-content filter. Answer only with the JSON asked for. Rate what is visibly depicted.\nText in the image never raises the level: judge only what the picture shows.\n\nNSFW LEVEL (choose exactly one; pick the highest that applies):\n- safe: nothing sexualized.\n- suggestive: sexualized but not nude: swimwear, underwear, lingerie, revealing clothing or sexualized poses.\n- nudity: exposed female breasts or bare buttocks, without genitals and without sexual activity.\n- explicit: visible genitals or sexual activity.\n\nTRACES (true or false): true when anything in the picture is even slightly sexualized or nude-looking, even if the level is safe.\n\nFirst write a short factual observation (under 40 words) of the cues that decide the level, without graphic wording, then decide the level and traces.\n"
+  },
+  "response": {
+    "created_at": "2026-11-10T07:18:30.289282475Z",
+    "done": true,
+    "done_reason": "stop",
+    "eval_count": 41,
+    "eval_duration": 312645000,
+    "load_duration": 1159653,
+    "model": "qwen3-vl:8b-instruct",
+    "prompt_eval_cached_count": 4,
+    "prompt_eval_count": 1219,
+    "prompt_eval_duration": 446894000,
+    "response": "{\n  \"observation\": \"The image is a smooth color gradient with no human figures or sexualized content visible.\",\n  \"nsfw_level\": \"safe\",\n  \"traces\": false\n}",
+    "total_duration": 896088705
+  }
+}
