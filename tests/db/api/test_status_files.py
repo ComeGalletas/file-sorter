@@ -8,6 +8,7 @@ proved served before they are asserted absent.
 """
 
 import hashlib
+import json
 import logging
 import uuid
 from collections.abc import Callable, Iterator
@@ -512,16 +513,20 @@ def test_ollama_is_probed_with_no_connection_held(config, engine) -> None:
         nonlocal held
         held -= 1
 
-    event.listen(engine, "checkout", checkout)
-    event.listen(engine, "checkin", checkin)
-
     class Recording:
         def loaded_models(self) -> list[_Model]:
             seen.append(held)
             return []
 
-    app = create_app(config, engine=engine, ollama=Recording())
-    assert _status(TestClient(app))["loaded_models"] == []
+    event.listen(engine, "checkout", checkout)
+    event.listen(engine, "checkin", checkin)
+    try:
+        app = create_app(config, engine=engine, ollama=Recording())
+        assert _status(TestClient(app))["loaded_models"] == []
+    finally:  # round 2, item 2
+        event.remove(engine, "checkout", checkout)
+        event.remove(engine, "checkin", checkin)
+    assert not event.contains(engine, "checkout", checkout)
     assert seen == [0]
     assert checkouts == [1]  # the listener fires, so the 0 above could have been 1
 
@@ -564,10 +569,40 @@ def test_status_with_the_real_ollama_client(config, engine) -> None:
     assert paths == ["/api/ps"]
 
 
-def test_status_real_client_failure_is_na(config, engine) -> None:
-    paths: list[str] = []
-    with _real_client(500, {"error": SECRET}, paths) as client:
+class _ServedBody(httpx.SyncByteStream):
+    """A response body that records the bytes the client actually read from it."""
+
+    def __init__(self, body: bytes, served: list[bytes]) -> None:
+        self._body = body
+        self._served = served
+
+    def __iter__(self) -> Iterator[bytes]:
+        self._served.append(self._body)
+        yield self._body
+
+
+@pytest.mark.parametrize(
+    ("status_code", "payload"),
+    [
+        (500, {"error": SECRET}),  # an error status
+        (200, {"models": [{"name": SECRET, "size_vram": "Qorvex"}]}),  # a malformed entry
+    ],
+)
+def test_status_real_client_failure_is_na(config, engine, status_code, payload) -> None:
+    """Round 2, item 1: the planted body is proved read by the client, then absent."""
+    served: list[bytes] = []
+    body = json.dumps(payload).encode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/ps"
+        return httpx.Response(
+            status_code,
+            headers={"content-type": "application/json"},
+            stream=_ServedBody(body, served),
+        )
+
+    with OllamaClient("http://ollama", transport=httpx.MockTransport(handler)) as client:
         response = _client(config, engine, ollama=client).get("/api/status")
-    assert paths == ["/api/ps"]  # the probe really ran
+    assert served == [body] and SECRET.encode() in served[0]  # the plant reached the client
     assert response.json()["loaded_models"] == "n/a"
     assert SECRET not in response.text
