@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
@@ -216,3 +217,36 @@ class CategoryPrompt(Base):
 
     def __repr__(self) -> str:
         return f"CategoryPrompt(category_id={self.category_id!r}, position={self.position!r})"
+
+
+# DB-007.1: the run kinds and states, in the order the migration's CHECKs list them.
+RUN_KINDS = ("dry_run", "sort", "watch", "reclassify")
+RUN_STATES = ("running", "finished", "failed")
+
+
+class Run(Base):
+    """One command run (R-API-6, C-11). Holds no path or name: counts and a fixed code only."""
+
+    __tablename__ = "runs"
+    __table_args__ = (
+        CheckConstraint("kind in ('dry_run', 'sort', 'watch', 'reclassify')", name="runs_kind"),
+        CheckConstraint("state in ('running', 'finished', 'failed')", name="runs_state"),
+        CheckConstraint("jsonb_typeof(counts) = 'object'", name="runs_counts_object"),
+        # DB-007.D2: a fixed code only; the state, finished_at and error agree.
+        CheckConstraint("error ~ '^[a-z][a-z0-9_]{0,63}$'", name="runs_error_code"),
+        CheckConstraint(
+            "(state = 'running') = (finished_at is null)", name="runs_finished_iff_done"
+        ),
+        CheckConstraint("error is null or state = 'failed'", name="runs_error_only_failed"),
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at", name="runs_finished_after_start"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)

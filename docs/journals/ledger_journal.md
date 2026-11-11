@@ -252,6 +252,8 @@ references or host paths here. Use hashes.
 ## DB-007 — Tasks
 
 - [ ] DB-007.1 — Migration `0007` `runs`, the ORM model, `runlock.py` · #207 · Pipeline · acceptance: `tests/db/ledger/test_runs_migration.py`
+  - [x] DB-007.1.1 — Migration `0007` and the ORM `Run`, with the DB-007.D2 CHECKs
+  - [ ] DB-007.1.2 — `classifier/db/runlock.py` (DB-007.D1)
 
 ## DB-007 — Results
 
