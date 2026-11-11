@@ -337,3 +337,26 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Self-rating:** 9/10, yes; round 1 caught an overstatement (C1 controls), now fixed and checked against migration 0006.
 - **Triage:** small. Spec text only.
 - **Privacy:** generic wording only.
+
+---
+
+## DOC-014 — Requirement (human, 2026-11-10)
+
+**Objective:** `CLAUDE.md`'s "Current phase" describes the project after `m3-approved`.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-014 — Confirmed reading
+
+- **DOC-014.D1:** "Current phase" says M4 is being planned (DESIGN §4.8, §11, through the RUN-001.D5 localhost-only proxy), M1 to M3 are approved, the human's local prompt wording and category descriptions stay on the box (R-CLS-7, R-CLS-8, TST-013), and nothing is assigned before `status: approved`. (the human's session, 2026-11-10)
+
+## DOC-014 — Tasks
+
+- [x] DOC-014.1 — `CLAUDE.md` "Current phase"
+
+## DOC-014 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 10/10, yes; one paragraph, checked against `main`.
+- **Triage:** small. Rule text only.
+- **Privacy:** generic wording only.
