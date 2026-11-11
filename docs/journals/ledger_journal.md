@@ -251,18 +251,33 @@ references or host paths here. Use hashes.
 
 ## DB-007 — Tasks
 
-- [ ] DB-007.1 — Migration `0007` `runs`, the ORM model, `runlock.py` · #207 · Pipeline · acceptance: `tests/db/ledger/test_runs_migration.py`
+- [x] DB-007.1 — Migration `0007` `runs`, the ORM model, `runlock.py` · #207 · Pipeline · acceptance: `tests/db/ledger/test_runs_migration.py`
   - [x] DB-007.1.1 — Migration `0007` and the ORM `Run`, with the DB-007.D2 CHECKs · c88bda6
-  - [x] DB-007.1.2 — `classifier/db/runlock.py` (DB-007.D1)
+  - [x] DB-007.1.2 — `classifier/db/runlock.py` (DB-007.D1) · ed74763
+  - [x] DB-007.1.3 — The DB-007.D3 CHECKs: `counts` is `{node: {field: number}}`, `error` is a closed set (round 1 privacy audit on PR #226)
 
 ## DB-007 — Results
 
 ### DB-007.1 (#207, Pipeline)
 
-- **DB-007.D2 — the consistency CHECKs** (worker's plan, approved by the lead on #207, 2026-11-10). Beyond the per-column CHECKs, `runs` requires: `(state = 'running') = (finished_at is null)` (`runs_finished_iff_done`); `error is null or state = 'failed'` (`runs_error_only_failed`); `finished_at is null or finished_at >= started_at` (`runs_finished_after_start`). `error` must match `^[a-z][a-z0-9_]{0,63}$` (`runs_error_code`), so no path, name or free text fits. A failed run may have a null error.
+- **DB-007.D2 — the consistency CHECKs** (worker's plan, approved by the lead on #207, 2026-11-10). Beyond the per-column CHECKs, `runs` requires: `(state = 'running') = (finished_at is null)` (`runs_finished_iff_done`); `error is null or state = 'failed'` (`runs_error_only_failed`); `finished_at is null or finished_at >= started_at` (`runs_finished_after_start`). A failed run may have a null error. (D2 first also gave `error` a shape-only regex; D3 replaced that with a closed set, since a shape alone admits any well-formed word.)
+- **DB-007.D3 — `counts` and `error` are closed** (lead, round 1 on PR #226, 2026-11-10; the error set amended to PIPE-002.1's map). `runs.counts` is `{node: {field: number}}`:
+  - `runs_counts_object`: the top level is an object;
+  - `runs_counts_nodes`: its keys are a subset of `ingest`, `sanitize`, `classify`, `caption`, `retrieve`, `name`, `fileops` (`RUN_NODES`);
+  - `runs_counts_node_objects`: each node's value is an object;
+  - `runs_counts_fields`: inner keys match `^[a-z][a-z_]{0,31}$`;
+  - `runs_counts_numbers`: inner values are JSON numbers. This check uses strict jsonpath, because lax mode unwraps an array value and would pass `[1]`.
+
+  The jsonpath checks run inside `case when jsonb_typeof(counts) = 'object'`, because `keyvalue()` errors on a non-object and CHECKs run in name order; a non-object top level is refused by `runs_counts_object` instead. `runs_error_code` is `error in (…)` over `RUN_ERRORS`: `sanitize_config`, `work_dir`, `classify_config`, `classify_rules`, `vision`, `ollama`, `database`, `interrupted`, `internal`. PIPE-002.1 flattens nested reason maps to `<field>_<reason>` number keys.
 - **The lock (DB-007.D1):** `RUN_LOCK_KEY = 0x667372756E6C636B`, pinned by the test. `try_run_lock` and `release_run_lock` take a SQLAlchemy `Connection`; the lock is session-level, so it survives commits and rollbacks on the holding connection and drops when that connection closes (all three tested).
 - **Also changed:** `test_review_reason_migration.py` compared the revision after a refused downgrade with a literal `0006`; it now compares with the current head.
-- **Tests:** acceptance `tests/db/ledger/test_runs_migration.py` 34 passed; `tests/db/ledger` 126 passed; `make test` (unit + db + integration) 2453 passed, 48 deselected; `make lint` clean.
+- **Tests (after DB-007.1.3):**
+  - acceptance `tests/db/ledger/test_runs_migration.py`: 64 passed. Each bad `counts` or `error` case asserts its named constraint, a good nested row round-trips through SQL and the ORM, and the ORM's CHECKs render the same in Postgres as the migration's;
+  - `tests/db/ledger`: 156 passed;
+  - `make test` (unit + db + integration): 2490 passed, 48 deselected;
+  - `make lint`: clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: `release_run_lock` returns `None`, as the contract says, so a caller can't tell whether it held the lock.
+- **Reviewer:** round 1 approved. **Privacy auditor:** round 1 FAIL (counts and error were open); addressed by DB-007.1.3.
 
 ---
 

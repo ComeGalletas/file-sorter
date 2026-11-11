@@ -4,6 +4,7 @@ Isolated like test_sanitize_log_migration.py: a throwaway schema per test, dropp
 `cascade`. Every value is synthetic.
 """
 
+import json
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -14,11 +15,11 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, create_engine, select
+from sqlalchemy import CheckConstraint, Engine, create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
-from classifier.db.models import RUN_KINDS, RUN_STATES, Run
+from classifier.db.models import RUN_ERRORS, RUN_KINDS, RUN_NODES, RUN_STATES, Run
 from classifier.db.runlock import RUN_LOCK_KEY, release_run_lock, try_run_lock
 from classifier.db.url import to_sqlalchemy_url
 from tests.db.db_support import require_db_dsn
@@ -31,8 +32,16 @@ RUN_COLUMNS = {
     "counts": ("jsonb", False), "error": ("text", True),
 }  # fmt: skip
 CHECKS = {
-    "runs_kind", "runs_state", "runs_counts_object", "runs_error_code",
+    "runs_kind", "runs_state", "runs_counts_object", "runs_counts_nodes",
+    "runs_counts_node_objects", "runs_counts_fields", "runs_counts_numbers", "runs_error_code",
     "runs_finished_iff_done", "runs_error_only_failed", "runs_finished_after_start",
+}  # fmt: skip
+# DB-007.D3: a good nested row, every node and both number kinds.
+NESTED = {
+    "ingest": {"new": 3, "skipped_known": 0, "duplicate": 1, "total": 4},
+    "sanitize": {"sanitized": 3, "errored": 0, "errored_too_long": 0},
+    "classify": {"classified": 2, "unsorted": 1, "seconds": 1.5},
+    "caption": {}, "retrieve": {}, "name": {}, "fileops": {},
 }  # fmt: skip
 INSERT = (
     "insert into runs (kind, state, started_at, finished_at, counts, error) "
@@ -122,11 +131,39 @@ def test_upgrade_adds_the_table(conn: psycopg.Connection, schema: str) -> None:
     assert conn.execute("select version_num from alembic_version").fetchall() == [("0007",)]
 
 
-def test_the_orm_mirrors_the_checks() -> None:
-    names = {c.name for c in Run.__table__.constraints if c.name and c.name.startswith("runs_")}
-    assert names == CHECKS
+def _db_checks(conn: psycopg.Connection) -> dict[str, str]:
+    rows = conn.execute(
+        "select conname, pg_get_constraintdef(oid) from pg_constraint "
+        "where conrelid = 'runs'::regclass and contype = 'c'"
+    ).fetchall()
+    return dict(rows)
+
+
+def test_the_orm_mirrors_the_checks(conn: psycopg.Connection, schema: str) -> None:
+    orm = {c.name for c in Run.__table__.constraints if isinstance(c, CheckConstraint)}
+    assert orm == CHECKS
+    # Same SQL: create the ORM's table in a second schema and compare Postgres's own rendering.
+    mirror = f"{schema}_orm"
+    conn.execute(f'create schema "{mirror}"')
+    try:
+        engine = create_engine(_url(mirror))
+        try:
+            Run.__table__.create(engine)
+        finally:
+            engine.dispose()
+        conn.execute(f'set search_path to "{mirror}", public')
+        from_orm = _db_checks(conn)
+        conn.execute(f'set search_path to "{schema}", public')
+        assert from_orm == _db_checks(conn)
+    finally:
+        conn.execute(f'drop schema "{mirror}" cascade')
     assert RUN_KINDS == ("dry_run", "sort", "watch", "reclassify")
     assert RUN_STATES == ("running", "finished", "failed")
+    assert RUN_NODES == ("ingest", "sanitize", "classify", "caption", "retrieve", "name", "fileops")
+    assert RUN_ERRORS == (
+        "sanitize_config", "work_dir", "classify_config", "classify_rules",
+        "vision", "ollama", "database", "interrupted", "internal",
+    )  # fmt: skip
 
 
 @pytest.mark.parametrize("kind", RUN_KINDS)
@@ -142,17 +179,19 @@ def test_a_running_row_takes_the_defaults(conn: psycopg.Connection, kind: str) -
 @pytest.mark.parametrize(
     ("state", "finished", "counts", "error"),
     [
-        ("running", False, '{"ingest": 3}', None),
-        ("finished", True, '{"ingest": 3, "classify": 2}', None),
-        ("failed", True, "{}", "db_unavailable"),
+        ("running", False, '{"ingest": {"new": 3}}', None),
+        ("finished", True, json.dumps(NESTED), None),
         ("failed", True, "{}", None),
+        *(("failed", True, '{"ingest": {"new": 0}}', code) for code in RUN_ERRORS),
     ],
 )
 def test_a_consistent_row_is_accepted(
     conn: psycopg.Connection, state: str, finished: bool, counts: str, error: str | None
 ) -> None:
     conn.execute(INSERT, ("dry_run", state, START, END if finished else None, counts, error))
-    assert conn.execute("select state, error from runs").fetchall() == [(state, error)]
+    assert conn.execute("select state, counts, error from runs").fetchall() == [
+        (state, json.loads(counts), error)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -163,18 +202,51 @@ def test_a_consistent_row_is_accepted(
         ("dry_run", "zhyndel", True, "{}", None, "runs_state"),
         ("dry_run", "running", True, "{}", None, "runs_finished_iff_done"),
         ("dry_run", "finished", False, "{}", None, "runs_finished_iff_done"),
-        ("dry_run", "failed", False, "{}", "db_unavailable", "runs_finished_iff_done"),
-        ("dry_run", "finished", True, "{}", "db_unavailable", "runs_error_only_failed"),
-        ("dry_run", "running", False, "{}", "db_unavailable", "runs_error_only_failed"),
-        ("dry_run", "failed", True, "{}", "/source/qorvex.png", "runs_error_code"),  # path-like
-        ("dry_run", "failed", True, "{}", "Qorvex Zhyndel", "runs_error_code"),  # free text
-        ("dry_run", "failed", True, "{}", "has space", "runs_error_code"),
+        ("dry_run", "failed", False, "{}", "database", "runs_finished_iff_done"),
+        ("dry_run", "finished", True, "{}", "database", "runs_error_only_failed"),
+        ("dry_run", "running", False, "{}", "database", "runs_error_only_failed"),
+        # DB-007.D3: error is a closed set; a well-formed but unknown code is refused too.
+        ("dry_run", "failed", True, "{}", "adult", "runs_error_code"),
+        ("dry_run", "failed", True, "{}", "qorvex_scan", "runs_error_code"),
+        ("dry_run", "failed", True, "{}", "db_unavailable", "runs_error_code"),
+        ("dry_run", "failed", True, "{}", "/source/qorvex.png", "runs_error_code"),
+        ("dry_run", "failed", True, "{}", "Qorvex Zhyndel", "runs_error_code"),
+        ("dry_run", "failed", True, "{}", "DATABASE", "runs_error_code"),
         ("dry_run", "failed", True, "{}", "", "runs_error_code"),
-        ("dry_run", "failed", True, "{}", "x" * 65, "runs_error_code"),
         ("dry_run", "running", False, "[]", None, "runs_counts_object"),
         ("dry_run", "running", False, "3", None, "runs_counts_object"),
+        ("dry_run", "running", False, '"Qorvex"', None, "runs_counts_object"),
+        # DB-007.D3: the top keys are node names only.
+        ("dry_run", "running", False, '{"/source/qorvex.png": {"new": 1}}', None,
+         "runs_counts_nodes"),
+        ("dry_run", "running", False, '{"photos": {"new": 1}}', None, "runs_counts_nodes"),
+        ("dry_run", "running", False, '{"Ingest": {"new": 1}}', None, "runs_counts_nodes"),
+        ("dry_run", "running", False, '{"ingest ": {"new": 1}}', None, "runs_counts_nodes"),
+        # Each node's value is an object.
+        ("dry_run", "running", False, '{"ingest": 3}', None, "runs_counts_node_objects"),
+        ("dry_run", "running", False, '{"ingest": [1]}', None, "runs_counts_node_objects"),
+        ("dry_run", "running", False, '{"ingest": "Zhyndel"}', None, "runs_counts_node_objects"),
+        # Inner keys are field names only.
+        ("dry_run", "running", False, '{"ingest": {"/source/qorvex.png": 1}}', None,
+         "runs_counts_fields"),
+        ("dry_run", "running", False, '{"classify": {"Qorvex Zhyndel": 1}}', None,
+         "runs_counts_fields"),
+        ("dry_run", "running", False, '{"classify": {"photos-2": 1}}', None, "runs_counts_fields"),
+        ("dry_run", "running", False, '{"ingest": {"n1": 1}}', None, "runs_counts_fields"),
+        ("dry_run", "running", False, json.dumps({"ingest": {"x" * 33: 1}}), None,
+         "runs_counts_fields"),
+        # Inner values are numbers only.
+        ("dry_run", "running", False, '{"ingest": {"new": "/source/qorvex.png"}}', None,
+         "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"ingest": {"new": "3"}}', None, "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"ingest": {"new": [1]}}', None, "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"ingest": {"new": [[1]]}}', None, "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"classify": {"by_reason": {"vision": 1}}}', None,
+         "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"ingest": {"new": null}}', None, "runs_counts_numbers"),
+        ("dry_run", "running", False, '{"ingest": {"new": true}}', None, "runs_counts_numbers"),
     ],
-)
+)  # fmt: skip
 def test_the_checks_refuse_a_bad_row(
     conn: psycopg.Connection,
     kind: str,
@@ -214,14 +286,14 @@ def test_a_run_round_trips_through_the_orm(engine: Engine) -> None:
         started = run.started_at  # loads the server default before any change is pending
         run.state = "finished"
         run.finished_at = started
-        run.counts = {"ingest": 4, "classify": 4}
+        run.counts = NESTED
         session.commit()
 
     with Session(engine) as session:
         back = session.get(Run, run_id)
         assert back is not None
         assert (back.kind, back.state, back.counts, back.error) == (
-            "dry_run", "finished", {"ingest": 4, "classify": 4}, None,
+            "dry_run", "finished", NESTED, None,
         )  # fmt: skip
         assert back.finished_at == back.started_at
 

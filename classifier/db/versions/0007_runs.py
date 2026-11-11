@@ -15,6 +15,47 @@ down_revision: str | None = "0006"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+# Frozen here, not imported, so a later edit to models.py can't change this revision.
+RUN_NODES = ("ingest", "sanitize", "classify", "caption", "retrieve", "name", "fileops")
+RUN_ERRORS = (
+    "sanitize_config", "work_dir", "classify_config", "classify_rules",
+    "vision", "ollama", "database", "interrupted", "internal",
+)  # fmt: skip
+
+
+def _quoted(words: tuple[str, ...]) -> str:
+    return ", ".join(f"'{w}'" for w in words)
+
+
+def _no_match(path: str) -> str:
+    # The jsonpath errors on a non-object top level, so it runs only on an object;
+    # runs_counts_object refuses the rest (CHECKs run in name order).
+    return (
+        "case when jsonb_typeof(counts) = 'object' "
+        f"then not jsonb_path_exists(counts, '{path}') else true end"
+    )
+
+
+# DB-007.D3: {node: {field: number}}. The number check is strict: lax mode would unwrap
+# an array value and pass it.
+COUNTS_CHECKS: tuple[tuple[str, str], ...] = (
+    (
+        "runs_counts_nodes",
+        _no_match(f'$.keyvalue() ? (!(@.key like_regex "^({"|".join(RUN_NODES)})$"))'),
+    ),
+    ("runs_counts_node_objects", _no_match('$.* ? (@.type() != "object")')),
+    (
+        "runs_counts_fields",
+        _no_match(
+            '$.* ? (@.type() == "object").keyvalue() ? (!(@.key like_regex "^[a-z][a-z_]{0,31}$"))'
+        ),
+    ),
+    (
+        "runs_counts_numbers",
+        _no_match('strict $.* ? (@.type() == "object").* ? (@.type() != "number")'),
+    ),
+)
+
 
 def upgrade() -> None:
     op.create_table(
@@ -31,8 +72,10 @@ def upgrade() -> None:
         sa.CheckConstraint("kind in ('dry_run', 'sort', 'watch', 'reclassify')", name="runs_kind"),
         sa.CheckConstraint("state in ('running', 'finished', 'failed')", name="runs_state"),
         sa.CheckConstraint("jsonb_typeof(counts) = 'object'", name="runs_counts_object"),
-        # DB-007.D2: a fixed code only, so no path, name or free text fits.
-        sa.CheckConstraint("error ~ '^[a-z][a-z0-9_]{0,63}$'", name="runs_error_code"),
+        # DB-007.D3: counts is {node: {field: number}}, so no path, name or text fits.
+        *(sa.CheckConstraint(sql, name=name) for name, sql in COUNTS_CHECKS),
+        # DB-007.D3: a closed set of fixed codes.
+        sa.CheckConstraint(f"error in ({_quoted(RUN_ERRORS)})", name="runs_error_code"),
         # DB-007.D2: the state, finished_at and error agree.
         sa.CheckConstraint("(state = 'running') = (finished_at is null)",
                            name="runs_finished_iff_done"),
