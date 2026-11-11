@@ -151,6 +151,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 - [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234)
 - [x] CLI-008.2 — `report [--out]` · #234 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the report cases)
+  - [x] CLI-008.2.1 — Round 1 on PR #240: a fixed `ConfigError` text in `report` and `serve`, a broad catch around the render, and the reviewer's test gaps
 
 ## CLI-008 — Results
 
@@ -202,3 +203,17 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `make test`: 2731 passed, 48 deselected;
   - `make lint`: clean.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a write that fails after the file was created (a full disk) leaves the partial file in place, as the dry-run CSV does, because deleting is `fileops/delete.py`'s alone. A re-run writes under the next free name.
+- **CLI-008.2.1 (round 1 on PR #240; the privacy auditor's FAIL):**
+  - **The config path.** `report` and `serve` echoed `load_config`'s `ConfigError` text, which can carry the `--config` path. Both now print the fixed `error: the config could not be loaded; check the config file and DB_DSN` (the same text as `categories.py`), and a missing DSN gives the same line. Every `typer.Exit` is raised outside its `except`, so the errors are unchained (`__cause__` and `__context__` both None).
+  - **The render:** any exception from it becomes the fixed database text.
+  - **New tests:**
+    - for each command, a plant in the `--config` path, first proved present in the raw `ConfigError` text, then shown absent from the output;
+    - the snapshot is pinned, by reading `transaction_isolation` and `transaction_read_only` inside the render: `repeatable read` and `on`;
+    - unchained `Exit`s on the config, database, write and `--out`-exists paths, with the commands called directly;
+    - a render failure with a planted message gives fixed text and no folder;
+    - an encode failure (a lone surrogate) leaves no file and no `reports/` folder, and with `--out` no file;
+    - the written report has no `<img`, `http:`, `https:`, `="//`, `src=`, `url(` or `/thumbs/`.
+
+      A bare `http` matches the CSP's `<meta http-equiv>` from API-001.5, which is no URL, so the URL forms are checked instead, and the CSP meta is asserted present.
+  - On the round-1 code, the planted-path, no-DSN and broad-catch tests fail (5 tests, checked).
+  - Results: acceptance 27 passed; `make test` 2738 passed, 48 deselected; `make lint` clean.

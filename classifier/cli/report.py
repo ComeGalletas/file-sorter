@@ -12,8 +12,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-import psycopg
-import sqlalchemy.exc
 import typer
 from sqlalchemy import text
 
@@ -22,6 +20,8 @@ from classifier.api.report import render_report
 from classifier.api.views import FileFilters, build_status, file_row, rows_query
 from classifier.config import ConfigError, load_config
 
+# CLI-008.2.1: fixed, as categories.py's; load_config's own texts can carry the path.
+CONFIG_FAILED = "error: the config could not be loaded; check the config file and DB_DSN"
 DB_FAILED = "error: database error, see the db service logs"
 WRITE_FAILED = "error: could not write the report"
 OUT_EXISTS = "error: --out already exists; choose a new file"
@@ -76,23 +76,21 @@ def report(
     ] = None,
 ) -> None:
     """Write the HTML report of the ledger (sanitized names and hashes only)."""
+    config = None
     try:
         config = load_config(config_path)
-    except ConfigError as error:  # value-free: load_config wraps YAML and validation errors
-        typer.echo(f"error: {error}", err=True)
-        raise typer.Exit(2) from None
-    dsn = config.db.dsn
-    if not dsn:
-        typer.echo("error: config.db.dsn is not set", err=True)
+    except ConfigError:  # CLI-008.2.1: its text can carry the --config path
+        pass
+    if config is None or not config.db.dsn:
+        typer.echo(CONFIG_FAILED, err=True)
         raise typer.Exit(2)
+    dsn = config.db.dsn
     stamp = datetime.now(UTC)
 
     db_failed = False
     try:
         html = _render(dsn)
-    except (psycopg.Error, sqlalchemy.exc.SQLAlchemyError, ValueError):
-        # A driver message can carry the DSN; read_only_engine's ValueError is fixed text,
-        # but this command prints its own.
+    except Exception:  # noqa: BLE001 — CLI-008.2.1: any message may carry the DSN or a value
         db_failed = True
     if db_failed:
         typer.echo(DB_FAILED, err=True)

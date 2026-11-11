@@ -15,6 +15,7 @@ from typing import Any
 
 import psycopg
 import pytest
+import typer
 import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -23,7 +24,7 @@ from typer.testing import CliRunner
 from classifier.cli import app
 from classifier.cli import report as report_module
 from classifier.cli import serve as serve_module
-from classifier.config import load_config
+from classifier.config import ConfigError, load_config
 from classifier.models import ollama
 from tests.db.db_support import require_db_dsn
 from tests.integration.schema_support import migrated_schema
@@ -31,6 +32,7 @@ from tests.integration.schema_support import migrated_schema
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG = str(ROOT / "config.yaml")
 PLANT = "Qorvex"
+CONFIG_FAILED = "error: the config could not be loaded; check the config file and DB_DSN"
 runner = CliRunner()
 
 
@@ -105,15 +107,33 @@ def test_no_dsn_exits_2_with_fixed_text(
     monkeypatch.delenv("DB_DSN")
     result = _serve()
     assert result.exit_code == 2
-    assert result.output == "error: no database DSN: set DB_DSN\n"  # load_config's fixed text
+    assert result.output == CONFIG_FAILED + "\n"
     assert calls == []
 
 
-def test_a_missing_config_exits_2(calls: list[dict[str, Any]], tmp_path: Path) -> None:
-    result = runner.invoke(app, ["serve", "--config", str(tmp_path / "absent.yaml")])
+def _planted_config(tmp_path: Path) -> Path:
+    """A --config path holding the plant, which load_config's own text would echo."""
+    path = tmp_path / f"{PLANT} private" / f"{PLANT}.yaml"
+    with pytest.raises(ConfigError) as caught:
+        load_config(path)
+    assert PLANT in str(caught.value)  # proved: the raw ConfigError text carries the path
+    return path
+
+
+def test_a_bad_config_is_fixed_text_without_the_path(
+    calls: list[dict[str, Any]], tmp_path: Path
+) -> None:
+    """CLI-008.2.1: the --config path never reaches the console."""
+    path = _planted_config(tmp_path)
+    result = runner.invoke(app, ["serve", "--config", str(path)])
     assert result.exit_code == 2
-    assert "config file not found" in result.output
+    assert result.output == CONFIG_FAILED + "\n"
+    assert PLANT not in result.output
     assert calls == []
+
+    with pytest.raises(typer.Exit) as raised:  # called directly: unchained
+        serve_module.serve(host=None, port=None, config_path=path)
+    assert raised.value.__cause__ is None and raised.value.__context__ is None
 
 
 def test_a_bind_failure_prints_fixed_text_and_hides_uvicorns_message(
@@ -254,6 +274,12 @@ def test_the_report_serves_sanitized_names_and_never_a_path_or_raw_name(
     # ...and only then: no path, no raw name, no caption, no live HTML from a name.
     for absent in (PLANT, RAW, "/source/", "/results/", "<script>alert(1)"):
         assert absent not in html
+    # CLI-008.2.1: self-contained, no outbound URL and no thumbnail (API-001.D6, m4 item 5).
+    # A bare "http" would match the CSP's <meta http-equiv>, so the URL forms are checked.
+    lowered = html.lower()
+    for absent in ("<img", "http:", "https:", '="//', "src=", "url(", "/thumbs/"):
+        assert absent not in lowered
+    assert 'http-equiv="content-security-policy"' in lowered  # the one "http", proved benign
     assert "&lt;script&gt;" in html
     assert "n/a" in html  # CLI-008.D1: no Ollama probe, the models stay n/a
 
@@ -337,4 +363,101 @@ def test_report_with_no_dsn_exits_2(
     monkeypatch.delenv("DB_DSN")
     result = _report(report_env[0])
     assert result.exit_code == 2
-    assert result.output == "error: no database DSN: set DB_DSN\n"
+    assert result.output == CONFIG_FAILED + "\n"
+
+
+# --- CLI-008.2.1: round 1 on PR #240 ------------------------------------------------------
+
+
+def _direct(config: Path | None, out: Path | None = None) -> typer.Exit:
+    """Call the command function itself and return the Exit it raises."""
+    with pytest.raises(typer.Exit) as raised:
+        report_module.report(out=out, config_path=config)
+    return raised.value
+
+
+def _unchained(exit_: typer.Exit) -> None:
+    assert exit_.__cause__ is None and exit_.__context__ is None
+
+
+def test_report_a_bad_config_is_fixed_text_without_the_path(tmp_path: Path) -> None:
+    path = _planted_config(tmp_path)
+    result = _report(path)
+    assert result.exit_code == 2
+    assert result.output == CONFIG_FAILED + "\n"
+    assert PLANT not in result.output
+    _unchained(_direct(path))
+
+
+def test_the_report_reads_one_repeatable_read_read_only_snapshot(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[tuple[str, str]] = []
+    real = report_module.build_status
+
+    def spy(conn, **kwargs):  # noqa: ANN001, ANN003, ANN202 — a test double
+        row = conn.exec_driver_sql(
+            "select current_setting('transaction_isolation'),"
+            " current_setting('transaction_read_only')"
+        ).one()
+        seen.append(tuple(row))
+        return real(conn, **kwargs)
+
+    monkeypatch.setattr(report_module, "build_status", spy)
+    assert _report(report_env[0]).exit_code == 0
+    assert seen == [("repeatable read", "on")]
+
+
+def test_report_a_database_error_is_unchained(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DB_DSN", "postgresql://user:hunter2@127.0.0.1:1/db?connect_timeout=2")
+    _unchained(_direct(report_env[0]))
+
+
+def test_report_a_write_failure_is_unchained(report_env: tuple[Path, Path]) -> None:
+    config, results = report_env
+    (results / "reports").write_text("a file where the folder goes")
+    _unchained(_direct(config))
+
+
+def test_report_an_existing_out_is_unchained(report_env: tuple[Path, Path], tmp_path: Path) -> None:
+    target = tmp_path / "taken.html"
+    target.write_bytes(b"keep me")
+    exit_ = _direct(report_env[0], target)
+    assert exit_.exit_code == 2
+    _unchained(exit_)
+    assert target.read_bytes() == b"keep me"
+
+
+def test_any_render_failure_is_fixed_text(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI-008.2.1: the broad catch in report(); an unexpected message never reaches the console."""
+
+    def broken(status: object, files: object) -> str:
+        raise RuntimeError(f"{PLANT} in a message")
+
+    monkeypatch.setattr(report_module, "render_report", broken)
+    config, results = report_env
+    result = _report(config)
+    assert result.exit_code == 1
+    assert result.output == "error: database error, see the db service logs\n"
+    assert PLANT not in result.output
+    assert not (results / "reports").exists()
+    _unchained(_direct(config))
+
+
+def test_an_encode_failure_leaves_no_file_and_no_folder(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(report_module, "render_report", lambda status, files: "ok \ud800")
+    config, results = report_env
+    result = _report(config)
+    assert result.exit_code == 1
+    assert result.output == "error: could not write the report\n"
+    assert not (results / "reports").exists()  # encoded before any mkdir or open
+    target = tmp_path / "never.html"
+    exit_ = _direct(config, target)
+    _unchained(exit_)
+    assert not target.exists()
