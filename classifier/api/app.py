@@ -12,14 +12,16 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Annotated, Any
 
+import anyio
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import Connection, Engine, create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
+from classifier.api.events import status_events
 from classifier.api.views import (
     FileFilters,
     FilePage,
@@ -39,6 +41,10 @@ INTERNAL_ERROR = "internal error"
 NO_DSN = "the database DSN is not set"
 BAD_DSN = "the database DSN is malformed"
 MAX_PAGE = 1_000_000  # keeps the offset far inside bigint
+EVENTS_INTERVAL = 2.0  # seconds (API-001.D3)
+EVENTS_KEEPALIVE_AFTER = 15.0  # seconds with no frame (API-001.D10)
+# No caching, and no buffering in the ui-proxy (RUN-019.D1 also sets proxy_buffering off).
+SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 _DETAILS = {503: DB_UNAVAILABLE, 500: INTERNAL_ERROR}
 
@@ -173,14 +179,36 @@ def create_app(
 
         return guarded(build)
 
+    def _status_view() -> StatusView:
+        view: StatusView = _read(build_status)  # the connection is closed here
+        return with_loaded_models(view, probe)  # then Ollama (round 1, item 4)
+
     @app.get("/api/status", response_class=JSONResponse)
     def api_status() -> JSONResponse:
-        def build() -> JSONResponse:
-            view: StatusView = _read(build_status)  # the connection is closed here
-            return _json(with_loaded_models(view, probe))  # then Ollama (round 1, item 4)
+        return guarded(lambda: _json(_status_view()))
 
-        return guarded(build)
+    def _status_json() -> str:
+        return guarded(lambda: _status_view().model_dump_json())
+
+    @app.get("/api/events")
+    async def api_events(request: Request) -> StreamingResponse:
+        """API-001.D3: the status JSON on change, every `events_interval` seconds."""
+        stream = status_events(
+            _status_json,
+            interval=app.state.events_interval,
+            keepalive_after=app.state.events_keepalive_after,
+            sleep=app.state.events_sleep,
+            is_disconnected=request.is_disconnected,
+            internal_error=INTERNAL_ERROR,
+            max_ticks=app.state.events_max_ticks,
+        )
+        return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
 
     app.state.engine = engine
     app.state.probe = probe
+    # API-001.D3, D10. Tests swap the sleep and bound the ticks; production never does.
+    app.state.events_interval = EVENTS_INTERVAL
+    app.state.events_keepalive_after = EVENTS_KEEPALIVE_AFTER
+    app.state.events_sleep = anyio.sleep
+    app.state.events_max_ticks = None
     return app
