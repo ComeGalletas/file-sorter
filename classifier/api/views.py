@@ -23,7 +23,8 @@ NOT_AVAILABLE = "n/a"  # m4 answer 7
 # Pinned to branch_for_level by tests/unit/api/test_views.py; use is_adult, never the literal.
 ADULT_BRANCH = "nsfw"
 
-# The contract's 15 fields (docs/plans/m4.md, "Contracts fixed here"). Nothing else.
+# The contract's 15 fields (docs/plans/m4.md, "Contracts fixed here"), plus `blurred`, the
+# 16th, approved on #212 (API-001.3). Nothing else.
 FILE_ROW_FIELDS = (
     "source_hash",
     "short_hash",
@@ -40,6 +41,7 @@ FILE_ROW_FIELDS = (
     "review_reason",
     "error",
     "updated_at",
+    "blurred",  # API-001.3: the 16th field, from is_adult (API-001.D8)
 )
 
 # The only ledger columns the API ever reads for a row.
@@ -81,6 +83,7 @@ class FileRow(_View):
     review_reason: str | None
     error: str | None  # a fixed error code
     updated_at: datetime
+    blurred: bool  # is_adult(branch); the UI blurs it by default (m4 answer 3, API-001.D8)
 
 
 class FilePage(_View):
@@ -177,6 +180,7 @@ def file_row(m: Mapping[str, Any]) -> FileRow:
         nsfw_level=m["nsfw_level"],
         nsfw_traces=m["nsfw_traces"],
         cross_check_disagrees=m["review_reason"] == CROSS_CHECK_REASON,
+        blurred=is_adult(m["branch"]),
         needs_review=bool(m["needs_review"]),
         review_reason=m["review_reason"],
         error=m["error"],

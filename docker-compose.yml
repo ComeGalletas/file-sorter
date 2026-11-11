@@ -66,8 +66,10 @@ services:
     environment:
       <<: *env
       SANITIZE_LOG_KEY: ${SANITIZE_LOG_KEY:?run make init}   # SAN-001.D5; app and test only, never fetch
-    # RUN-001.D11: the container stays up; run the CLI with `docker compose exec app classifier ...`.
-    command: ["sleep", "infinity"]
+    # RUN-019.D2: the container serves the read-only API and UI on the internal network only;
+    # `ui-proxy` alone publishes it, on 127.0.0.1:8000. RUN-001.D11 still holds: run the CLI with
+    # `docker compose exec app classifier ...`.
+    command: ["classifier", "serve", "--host", "0.0.0.0"]
     volumes:
       - .:/app
       - hf:/models/hf

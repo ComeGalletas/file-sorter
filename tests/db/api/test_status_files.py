@@ -126,6 +126,18 @@ def test_files_row_has_exactly_the_contract_fields(config, engine, seed, tag) ->
     assert row["cross_check_disagrees"] is True
 
 
+def test_files_blurred_for_adult_rows_only(config, engine, seed, tag) -> None:
+    """API-001.3, the required D8 test: a ledger `nsfw` row is blurred; safe and null aren't."""
+    adult = seed(topic=tag, branch=ADULT_BRANCH)
+    safe = seed(topic=tag, branch="safe")
+    unbranched = seed(topic=tag, status="queued")
+    rows = {r["source_hash"]: r for r in _files(_client(config, engine), topic=tag)["rows"]}
+    assert rows[adult]["branch"] == "nsfw"  # the ledger value itself, not only the constant
+    assert rows[adult]["blurred"] is True
+    assert rows[safe]["blurred"] is False
+    assert rows[unbranched]["branch"] is None and rows[unbranched]["blurred"] is False
+
+
 def test_files_null_sanitized_name_before_sanitize(config, engine, seed, tag) -> None:
     seed(topic=tag, status="queued")
     [row] = _files(_client(config, engine), topic=tag)["rows"]
