@@ -202,7 +202,8 @@ ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Fa
 - **R-API-3** Write (M8): `POST /api/files/{hash}/assign` (body: `format`, `topic`; either may be omitted), `POST /api/files/{hash}/rerun`, `POST /api/run/{action}` with `action ∈ {sort, pause, resume}`.
 - **R-API-4** Every write calls the same graph nodes as the CLI. The UI never calls models.
 - **R-API-5** UI: one `ui/index.html` with **vendored htmx** (no CDN, no build step; RUN-021). The dashboard shows a run banner, a topic × format count grid (safe vs adult), the last 20 filed files, and errors with retry. The review queue shows unsorted and `needs_review` files with the VLM's answers (format, topic, NSFW level, `traces`, the Falconsai cross-check flag) and the review reason; the judge's reason joins in M6. **Adult thumbnails are blurred by default**, with click-to-reveal per image. Thumbnails come only from the sanitized working copy, and the report embeds none (C-31).
-  - **Until M7 and M8 (API-001.D1, D2):** a dry run files nothing, so the dashboard shows the latest 20 rows, labelled "latest". Errors are shown without a retry button, because retry is a write (M8).
+  - **Until M7 (API-001.D1):** a dry run files nothing, so the dashboard shows the latest 20 rows, labelled "latest".
+  - **Until M8 (API-001.D2):** errors are shown without a retry button, because retry is a write.
 - **R-API-6** Run state lives in a `runs` table, plus a Postgres advisory lock held by `sort`, `watch`, `reclassify` and `dry-run` (PIPE-002.D1).
 - **R-API-7** `classifier report [--out report.html]` produces self-contained HTML from the same JSON as the API.
 - **R-API-8** No deletion in the UI.
@@ -327,7 +328,7 @@ db:
 - **R-RUN-4** `app` mounts `source_root` as `:ro` and `results_root` as read-write. Only `docker-compose.purge.yml` remounts the source read-write, and only for `purge-sources`.
 - **R-RUN-3** Images, Postgres data and model weights are volumes and are never baked into images. `fixtures/` is the only image folder mounted into `test`.
 - **As built (RUN-001):**
-  - **Networks:** `internal` has no internet route (`app`, `db`, `test`). Only `ollama` and `searxng` also join `egress`.
+  - **Networks:** `internal` has no internet route (`app`, `db`, `test`). Only `ollama` and `searxng` also join `egress`. Only `ui-proxy` also joins `ui`, so it can publish `127.0.0.1:8000` (RUN-019).
   - **Model downloads:** Hugging Face weights come through a one-off `fetch` service (profile `tools`), the only app-image container with internet.
   - **UI port:** Docker can't publish ports for internal-only containers (RUN-001.D5), so the `ui-proxy` service (a pinned nginx) publishes `127.0.0.1:8000` and forwards GET and HEAD to `app:8000`. It alone also joins the `ui` bridge network, which no other service joins (RUN-019).
   - **`test`:** has no `/source` or `/results` mount at all (RUN-001.D6).
