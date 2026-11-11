@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 from classifier import cli
 from classifier.cli import app
 from classifier.cli.dry_run_report import COLUMNS, REPORT_FOLDER_FAILED
+from classifier.db.runlock import RUN_LOCK_KEY
 from classifier.graph import classify as classify_node
 from classifier.graph import sanitize as node
 from classifier.graph.classify import IMAGE_VEC_DIM
@@ -200,6 +201,35 @@ def test_nested_roots_fail_the_root_check(tmp_path: Path, schema_dsn: str) -> No
     assert "R-FOP-9" in result.output
     assert not (source / "results").exists()
     assert _ledger_count(schema_dsn) == 0
+
+
+def test_a_held_run_lock_exits_3_with_fixed_text_and_runs_nothing(
+    tmp_path: Path, schema_dsn: str
+) -> None:
+    """PIPE-002.D1, D2: a second dry-run while the lock is held writes no row and no ledger."""
+    _, results, config = _setup(tmp_path)
+    with psycopg.connect(schema_dsn, autocommit=True) as holder:
+        holder.execute("truncate runs")  # earlier tests' dry runs; runs has no FK to files
+        assert holder.execute("select pg_try_advisory_lock(%s)", (RUN_LOCK_KEY,)).fetchone()[0]
+        try:
+            result = _invoke(config, schema_dsn, "--csv")
+        finally:
+            holder.execute("select pg_advisory_unlock(%s)", (RUN_LOCK_KEY,))
+        runs = holder.execute("select count(*) from runs").fetchone()[0]
+        files = holder.execute("select count(*) from files").fetchone()[0]
+
+    assert result.exit_code == 3
+    assert result.output.strip() == ("error: another run holds the run lock; wait for it to finish")
+    assert (runs, files) == (0, 0)
+    assert not (results / "reports").exists()
+
+    # Once the lock is free the same command runs and records one finished run.
+    assert _invoke(config, schema_dsn).exit_code == 0
+    with psycopg.connect(schema_dsn) as conn:
+        assert conn.execute("select kind, state, error from runs").fetchall() == [
+            ("dry_run", "finished", None)
+        ]
+        conn.execute("truncate runs")
 
 
 def test_missing_config_exits_non_zero(tmp_path: Path) -> None:

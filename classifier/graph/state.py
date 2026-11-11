@@ -24,6 +24,7 @@ class RunResult:
     run_id: str
     dry_run: bool
     counts: "MappingProxyType[str, object]" = field(default_factory=lambda: MappingProxyType({}))
+    record_id: int | None = None  # PIPE-002.1: this run's `runs.id`
 
     @property
     def ingest(self) -> IngestResult:

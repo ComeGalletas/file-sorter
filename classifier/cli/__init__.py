@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Annotated
 
 import psycopg
+import sqlalchemy.exc
 import typer
 
 from classifier import __version__
@@ -30,7 +31,7 @@ from classifier.cli import dry_run_report
 from classifier.cli.categories import categories_app
 from classifier.config import ConfigError, load_config
 from classifier.graph.classify import ClassifyConfigError
-from classifier.graph.run import run
+from classifier.graph.run import RunLockedError, run
 from classifier.graph.sanitize import WorkDirError
 from classifier.models.classify_rules import ClassifyRulesError
 from classifier.models.ollama import OllamaError
@@ -90,6 +91,10 @@ def dry_run(
         with psycopg.connect(dsn) as conn:
             rows = dry_run_report.rows_under_root(conn, config.paths.source_root)
             folder_of = dry_run_report.folder_resolver(conn, config)
+    except RunLockedError as error:
+        # PIPE-002.D1, D2: another run holds the lock; nothing ran and no row was written.
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(3) from None
     except (
         SanitizeConfigError,
         WorkDirError,
@@ -105,8 +110,9 @@ def dry_run(
         # Fixed text: the pre-flight `from_env` (OLLAMA_HOST unset) is the one that reaches here.
         typer.echo("error: the Ollama client could not start; is OLLAMA_HOST set?", err=True)
         raise typer.Exit(2) from None
-    except psycopg.Error:
-        # Fixed text: a driver message can carry the DSN or a path.
+    except (psycopg.Error, sqlalchemy.exc.SQLAlchemyError):
+        # Fixed text: a driver message can carry the DSN or a path. PIPE-002.1: the run
+        # record's connection is SQLAlchemy's, which wraps the driver's error.
         typer.echo("error: database error, see the db service logs", err=True)
         raise typer.Exit(1) from None
     counts = result.ingest
