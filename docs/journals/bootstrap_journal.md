@@ -939,3 +939,36 @@ and then (PR #43 review round 2):
   - images in any folder and in either case are ignored;
   - build output and root scratch files are ignored;
   - README, config, prompts, the example addenda, recordings, eval data and nested text files stay committable.
+
+---
+
+## RUN-019 — Requirement (human, M4 G0 answer 5, 2026-11-10; human-side)
+
+- **Objective:** Publish the UI on `127.0.0.1:8000` only, through RUN-001.D5's localhost-only proxy, and add `make gate-4`.
+- **Constraint:** the human's session writes the PR (compose and the Makefile are human-side). `app` never joins `egress` or a published network.
+- **Implements:** RUN-001.D5, R-RUN-1, R-API-1.
+
+## RUN-019 — Confirmed reading (the lead's proposed shape, `docs/plans/m4.md`; the human's session decides)
+
+- **RUN-019.D1 — the proxy** (lead, provisional):
+  - a pinned `nginx:<version>-alpine` service, `ui-proxy`, on `internal` plus a new non-internal network `ui` that no other service joins;
+  - `127.0.0.1:8000:8000` only;
+  - `read_only: true`, with tmpfs for nginx's cache and pid;
+  - a committed `docker/ui-proxy/nginx.conf` with `proxy_pass http://app:8000`, `GET` and `HEAD` only, `proxy_buffering off` (SSE) and `server_tokens off`.
+- **RUN-019.D2 — `app` serves on the internal network** (lead, provisional): `command: ["classifier", "serve", "--host", "0.0.0.0"]`. `api.host` stays `127.0.0.1` for `serve` anywhere else, and `docker compose exec app classifier …` still works.
+- **RUN-019.D3 — `make gate-4`** (lead, provisional): a main-checkout rule like TST-013's `gate-3`. It starts the app `db` and passes `APP_DB_DSN` by name, never echoed. In a worktree it fails with a fixed message.
+
+---
+
+## RUN-020 — Requirement (proposal, lead, 2026-11-10; not scheduled)
+
+- **Objective:** Pin `rich` and `typer`, or every runtime dependency, so a rebuilt image can't change test output (TST-014).
+- **Constraint:** it overlaps RUN-004 (the lockfile, human-side). The lead recommends doing both together after M4. Until then, TST-014.D1 keeps the one affected test stable.
+
+---
+
+## RUN-021 — Requirement (human, M4 G0 answer 4, 2026-11-10; human-side)
+
+- **Objective:** Vendor htmx at a pinned 2.x version in `classifier/ui/vendor/htmx.min.js`, with its license and SHA-256.
+- **Constraint:** the host tooling can't fetch from npm or a CDN (RUN-007.D1), so the human's session brings the file in a human-side PR. API-001.4 waits for it. The page loads it from its own origin only.
+- **RUN-021.D1** (lead, provisional; `docs/plans/m4.md`): human-side vendoring as above.

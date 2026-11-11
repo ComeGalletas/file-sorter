@@ -728,3 +728,30 @@ references or host paths here. Use hashes.
 - **Tests:** the acceptance file passes 59; `make lint` is clean; the pre-push hook ran the default tiers.
 - **Status:** DONE.
 - **Self-rating:** 9/10, yes. The gap: other future help-text tests need the same care; there's only one today.
+
+---
+
+## TST-015 — Requirement (DESIGN.md m4, 2026-11-10)
+
+- **Objective:** Measure gate 4 on the human's real dry run: "A dry run of the whole real folder is reviewable end to end without a terminal."
+- **Details:** `scripts/gate_4.py` reads the app database read-only (`APP_DB_DSN`, as TST-013 does) and runs `create_app` in-process. It checks:
+  1. every ledger row is reachable through `/api/files`, by `source_hash` set, paging to the end;
+  2. `/api/status`'s counts equal the ledger's own counts per status, and per topic × format × branch;
+  3. every unsorted or `needs_review` row is in the review queue;
+  4. no response, fragment, SSE event or report contains any row's `source_path`, any `duplicate_paths` entry, or the raw file name taken from them (compared in memory, never printed);
+  5. every adult row's thumbnail is blurred by default in the served HTML;
+  6. the report is self-contained, with no external reference and no thumbnail;
+  7. `docker-compose.yml` publishes only `127.0.0.1` ports.
+- **Constraint:** the public output is one verdict per criterion, with no counts (TST-015.D1). `--detail` stays on the box. Unit tests use synthetic rows only.
+- **Implements:** §11 (M4 gate); the human's G0 answer 6.
+
+## TST-015 — Confirmed reading
+
+- **TST-015.D1 — verdicts only** (lead, 2026-11-10, provisional). Nothing about the folder is published, in the spirit of TST-008.D1.
+- **TST-015.D2 — the `make gate-4` rule is human-side**, in RUN-019 (RUN-019.D3), like TST-013's `gate-3` rule.
+
+## TST-015 — Tasks
+
+- [ ] TST-015.1 — `scripts/gate_4.py` and its unit tests · #216 · QA · acceptance: `tests/unit/gate/test_gate_4_checks.py` (the real run is `make gate-4`, at G1)
+
+## TST-015 — Results
