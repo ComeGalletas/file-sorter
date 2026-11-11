@@ -36,8 +36,8 @@ prune-test: ## Shut down the test projects of worktrees that no longer exist (RU
 build: ## Build the app/test image
 	$(COMPOSE) build app
 
-up: ## Start db, ollama, searxng and app
-	$(COMPOSE) up -d db ollama searxng app
+up: ## Start db, ollama, searxng, app and the UI proxy (127.0.0.1:8000)
+	$(COMPOSE) up -d db ollama searxng app ui-proxy
 
 down: ## Stop everything (volumes are kept)
 	$(COMPOSE) --profile test --profile tools down
@@ -86,4 +86,16 @@ ifeq ($(WT_NAME),)
 	 $(COMPOSE) --profile test run --rm -e APP_DB_DSN test python scripts/gate_3.py --categories-from-app-db
 else
 	$(TEST) python scripts/gate_3.py
+endif
+
+# RUN-019.D3: gate 4 reads the real dry run's ledger in the app database, read-only, so it runs
+# from the main checkout only, with the DSN handed over by name (never echoed), as gate-3 does.
+gate-4: ## Milestone gate 4 on the real dry run's ledger (main checkout; RUN-019)
+ifeq ($(WT_NAME),)
+	@$(COMPOSE) up -d --wait db >/dev/null
+	@DB_PASSWORD="$$(sed -n 's/^DB_PASSWORD=//p' .env | tr -d '\r')"; \
+	 export APP_DB_DSN="postgresql://classifier:$${DB_PASSWORD}@db:5432/classifier"; \
+	 $(COMPOSE) --profile test run --rm -e APP_DB_DSN test python scripts/gate_4.py
+else
+	@echo "gate 4 FAIL: run make gate-4 from the main checkout (it reads the app database's dry run)" >&2; exit 1
 endif
