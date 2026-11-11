@@ -19,6 +19,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    Identity,
     Index,
     Integer,
     String,
@@ -216,3 +217,73 @@ class CategoryPrompt(Base):
 
     def __repr__(self) -> str:
         return f"CategoryPrompt(category_id={self.category_id!r}, position={self.position!r})"
+
+
+# DB-007.1: the run kinds and states, in the order the migration's CHECKs list them.
+RUN_KINDS = ("dry_run", "sort", "watch", "reclassify")
+RUN_STATES = ("running", "finished", "failed")
+# DB-007.D3: the only top-level keys of `runs.counts`, and the closed set of `runs.error`.
+RUN_NODES = ("ingest", "sanitize", "classify", "caption", "retrieve", "name", "fileops")
+RUN_ERRORS = (
+    "sanitize_config", "work_dir", "classify_config", "classify_rules",
+    "vision", "ollama", "database", "interrupted", "internal",
+)  # fmt: skip
+# DB-007.D3: an inner key of `runs.counts` (a count's field name).
+RUN_COUNT_FIELD = r"^[a-z][a-z_]{0,31}$"
+
+
+def _counts_check(path: str) -> str:
+    # Mirrors 0007: the jsonpath runs only on an object; runs_counts_object refuses the rest.
+    return (
+        "case when jsonb_typeof(counts) = 'object' "
+        f"then not jsonb_path_exists(counts, '{path}') else true end"
+    )
+
+
+class Run(Base):
+    """One command run (R-API-6, C-11). Holds no path or name: counts and a fixed code only."""
+
+    __tablename__ = "runs"
+    __table_args__ = (
+        CheckConstraint("kind in ('dry_run', 'sort', 'watch', 'reclassify')", name="runs_kind"),
+        CheckConstraint("state in ('running', 'finished', 'failed')", name="runs_state"),
+        CheckConstraint("jsonb_typeof(counts) = 'object'", name="runs_counts_object"),
+        # DB-007.D3: counts is {node: {field: number}}; error is a closed set.
+        CheckConstraint(
+            _counts_check(f'$.keyvalue() ? (!(@.key like_regex "^({"|".join(RUN_NODES)})$"))'),
+            name="runs_counts_nodes",
+        ),
+        CheckConstraint(
+            _counts_check('$.* ? (@.type() != "object")'), name="runs_counts_node_objects"
+        ),
+        CheckConstraint(
+            _counts_check(
+                '$.* ? (@.type() == "object").keyvalue() '
+                f'? (!(@.key like_regex "{RUN_COUNT_FIELD}"))'
+            ),
+            name="runs_counts_fields",
+        ),
+        CheckConstraint(
+            _counts_check('strict $.* ? (@.type() == "object").* ? (@.type() != "number")'),
+            name="runs_counts_numbers",
+        ),
+        CheckConstraint(
+            "error in (" + ", ".join(f"'{e}'" for e in RUN_ERRORS) + ")", name="runs_error_code"
+        ),
+        # DB-007.D2: the state, finished_at and error agree.
+        CheckConstraint(
+            "(state = 'running') = (finished_at is null)", name="runs_finished_iff_done"
+        ),
+        CheckConstraint("error is null or state = 'failed'", name="runs_error_only_failed"),
+        CheckConstraint(
+            "finished_at is null or finished_at >= started_at", name="runs_finished_after_start"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)
