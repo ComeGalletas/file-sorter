@@ -736,3 +736,91 @@ def test_the_cross_check_compares_the_raw_level_not_the_floored_one(
     row = _row(db, h)
     assert row["branch"] == "nsfw"  # the floor made it adult ...
     assert row["needs_review"] is True  # ... yet the raw `safe` still disagrees with the score
+
+
+# CLS-004.7: the effective prompt version reaches `files.prompt_version` (R-CLS-8). The hashes are
+# coined constants set in memory; `prompts/local/` is never read (PROMPTS_LOCAL=off, TST-011.1).
+CLASSIFY_HASH = "0badc0de"
+NSFW_HASH = "0fadedd1"
+
+
+def _replace(monkeypatch: pytest.MonkeyPatch, *, nsfw: bool) -> None:
+    """Synthetic local replacements: always the classify prompt, the NSFW one when `nsfw`."""
+    real = vlm_module.load_effective_prompt
+
+    def load(name: str) -> object:
+        prompt = real(name, PROMPTS_DIR)
+        if name == vlm_module.CLASSIFY_PROMPT:
+            text = "Qorvex rules:\n{format_definitions}\n{topic_definitions}\n{formats} {topics}"
+            digest = CLASSIFY_HASH
+        elif nsfw:
+            text, digest = "Zhyndel rating rules for a synthetic image.", NSFW_HASH
+        else:
+            return prompt
+        return prompt.model_copy(update={"replacement": text, "replacement_hash": digest})
+
+    monkeypatch.setattr(vlm_module, "load_effective_prompt", load)
+
+
+def _version(db: psycopg.Connection, source_hash: str) -> str | None:
+    row = db.execute("select prompt_version from files where source_hash = %s", (source_hash,))
+    return row.fetchone()[0]
+
+
+@pytest.mark.usefixtures("categories")
+def test_the_committed_prompt_version_is_stored(
+    db: psycopg.Connection, folders: tuple[Path, Path], config: Config
+) -> None:
+    h = _add(db, folders[1], 40)
+    assert _version(db, h) is None  # unset before the node
+    assert classify(db, _ctx(folders, config, FakeVision(), FakeOllama())).classified == 1
+    assert _version(db, h) == "classify_v1"  # no replacement: no hash, no NSFW part
+
+
+@pytest.mark.parametrize(
+    ("nsfw", "expected"),
+    [
+        (False, f"classify_v1+{CLASSIFY_HASH}"),
+        (True, f"classify_v1+{CLASSIFY_HASH}/nsfw_level_v1+{NSFW_HASH}"),
+    ],
+)
+@pytest.mark.usefixtures("categories")
+def test_a_replacement_hash_is_stored_and_never_logged(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    nsfw: bool,
+    expected: str,
+) -> None:
+    _replace(monkeypatch, nsfw=nsfw)
+    h = _add(db, folders[1], 41)
+    with caplog.at_level(logging.DEBUG):
+        result = classify(db, _ctx(folders, config, FakeVision(), FakeOllama()))
+    assert result.classified == 1
+    assert _version(db, h) == expected  # held in the ledger first
+    for planted in (CLASSIFY_HASH, NSFW_HASH):
+        assert planted not in caplog.text
+        assert planted not in repr(result) and planted not in str(result)
+
+
+@pytest.mark.usefixtures("categories")
+def test_rows_that_are_not_classified_keep_no_version_and_a_rerun_keeps_it(
+    db: psycopg.Connection,
+    folders: tuple[Path, Path],
+    config: Config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _replace(monkeypatch, nsfw=False)
+    mute, broken = _add(db, folders[1], 42, red=0), _add(db, folders[1], 43, red=100)
+    fine = _add(db, folders[1], 44, red=200)
+    (folders[1] / ".work" / f"{broken}.png").write_bytes(b"not an image")
+    ollama = FakeOllama({0: Script(fail="http"), 200: Script("Zhyndel")})
+    result = classify(db, _ctx(folders, config, FakeVision(), ollama))
+    assert (result.classified, result.errored) == (1, 2)
+    assert _version(db, mute) is None  # unanswered
+    assert _version(db, broken) is None  # unreadable copy
+    assert _version(db, fine) == f"classify_v1+{CLASSIFY_HASH}"
+    assert classify(db, _ctx(folders, config, FakeVision(), FakeOllama())) == ClassifyResult()
+    assert _version(db, fine) == f"classify_v1+{CLASSIFY_HASH}"  # a re-run touches nothing
