@@ -78,6 +78,9 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.2.1 — the stream (`events.py`: frames on change, the keep-alive after 15 s (API-001.D10), one fixed `unavailable` per transition with the stream open (API-001.D11), the end on disconnect or cancellation), unit tests · fa82e19
   - [x] API-001.2.2 — the `GET /api/events` route, its db acceptance test and the privacy plant · (this commit)
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
+  - [x] API-001.3.1 — `FileRow.blurred` (the 16th field, approved on #212) from `is_adult(branch)` (API-001.D8); an `nsfw` row is blurred, safe and null rows are not · 1569e84
+  - [x] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12) · 20f8ed0
+  - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
@@ -110,6 +113,19 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - each open stream probes Ollama's `/api/ps` every 2 s, which is cheap on the box;
   - while a run is running, its imgs/min changes every tick, so the stream sends a frame every 2 s (API-001.D3 as written).
 
+### API-001.3 (#212)
+
+- **Tests:**
+  - acceptance `tests/db/api/test_thumbs.py`: 17 passed;
+  - `tests/unit/api/test_thumbs_reader.py`: 19 passed;
+  - round 1 on #236: the reviewer approved; privacy failed one hole (an escaping `os.close` error), fixed by API-001.3.3;
+  - the required D8 test: the `nsfw`, safe and null rows, through `/api/files` (db) and `file_row` (unit).
+- **Decisions applied:** API-001.D12 (one fixed 404 for every refusal, an unmatched path included); `blurred` is the 16th `FileRow` field, from `is_adult`; the route serves the same bytes for adult rows, and the UI blurs them.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. The gaps:
+  - the folder names `.work` and `thumbs` are repeated in `classifier/api/thumbs.py` rather than imported, because importing the sanitize node would pull in its model clients. A unit test pins them to the node's;
+  - the app's 404 handler now gives every 404 the body `{"detail": "not found"}`, including unknown `/api/...` routes, which is a small change to API-001.1's behaviour.
+
 ### API-001.5 (#213)
 
 - **Tests:**
@@ -132,6 +148,27 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## CLI-008 — Tasks
 
-- [ ] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py`
+- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234)
 
 ## CLI-008 — Results
+
+### CLI-008.1 (#215, Pipeline): `serve`
+
+- **What:** `classifier/cli/serve.py`, registered as `classifier serve [--host] [--port] [--config]`. The host and port default to `api.host` and `api.port`; the port is checked to be 1–65535. It calls `uvicorn.run(create_app(config), host, port, access_log=False, server_header=False, log_config=None)`.
+  - `access_log=False` is m4 item 15 (Nibble's note on #215), on top of `create_app` disabling `uvicorn.access`.
+  - There is no request logging of its own. It prints one line, `serving on <host>:<port>`.
+- **Errors:** fixed text, and none echoes a value.
+  - A config error exits 2 with `load_config`'s own fixed text; for a missing DSN that's `no database DSN: set DB_DSN`.
+  - `create_app` failing exits 2 with `error: the app could not start`.
+  - When uvicorn can't bind or start, it logs the OS error, address included, on `uvicorn.error`, then `sys.exit(1)`. `serve` therefore drops ERROR records on that logger while it runs (the filter is removed afterwards) and exits 1 with `error: could not listen on the configured address`. An `OSError` gets the same treatment, and a clean stop exits 0.
+- **Tests:**
+  - acceptance `tests/db/cli/test_serve_report_cli.py`: 13 passed. `uvicorn.run` is replaced by a recorder, so no port is opened. The tests cover:
+    - the defaults and the overrides (`--host 0.0.0.0 --port 8123`);
+    - the exact keyword set, including `access_log=False`;
+    - the app as `create_app`'s read-only API, through TestClient: `GET /api/status` 200, `POST` 405, `/docs` 404;
+    - bad ports and a missing DSN or config, all before serving;
+    - a bind failure with a planted message, hidden, with the filter removed afterwards;
+    - an `OSError`, a clean stop, and a `create_app` failure;
+  - `make test`: 2636 passed, 48 deselected;
+  - `make lint`: clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: while `serve` runs, any ERROR on `uvicorn.error` is dropped, not only the bind message. A protocol-level error's detail is then invisible on the box console too. This trades local diagnostics for never echoing OS or exception text. Request handling itself is guarded in `create_app`, so the API's own errors never reach uvicorn.
