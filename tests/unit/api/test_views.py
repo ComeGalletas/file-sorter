@@ -49,7 +49,7 @@ def _mapping(**over: object) -> dict[str, object]:
 
 def test_file_row_fields_are_exactly_the_contract() -> None:
     assert tuple(FileRow.model_fields) == FILE_ROW_FIELDS
-    assert len(FILE_ROW_FIELDS) == 15
+    assert len(FILE_ROW_FIELDS) == 16
     for banned in ("source_path", "duplicate_paths", "original_sanitized", "caption"):
         assert banned not in FileRow.model_fields
 
@@ -100,6 +100,14 @@ def test_adult_branch_is_the_classify_rules_adult_branch() -> None:
 def test_is_adult(branch: str | None, adult: bool) -> None:
     assert is_adult(branch) is adult
     assert is_adult("adult") is False  # the old D8 wording is not a ledger value
+
+
+@pytest.mark.parametrize(
+    ("branch", "blurred"), [(ADULT_BRANCH, True), ("safe", False), (None, False)]
+)
+def test_blurred_comes_from_is_adult(branch: str | None, blurred: bool) -> None:
+    """API-001.3 (API-001.D8): an adult row is blurred; safe and null rows are not."""
+    assert file_row(_mapping(branch=branch)).blurred is blurred
 
 
 class _Model:

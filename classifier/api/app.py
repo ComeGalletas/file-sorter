@@ -10,18 +10,21 @@ response body.
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Annotated, Any
 
 import anyio
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
-from sqlalchemy import Connection, Engine, create_engine, event, text
+from sqlalchemy import Connection, Engine, create_engine, event, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from classifier.api.events import status_events
+from classifier.api.thumbs import THUMB_MEDIA_TYPE, is_source_hash, read_thumbnail
 from classifier.api.views import (
     FileFilters,
     FilePage,
@@ -32,10 +35,12 @@ from classifier.api.views import (
     with_loaded_models,
 )
 from classifier.config import Config
-from classifier.db.models import FileStatus
+from classifier.db.models import File, FileStatus
 from classifier.db.url import to_sqlalchemy_url
 
 INVALID_QUERY = "invalid query"  # API-001.D5: fixed text, never the input echoed back
+NOT_FOUND = "not found"  # API-001.D12: every 404, whatever was refused
+THUMB_HEADERS = {"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"}
 DB_UNAVAILABLE = "database unavailable"
 INTERNAL_ERROR = "internal error"
 NO_DSN = "the database DSN is not set"
@@ -146,6 +151,15 @@ def create_app(
         # FastAPI's default body echoes the input, which can be a category name.
         return JSONResponse(status_code=422, content={"detail": INVALID_QUERY})
 
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(_request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        # API-001.D12: one fixed 404 body, whether a route refused or no route matched
+        # (an unmatched path such as a traversal attempt). Other details are fixed text.
+        detail = NOT_FOUND if exc.status_code == 404 else exc.detail
+        return JSONResponse(
+            status_code=exc.status_code, content={"detail": detail}, headers=exc.headers
+        )
+
     @contextmanager
     def _connection() -> Iterator[Connection]:
         with engine.connect() as conn:
@@ -203,6 +217,27 @@ def create_app(
             max_ticks=app.state.events_max_ticks,
         )
         return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
+
+    results_root = Path(config.paths.results_root)
+
+    def _ledger_hash(conn: Connection, source_hash: str) -> str | None:
+        query = select(File.source_hash).where(File.source_hash == source_hash)
+        return conn.execute(query).scalar_one_or_none()
+
+    @app.get("/thumbs/{source_hash}")
+    def thumb(source_hash: str) -> Response:
+        """API-001.3: the thumbnail for a ledger hash; the path comes from the ledger's value.
+
+        Every refusal is the same fixed 404 (API-001.D12). Adult rows get the same bytes:
+        the UI blurs them (m4 answer 3).
+        """
+        if not is_source_hash(source_hash):
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        ledger_hash = guarded(lambda: _read(lambda conn: _ledger_hash(conn, source_hash)))
+        data = None if ledger_hash is None else read_thumbnail(results_root, ledger_hash)
+        if data is None:
+            raise HTTPException(status_code=404, detail=NOT_FOUND)
+        return Response(content=data, media_type=THUMB_MEDIA_TYPE, headers=THUMB_HEADERS)
 
     app.state.engine = engine
     app.state.probe = probe
