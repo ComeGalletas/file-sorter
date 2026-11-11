@@ -79,7 +79,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests
-  - [ ] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213)
+  - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213)
 
 ## API-001 — Results
 
@@ -93,6 +93,15 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. The gap: imgs/min counts every row whose `updated_at` falls inside the run's window, so a concurrent writer would be counted too. That is API-001.D7 as written, and the run lock (PIPE-002) keeps a second run out.
 - **Deferred:** `serve` should also pass `access_log=False` (noted on #215, CLI-008.1).
+
+### API-001.5 (#213)
+
+- **Tests:**
+  - acceptance `tests/db/api/test_report.py`: 5 passed (planted secrets proved served then absent; escaping; no outbound reference; the three-way adult split through `is_adult`; every ledger row, streamed once, newest first);
+  - `tests/unit/api/test_report_render.py`: 7 passed; `tests/unit/ui/test_html.py`: 15 passed;
+  - `make test` (unit + db + integration): 2612 passed, 48 deselected; `make lint` clean.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Pass 1 found a gap (no test for a row with no sanitized name yet), fixed in pass 2. The remaining point: the report holds every row in one string, so a very large ledger costs memory in CLI-008.1; the signature returns `str`, so streaming would be a contract change.
 
 ---
 
