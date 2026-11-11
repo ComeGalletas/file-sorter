@@ -83,7 +83,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
   - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests · 381cd13
-  - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers)
+  - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers) · d701b0b
   - [ ] API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
@@ -138,6 +138,20 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `make test` (unit + db + integration): 2612 passed, 48 deselected; `make lint` clean.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. Pass 1 found a gap (no test for a row with no sanitized name yet), fixed in pass 2. The remaining point: the report holds every row in one string, so a very large ledger costs memory in CLI-008.1; the signature returns `str`, so streaming would be a contract change.
+
+### API-001.4 (#214)
+
+- **Decision applied, API-001.D13 (lead, #214):** the page's script (the `EventSource` refresh and click-to-reveal) is the served `classifier/ui/app.js`, never inline. Every UI response carries a CSP that allows only the page's own origin and no inline script (`default-src 'none'; script-src 'self'; …; form-action 'none'; frame-ancestors 'none'`), plus `no-referrer`, `nosniff` and `no-store`.
+- **Also applied:** the router is in `classifier/ui/routes.py`, included by `create_app` (lead, #214, answer 1). Errors are 50 per page with `?page=N` (answer 2). The review queue and errors refresh only when the run's id or state changes, not on every status frame, so a revealed thumbnail there isn't re-blurred every 2 s.
+- **Tests:**
+  - acceptance `tests/db/api/test_ui.py`: 14 passed. Mutating the blur flag or the queue predicate fails its test;
+  - `tests/unit/ui/test_fragments.py`: 13 passed;
+  - `make test` (unit + db + integration): 2751 passed, 48 deselected; `make lint` clean.
+- **Status:** BLOCKED on RUN-021 for API-001.4.3 only (the vendored htmx route's test). Nothing is stubbed; until then `/ui/vendor/htmx.min.js` is the fixed 404, and the page loads no fragment.
+- **Self-rating:** 8/10, proud: yes. The gaps:
+  - API-001.4.3 waits for RUN-021;
+  - `app.js` has no automated test: the image has no JS runtime, and nothing may be installed on the host. Its markup contract (the triggers, the `status` event name, `data-blur`) is pinned from the Python side;
+  - the latest-rows fragment refreshes on every status frame, so a thumbnail revealed there blurs again within 2 s while a run is running. That errs toward blurred.
 
 ---
 
