@@ -23,7 +23,9 @@ from classifier.api.views import (
     FileFilters,
     FilePage,
     ModelProbe,
+    StatusView,
     build_file_page,
+    build_status,
 )
 from classifier.config import Config
 from classifier.db.models import FileStatus
@@ -127,6 +129,10 @@ def create_app(
     ) -> FilePage:
         filters = FileFilters(status=status, format=format, topic=topic, needs_review=needs_review)
         return _read(lambda conn: build_file_page(conn, filters, page))
+
+    @app.get("/api/status", response_model=StatusView)
+    def api_status() -> StatusView:
+        return _read(lambda conn: build_status(conn, probe))
 
     app.state.engine = engine
     app.state.probe = probe

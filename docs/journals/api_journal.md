@@ -66,8 +66,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 - [ ] API-001.1 — The read model, `create_app`, `/api/status` and `/api/files`, the read-only session · #210 · API/UI · acceptance: `tests/db/api/test_status_files.py`
   - [x] API-001.1.1 — the read model (`views.py`: the allowlisted row query, `FileRow`, `FilePage`, `StatusView`), unit tests · 835937f
-  - [x] API-001.1.2 — `create_app`, the read-only engine, `/api/files`, the fixed 422, the access log off · (this commit)
-  - [ ] API-001.1.3 — `/api/status` (counts, the grid, the last error, the loaded models or "n/a")
+  - [x] API-001.1.2 — `create_app`, the read-only engine, `/api/files`, the fixed 422, the access log off · a6ed61b
+  - [x] API-001.1.3 — `/api/status` (counts, the grid, the last error, the loaded models or "n/a") · (this commit)
   - [ ] API-001.1.4 — the run state and imgs/min (after DB-007.1, #207)
 - [ ] API-001.2 — `/api/events` (SSE, API-001.D3) · #211 · API/UI · acceptance: `tests/db/api/test_events.py`
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`

@@ -211,3 +211,115 @@ def test_access_log_is_off(config, engine) -> None:
 
     create_app(config, engine=engine)
     assert logging.getLogger("uvicorn.access").disabled is True
+
+
+# --- /api/status ---------------------------------------------------------------------------
+
+
+class _Model:
+    def __init__(self, name: str, size_vram: int) -> None:
+        self.name = name
+        self.size_vram = size_vram
+
+
+class _Probe:
+    """MOD-003.1's `loaded_models()` signature, faked (#209 lands in parallel)."""
+
+    def __init__(self, result: list[_Model] | None) -> None:
+        self.result = result
+
+    def loaded_models(self) -> list[_Model] | None:
+        return self.result
+
+
+def _status(client: TestClient) -> dict[str, Any]:
+    response = client.get("/api/status")
+    assert response.status_code == 200, response.status_code
+    return response.json()
+
+
+def test_status_counts_per_status_are_deltas_of_seeded_rows(config, engine, seed, tag) -> None:
+    client = _client(config, engine, ollama=_Probe(None))
+    before = _status(client)["counts_by_status"]
+    seed(topic=tag, status="classified")
+    seed(topic=tag, status="classified")
+    seed(topic=tag, status="skipped")
+    after = _status(client)["counts_by_status"]
+    assert set(after) >= {"queued", "classified", "skipped", "error"}
+    assert after["classified"] - before["classified"] == 2
+    assert after["skipped"] - before["skipped"] == 1
+    assert after["queued"] == before["queued"]
+
+
+def test_status_grid_is_topic_by_format_by_branch(config, engine, seed, tag) -> None:
+    seed(topic=tag, format="Zhyndelform", branch="safe")
+    seed(topic=tag, format="Zhyndelform", branch="safe")
+    seed(topic=tag, format="Zhyndelform", branch="adult")
+    seed(topic=tag, format="Unsorted", branch="safe")
+    grid = _status(_client(config, engine, ollama=_Probe(None)))["grid"]
+    got = {(c["format"], c["branch"]): c["count"] for c in grid if c["topic"] == tag}
+    want = {("Zhyndelform", "safe"): 2, ("Zhyndelform", "adult"): 1, ("Unsorted", "safe"): 1}
+    assert got == want
+
+
+def test_status_last_error_is_the_newest_fixed_code(config, engine, seed, tag) -> None:
+    seed(topic=tag, status="error", error="decode_failed", updated_at=BASE.replace(year=2098))
+    newest = seed(
+        topic=tag, status="error", error="vlm_timeout", updated_at=BASE.replace(year=2099)
+    )
+    last = _status(_client(config, engine, ollama=_Probe(None)))["last_error"]
+    assert last["short_hash"] == newest[:8]
+    assert (last["status"], last["error"]) == ("error", "vlm_timeout")
+    assert set(last) == {"short_hash", "status", "error", "updated_at"}
+
+
+VRAM = 5_000_000_000
+
+
+@pytest.mark.parametrize(
+    ("probe", "want"),
+    [
+        (None, "n/a"),
+        (_Probe(None), "n/a"),
+        (_Probe([]), []),
+        (_Probe([_Model("qorvex-vlm:7b", VRAM)]), [{"name": "qorvex-vlm:7b", "size_vram": VRAM}]),
+    ],
+)
+def test_status_loaded_models_or_na(config, engine, probe, want, monkeypatch) -> None:
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)  # the lazy real client then reads "n/a"
+    assert _status(_client(config, engine, ollama=probe))["loaded_models"] == want
+
+
+def test_status_run_state_is_null_until_db_007(config, engine) -> None:
+    body = _status(_client(config, engine, ollama=_Probe(None)))
+    assert body["run"] is None and body["imgs_per_min"] is None
+
+
+def test_status_never_serves_paths_or_raw_names(config, engine, seed, tag) -> None:
+    """m4 item 11: the planted row is counted first (proved served), then the secret is absent."""
+    client = _client(config, engine, ollama=_Probe(None))
+    before = _status(client)["counts_by_status"]["named"]
+    seed(
+        topic=tag,
+        status="named",
+        raw_stem=f"{SECRET}-stem",
+        duplicate_paths=[f"/source/{SECRET}-dup.png"],
+        original_sanitized="qorvex-clean",
+    )
+    response = client.get("/api/status")
+    assert response.json()["counts_by_status"]["named"] == before + 1
+    assert any(c["topic"] == tag for c in response.json()["grid"])
+    assert SECRET not in response.text and "/source" not in response.text
+    assert all(SECRET not in f"{k}: {v}" for k, v in response.headers.items())
+
+
+def test_status_db_failure_is_a_fixed_503(config) -> None:
+    dead = read_only_engine(f"postgresql://qorvex:{SECRET}@127.0.0.1:1/qorvex")
+    try:
+        app = create_app(config, engine=dead, ollama=_Probe(None))
+        response = TestClient(app).get("/api/status")
+    finally:
+        dead.dispose()
+    assert response.status_code == 503
+    assert response.json() == {"detail": DB_UNAVAILABLE}
+    assert SECRET not in response.text
