@@ -195,13 +195,27 @@ def test_adult_thumbs_are_blurred_by_default(client, seed, tag) -> None:
 
 
 def test_review_queue_membership(client, seed, tag) -> None:
-    flagged = seed(topic=tag, needs_review=True, review_reason="nsfw_disagreement")
+    flagged = seed(
+        topic=tag,
+        format="Zhyndelform",
+        original_sanitized="qorvex-flagged",
+        nsfw_level="suggestive",
+        nsfw_traces=False,
+        needs_review=True,
+        review_reason="nsfw_disagreement",
+    )
     unsorted = seed(topic=tag, format=UNSORTED, needs_review=False)
     plain = seed(topic=tag, format="Zhyndelform", needs_review=False)
     body = _get(client, "/ui/review?page=1").text
     row = _row(body, flagged)
-    assert f'data-source-hash="{flagged}"' in row and "<td>nsfw_disagreement</td>" in row
-    assert "<td>yes</td>" in row  # the cross-check flag
+    assert f'data-source-hash="{flagged}"' in row
+    # The full cell run, position by position: hash, name, format, topic, NSFW level,
+    # traces, the cross-check flag, the review reason.
+    cells = (
+        f"<td>{flagged[:8]}</td><td>qorvex-flagged.png</td><td>Zhyndelform</td><td>{tag}</td>"
+        "<td>suggestive</td><td>no</td><td>yes</td><td>nsfw_disagreement</td></tr>"
+    )
+    assert row.endswith(cells)
     _row(body, unsorted)
     assert f'data-hash="{plain[:8]}"' not in body
 
@@ -275,6 +289,17 @@ def test_ui_is_read_only(client, seed, tag) -> None:
     for path in FRAGMENTS + STATIC:
         for method in ("POST", "PUT", "PATCH", "DELETE"):
             assert client.request(method, path).status_code == 405, (method, path)
+
+
+def test_csp_is_the_d13_literal(client) -> None:
+    """API-001.D13, typed out here so a change to `routes.CSP` can't pass unnoticed."""
+    want = (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+        "frame-ancestors 'none'"
+    )
+    for path in FRAGMENTS + STATIC:
+        assert _get(client, path).headers["content-security-policy"] == want, path
 
 
 def test_security_headers_on_every_ui_response(client) -> None:

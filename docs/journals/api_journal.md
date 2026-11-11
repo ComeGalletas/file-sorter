@@ -85,6 +85,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests · 381cd13
   - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers) · d701b0b
   - [ ] API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)
+  - [x] API-001.4.4 — round 1 on #241: the review row's full cell run asserted by position, and the D13 CSP asserted as a typed literal
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
   - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
@@ -144,7 +145,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **Decision applied, API-001.D13 (lead, #214):** the page's script (the `EventSource` refresh and click-to-reveal) is the served `classifier/ui/app.js`, never inline. Every UI response carries a CSP that allows only the page's own origin and no inline script (`default-src 'none'; script-src 'self'; …; form-action 'none'; frame-ancestors 'none'`), plus `no-referrer`, `nosniff` and `no-store`.
 - **Also applied:** the router is in `classifier/ui/routes.py`, included by `create_app` (lead, #214, answer 1). Errors are 50 per page with `?page=N` (answer 2). The review queue and errors refresh only when the run's id or state changes, not on every status frame, so a revealed thumbnail there isn't re-blurred every 2 s.
 - **Tests:**
-  - acceptance `tests/db/api/test_ui.py`: 14 passed. Mutating the blur flag or the queue predicate fails its test;
+  - acceptance `tests/db/api/test_ui.py`: 15 passed (14, plus the D13 literal from API-001.4.4). Mutating the blur flag or the queue predicate fails its test;
   - `tests/unit/ui/test_fragments.py`: 13 passed;
   - `make test` (unit + db + integration): 2751 passed, 48 deselected; `make lint` clean.
 - **Status:** BLOCKED on RUN-021 for API-001.4.3 only (the vendored htmx route's test). Nothing is stubbed; until then `/ui/vendor/htmx.min.js` is the fixed 404, and the page loads no fragment.
