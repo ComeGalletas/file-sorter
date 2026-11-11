@@ -133,7 +133,7 @@ def _unavailable(criterion: int) -> Finding:
 
 def check_reachable(ledger: Sequence[LedgerRow], served: Sequence[str] | None) -> Finding:
     """`served` is every `source_hash` from `/api/files`, all pages in order; None = no route."""
-    if served is None:
+    if served is None or not ledger:  # a whole-folder run is never empty
         return _unavailable(1)
     expected = {row.source_hash for row in ledger}
     seen = Counter(served)
@@ -150,21 +150,40 @@ def _nonzero(counts: Mapping[Any, int]) -> dict[Any, int]:
     return {k: n for k, n in counts.items() if n}
 
 
+def _count(value: Any) -> bool:
+    return type(value) is int and value >= 0  # not a bool, a float or a numeric string
+
+
+def _served_counts(
+    status: Mapping[str, Any],
+) -> tuple[dict[str, int], dict[tuple[Any, Any, Any], int]] | None:
+    """`/api/status`'s counts per status and per (topic, format, branch), or None when the
+    shape isn't exactly the read model's. Checked by type, so nothing raises."""
+    by_status = status.get("counts_by_status") if isinstance(status, Mapping) else None
+    grid = status.get("grid") if isinstance(status, Mapping) else None
+    if not isinstance(by_status, Mapping) or not isinstance(grid, list):
+        return None
+    if not all(isinstance(k, str) and _count(n) for k, n in by_status.items()):
+        return None
+    cells: Counter[tuple[Any, Any, Any]] = Counter()
+    for cell in grid:
+        if not isinstance(cell, Mapping) or not _count(cell.get("count")):
+            return None
+        key = (cell.get("topic"), cell.get("format"), cell.get("branch"))
+        if not all(part is None or isinstance(part, str) for part in key):
+            return None
+        cells[key] += cell["count"]
+    return _nonzero(dict(by_status)), _nonzero(cells)
+
+
 def check_counts(ledger: Sequence[LedgerRow], status: Mapping[str, Any] | None) -> Finding:
     """`status` is `/api/status`'s JSON. Zero entries are ignored on both sides."""
     if status is None:
         return _unavailable(2)
-    try:
-        served_status = _nonzero({str(k): int(n) for k, n in status["counts_by_status"].items()})
-        served_grid: Counter[tuple[Any, Any, Any]] = Counter()
-        for cell in status["grid"]:
-            served_grid[(cell["topic"], cell["format"], cell["branch"])] += int(cell["count"])
-    except (KeyError, TypeError, ValueError, AttributeError):
-        malformed = True
-    else:
-        malformed = False
-    if malformed:  # outside the except block: nothing chained (m3 privacy item 5)
+    served = _served_counts(status)
+    if served is None:
         return Finding(2, False, ((NO_HASH, Code.UNREADABLE),))
+    served_status, served_grid = served
     ledger_status = _nonzero(Counter(row.status for row in ledger))
     ledger_grid = _nonzero(Counter((row.topic, row.format, row.branch) for row in ledger))
     issues: list[tuple[str, Code]] = []
@@ -172,7 +191,7 @@ def check_counts(ledger: Sequence[LedgerRow], status: Mapping[str, Any] | None) 
         if ledger_status.get(name, 0) != served_status.get(name, 0):
             # The status is a fixed enum value, but it is kept out of the code: codes are fixed.
             issues.append((NO_HASH, Code.STATUS_MISMATCH))
-    if _nonzero(served_grid) != ledger_grid:
+    if served_grid != ledger_grid:
         issues.append((NO_HASH, Code.GRID_MISMATCH))  # never the cell: it holds category names
     return _finding(2, issues)
 
@@ -218,7 +237,7 @@ def queue_entries(pages: Iterable[str]) -> list[str]:
 
 def check_review_queue(ledger: Sequence[LedgerRow], queue: Sequence[str] | None) -> Finding:
     """`queue` is every `data-source-hash` from `/ui/review`, all pages; None = no route."""
-    if queue is None:
+    if queue is None or not ledger:
         return _unavailable(3)
     expected = {row.source_hash for row in ledger if queued(row)}
     seen = Counter(queue)
@@ -246,13 +265,15 @@ def _forms(secret: str) -> set[str]:
 
 
 def raw_stems(row: LedgerRow) -> list[str]:
-    """The raw stems to look for, after TST-015.D4's skips."""
+    """The raw stems to look for, after TST-015.D4's skips: under 4 characters, or equal to
+    `original_sanitized` (casefolded) on its own or with its extension."""
     sanitized = (row.original_sanitized or "").casefold()
     stems = []
     for path in (row.source_path, *row.duplicate_paths):
-        stem = PurePosixPath(path).stem if path else ""
-        if len(stem) >= MIN_RAW_STEM and stem.casefold() != sanitized:
-            stems.append(stem)
+        raw = PurePosixPath(path) if path else PurePosixPath()
+        same = sanitized in (raw.stem.casefold(), raw.name.casefold())
+        if len(raw.stem) >= MIN_RAW_STEM and not same:
+            stems.append(raw.stem)
     return stems
 
 
@@ -261,7 +282,7 @@ def check_no_leak(ledger: Sequence[LedgerRow], bodies: Mapping[str, str | None])
     or to None when it isn't available. Every row must first be proved served."""
     texts = [body.casefold() for body in bodies.values() if body]
     issues: list[tuple[str, Code]] = []
-    if not bodies or any(body is None for body in bodies.values()):
+    if not ledger or not bodies or any(body is None for body in bodies.values()):
         issues.append((NO_HASH, Code.NOT_AVAILABLE))
 
     def found(secret: str) -> bool:
@@ -296,7 +317,8 @@ _CSS_REF = re.compile(r"url\(\s*['\"]?(?!#)|@import", re.IGNORECASE)
 
 def check_report(report: str | None) -> Finding:
     """No `http(s)://`, no reference that leaves the page (anything but `#...`), no CSS
-    `url()` or `@import`, and no thumbnail (`<img>`, a `/thumbs/` path, `data:image`)."""
+    `url()` or `@import`, no `<meta http-equiv="refresh">`, and no thumbnail (`<img>`, a
+    `/thumbs/` path, `data:image`)."""
     if report is None:
         return _unavailable(6)
     lowered = report.casefold()
@@ -308,6 +330,8 @@ def check_report(report: str | None) -> Finding:
     for tag, attrs in _tags(report):
         if tag == "img":
             issues.append((NO_HASH, Code.THUMB_IN_REPORT))
+        if tag == "meta" and attrs.get("http-equiv", "").strip().casefold() == "refresh":
+            issues.append((NO_HASH, Code.EXTERNAL_REF))  # any refresh navigates the page
         for name, value in attrs.items():
             if name in _REF_ATTRS and not value.strip().startswith("#"):
                 issues.append((NO_HASH, Code.EXTERNAL_REF))

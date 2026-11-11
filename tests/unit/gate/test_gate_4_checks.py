@@ -110,6 +110,7 @@ def test_detail_is_only_added_when_asked_and_only_for_failures() -> None:
 
 def test_detail_never_prints_anything_but_a_short_hash() -> None:
     bad = gate_4.Finding(1, False, ((PLANT_PATH, Code.MISSING),))
+    assert (PLANT_PATH, Code.MISSING) in bad.issues  # the plant is held before absence
     text = detail_text([bad])
     assert PLANT_DIR not in text and PLANT_STEM not in text
     assert "  1 ???????? MISSING" in text
@@ -157,6 +158,7 @@ def test_counts_flag_a_status_mismatch() -> None:
 def test_counts_flag_a_grid_mismatch_without_the_cell() -> None:
     status = status_of(LEDGER)
     status["grid"][0]["count"] += 1
+    assert status["grid"][0]["format"] == "qorvex-format"  # the coinage is in the input
     finding = gate_4.check_counts(LEDGER, status)
     assert finding.issues == (("-", Code.GRID_MISMATCH),)
     assert "qorvex-format" not in detail_text([finding])
@@ -166,6 +168,23 @@ def test_counts_on_a_malformed_status_are_unreadable_and_unchained() -> None:
     finding = gate_4.check_counts(LEDGER, {"grid": []})
     assert finding.issues == (("-", Code.UNREADABLE),)
     assert gate_4.check_counts(LEDGER, None).issues == (("-", Code.NOT_AVAILABLE),)
+
+
+@pytest.mark.parametrize("bad", ["1", 1.0, True, -1, None])
+def test_counts_require_plain_ints(bad) -> None:
+    status = status_of(LEDGER)
+    status["counts_by_status"]["classified"] = bad
+    assert gate_4.check_counts(LEDGER, status).issues == (("-", Code.UNREADABLE),)
+    status = status_of(LEDGER)
+    status["grid"][0]["count"] = bad
+    assert gate_4.check_counts(LEDGER, status).issues == (("-", Code.UNREADABLE),)
+
+
+def test_an_empty_ledger_fails_criteria_1_3_and_4() -> None:
+    unavailable = (("-", Code.NOT_AVAILABLE),)
+    assert gate_4.check_reachable([], []).issues == unavailable
+    assert gate_4.check_review_queue([], []).issues == unavailable
+    assert gate_4.check_no_leak([], {"files": "[]"}).issues == unavailable
 
 
 # --- 3. review queue ------------------------------------------------------------------------
@@ -263,6 +282,9 @@ def test_no_leak_finds_escaped_forms() -> None:
 
 def test_no_leak_handles_a_lone_surrogate_without_raising() -> None:
     odd = row(9, source_path="/source/Qorvex\udcff.png")
+    assert odd.source_path.endswith("\udcff.png")  # the plant is held
+    leaked = gate_4.check_no_leak([odd], {"ui": f"{odd.short_hash} {odd.source_path}"})
+    assert (odd.short_hash, Code.LEAK_PATH) in leaked.issues  # served, it is found
     assert gate_4.check_no_leak([odd], {"ui": odd.short_hash}).passed
 
 
@@ -270,8 +292,10 @@ def test_raw_name_skips_follow_tst_015_d4() -> None:
     same = row(10, source_path="/source/a/Qorvex-Kept.png", original_sanitized="qorvex-kept")
     short = row(11, source_path="/source/a/Qzx.png", original_sanitized="clean")
     changed = row(12, source_path="/source/a/Zhyndel-Raw.png", original_sanitized="clean")
+    with_ext = row(14, source_path="/source/a/Qorvex-Ext.png", original_sanitized="QORVEX-EXT.PNG")
     assert gate_4.raw_stems(same) == []
     assert gate_4.raw_stems(short) == []
+    assert gate_4.raw_stems(with_ext) == []  # the stem plus its extension is skipped too
     assert gate_4.raw_stems(changed) == ["Zhyndel-Raw"]
     # The path checks have no skip: a served path still fails even when the stem is skipped.
     finding = gate_4.check_no_leak([same], {"ui": f"{same.short_hash} {same.source_path}"})
@@ -303,6 +327,12 @@ def test_ledger_row_repr_hides_paths_and_names() -> None:
         duplicate_paths=(PLANT_DUP,),
         original_sanitized="Vruthmar-Sanitized-Plant",
     )
+    # Each plant is on the instance before its absence from the repr is asserted.
+    assert planted.format == "Qorvex-Format-Plant"
+    assert planted.topic == "Zhyndel-Topic-Plant"
+    assert planted.source_path == PLANT_PATH
+    assert planted.duplicate_paths == (PLANT_DUP,)
+    assert planted.original_sanitized == "Vruthmar-Sanitized-Plant"
     for text in (repr(planted), str(planted)):
         for secret in (
             "Qorvex-Format-Plant",
@@ -339,6 +369,8 @@ def test_a_self_contained_report_passes() -> None:
         ("<style>@import 'x.css';</style>", Code.EXTERNAL_REF),
         ("<style>body{background:url(x.png)}</style>", Code.EXTERNAL_REF),
         ("<form action='/api/files'></form>", Code.EXTERNAL_REF),
+        ("<meta http-equiv='refresh' content='5'>", Code.EXTERNAL_REF),
+        ("<meta http-equiv=' Refresh ' content='0;url=#top'>", Code.EXTERNAL_REF),
         ("<img alt='' src='#'>", Code.THUMB_IN_REPORT),
         ("<p>/thumbs/" + h(1) + "</p>", Code.THUMB_IN_REPORT),
         ("<object data='data:image/png;base64,AAAA'></object>", Code.THUMB_IN_REPORT),
