@@ -839,6 +839,19 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLI-009 — Tasks
 
-- [ ] CLI-009.1 — The planted-secret tests in `tests/db/cli/test_categories_cli.py` · #218 · Pipeline · acceptance: that file
+- [x] CLI-009.1 — The planted-secret tests in `tests/db/cli/test_categories_cli.py` · #218 · Pipeline · acceptance: that file
 
 ## CLI-009 — Results
+
+### CLI-009.1 (Pipeline)
+
+- A synthetic plant is set with `categories edit --description`, then proved held (the stored column) and served where R-CLS-7 allows it (`list`), before any absence is asserted.
+- Then absent:
+  - from `edit`'s console output, on its own and with a later edit that leaves the description alone;
+  - from the fixed error text of five refused values built from the plant (too long, a line break, a tab, a C1 character, a lone surrogate). Each leaves the stored plant unchanged, and called directly each raises an `Exit` with `__cause__` and `__context__` both None;
+  - from the errors raised in the database step with a valid plant on `--description` (an unknown category, a sibling folder clash, a database failure), with the same chain checks;
+  - from the output of `add` and `remove` on another category.
+- `sync-folders` isn't run here. It never selects the description (`_rules`), and it writes under `results_root`.
+- Leak check: echoing the description on `edit` made all 8 new cases fail; the code was restored. No leak found, so no fix shipped: tests only.
+- Tests: acceptance file 67 passed (8 new, db tier). `make lint`: clean. No gpu or eval tier.
+- Completion: DONE. Self-rating: 9/10, proud: yes. The gap is that `sync-folders` is covered by reading the code (it never selects the description), not by a run.

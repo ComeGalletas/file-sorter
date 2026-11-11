@@ -19,7 +19,7 @@ from sqlalchemy.engine import make_url
 from typer.testing import CliRunner
 
 from classifier.cli import app
-from classifier.cli.categories import _check_folder, add_category
+from classifier.cli.categories import _check_folder, add_category, edit_category
 from classifier.config import load_config
 from classifier.db.url import to_sqlalchemy_url
 from classifier.fileops.layout import LayoutError, result_folder
@@ -430,3 +430,105 @@ def test_description_errors_never_quote_the_value_and_are_unchained(cli: None) -
         add_category("Qorvex", "topic", "Qv", None, None, "any", None, None, CONFIG)
     assert raised.value.__cause__ is None
     assert raised.value.__context__ is None
+
+
+# CLI-009.1: a planted description on `edit --description` (CLI-007.D1, DOC-007.D1). Each test
+# first proves the plant is stored, then that it is absent wherever it must not appear.
+PLANT = "Qorvex-plant-7f3a9c"
+_PLANT_BAD = {
+    "long": PLANT * 11,  # 209 characters
+    "newline": PLANT + "\n" + PLANT,
+    "tab": PLANT + "\t" + PLANT,
+    "c1": PLANT + "\x85" + PLANT,
+    "surrogate": PLANT + "\ud800",
+}
+
+
+def _plant(schema_dsn: str) -> None:
+    """Add Qorvex, set the plant with `edit --description`, and prove it is stored and listed."""
+    assert add("Qorvex", "--axis", "topic", "--folder", "Qv").exit_code == 0
+    result = edit("Qorvex", "--description", PLANT)
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "edited topic category Qorvex"
+    assert PLANT not in result.output
+    assert _desc_of(schema_dsn, "Qorvex") == [(PLANT,)]  # held
+    assert f"\t{PLANT}" in run("list").output  # served where R-CLS-7 says: `list` only
+
+
+def _edit_exit(*, name: str = "Qorvex", folder: str | None = None, desc: str) -> typer.Exit:
+    with pytest.raises(typer.Exit) as raised:
+        edit_category(name, "topic", folder, None, None, False, None, desc, CONFIG)
+    return raised.value
+
+
+def test_a_planted_description_is_stored_and_never_echoed_by_edit(
+    cli: None, schema_dsn: str
+) -> None:
+    _plant(schema_dsn)
+    again = edit("Qorvex", "--folder", "Qv2")  # an edit that leaves the description alone
+    assert again.exit_code == 0
+    assert PLANT not in again.output
+    assert _desc_of(schema_dsn, "Qorvex") == [(PLANT,)]
+
+
+@pytest.mark.parametrize("bad", list(_PLANT_BAD))
+def test_a_refused_planted_description_is_fixed_text_and_unchained(
+    cli: None, schema_dsn: str, bad: str
+) -> None:
+    _plant(schema_dsn)
+    value = _PLANT_BAD[bad]
+    result = edit("Qorvex", "--description", value)
+    _fails(result, _DESC_ERR)
+    assert PLANT not in result.output
+    assert _desc_of(schema_dsn, "Qorvex") == [(PLANT,)]  # unchanged
+    raised = _edit_exit(desc=value)
+    assert raised.exit_code == 2
+    assert raised.__cause__ is None
+    assert raised.__context__ is None
+    assert PLANT not in str(raised)
+
+
+def test_a_valid_plant_refused_in_the_database_step_is_fixed_text(
+    cli: None, schema_dsn: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _plant(schema_dsn)
+    _make("Zhyndel", "topic", "Zh")
+    other = PLANT + "-other"
+    cases = [
+        (("Nopeq", "--description", other), "no such category on this axis", "Nopeq", None),
+        (
+            ("Qorvex", "--folder", "ZH", "--description", other),
+            "a sibling category already uses that folder (compared ignoring case)",
+            "Qorvex",
+            "ZH",
+        ),
+    ]
+    for args, text, name, folder in cases:
+        result = edit(*args)
+        _fails(result, text)
+        assert PLANT not in result.output
+        raised = _edit_exit(name=name, folder=folder, desc=other)
+        assert raised.__cause__ is None
+        assert raised.__context__ is None
+    assert _desc_of(schema_dsn, "Qorvex") == [(PLANT,)]
+    monkeypatch.setenv("DB_DSN", "postgresql://nobody:pw@127.0.0.1:1/none")
+    result = edit("Qorvex", "--description", other)
+    assert result.exit_code == 1
+    assert result.output.strip() == "error: database error, see the db service logs"
+    assert PLANT not in result.output
+    raised = _edit_exit(desc=other)
+    assert raised.__cause__ is None
+    assert raised.__context__ is None
+
+
+def test_other_commands_never_echo_a_stored_plant(cli: None, schema_dsn: str) -> None:
+    # `sync-folders` never selects the description (`_rules`), so it can't echo it; it writes
+    # under results_root, so it isn't run here.
+    _plant(schema_dsn)
+    added = add("Zhyndel", "--axis", "topic", "--folder", "Zh")
+    assert added.exit_code == 0
+    removed = run("remove", "Zhyndel", "--axis", "topic")
+    assert removed.exit_code == 0
+    for result in (added, removed):
+        assert PLANT not in result.output
+    assert _desc_of(schema_dsn, "Qorvex") == [(PLANT,)]
