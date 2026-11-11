@@ -742,13 +742,14 @@ references or host paths here. Use hashes.
   5. every adult row's thumbnail is blurred by default in the served HTML;
   6. the report is self-contained, with no external reference and no thumbnail;
   7. `docker-compose.yml` publishes only `127.0.0.1` ports.
-- **Constraint:** the public output is one verdict per criterion, with no counts (TST-015.D1). `--detail` stays on the box. Unit tests use synthetic rows only.
+- **Constraint:** the public output is one verdict per criterion, with no counts (TST-015.D1). `--detail` (box console only) prints short hashes and fixed codes only, never a `source_path`, a `duplicate_paths` entry, a raw name or a sanitized name; the raw-name check stays in memory (TST-015.D3). Unit tests use synthetic rows only, and one plants a path and a name in a failing row to prove `--detail` leaves them out.
 - **Implements:** §11 (M4 gate); the human's G0 answer 6.
 
 ## TST-015 — Confirmed reading
 
 - **TST-015.D1 — verdicts only** (lead, 2026-11-10, provisional). Nothing about the folder is published, in the spirit of TST-008.D1.
 - **TST-015.D2 — the `make gate-4` rule is human-side**, in RUN-019 (RUN-019.D3), like TST-013's `gate-3` rule.
+- **TST-015.D3 — what `--detail` may print** (lead, 2026-11-10; the privacy auditor's finding on #220): short hashes and fixed codes only (DOC-007.D1, ING-001.D2).
 
 ## TST-015 — Tasks
 

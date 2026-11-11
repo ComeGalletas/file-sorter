@@ -2,7 +2,7 @@
 
 **ID:** API-001 (+ CLI-008) · **Systems:** API (+ CLI, UI, DB, MOD) · **Type:** feature ·
 **Status:** proposed (M4 G0) · **Milestone:** m4 ·
-**Issues:** see each Tasks section · **Branch:** per task (`office/*`)
+**Issues:** API-001: #210, #211, #212, #214 (.4), #213 (.5); CLI-008: #215 · **Branch:** per task (`office/*`)
 
 <!--
 Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, captions, references or host paths here. Use hashes.

@@ -951,10 +951,10 @@ and then (PR #43 review round 2):
 ## RUN-019 — Confirmed reading (the lead's proposed shape, `docs/plans/m4.md`; the human's session decides)
 
 - **RUN-019.D1 — the proxy** (lead, provisional):
-  - a pinned `nginx:<version>-alpine` service, `ui-proxy`, on `internal` plus a new non-internal network `ui` that no other service joins;
+  - a pinned `nginx:<version>-alpine` service, `ui-proxy`, on `internal` plus a new non-internal network `ui` that **only the proxy** joins (`app`, `db`, `ollama`, `searxng` and `test` never do);
   - `127.0.0.1:8000:8000` only;
   - `read_only: true`, with tmpfs for nginx's cache and pid;
-  - a committed `docker/ui-proxy/nginx.conf` with `proxy_pass http://app:8000`, `GET` and `HEAD` only, `proxy_buffering off` (SSE) and `server_tokens off`.
+  - a committed `docker/ui-proxy/nginx.conf` whose one fixed upstream is `proxy_pass http://app:8000` (no resolver, no other `proxy_pass`), `GET` and `HEAD` only, `proxy_buffering off` (SSE) and `server_tokens off`.
 - **RUN-019.D2 — `app` serves on the internal network** (lead, provisional): `command: ["classifier", "serve", "--host", "0.0.0.0"]`. `api.host` stays `127.0.0.1` for `serve` anywhere else, and `docker compose exec app classifier …` still works.
 - **RUN-019.D3 — `make gate-4`** (lead, provisional): a main-checkout rule like TST-013's `gate-3`. It starts the app `db` and passes `APP_DB_DSN` by name, never echoed. In a worktree it fails with a fixed message.
 
@@ -971,4 +971,4 @@ and then (PR #43 review round 2):
 
 - **Objective:** Vendor htmx at a pinned 2.x version in `classifier/ui/vendor/htmx.min.js`, with its license and SHA-256.
 - **Constraint:** the host tooling can't fetch from npm or a CDN (RUN-007.D1), so the human's session brings the file in a human-side PR. API-001.4 waits for it. The page loads it from its own origin only.
-- **RUN-021.D1** (lead, provisional; `docs/plans/m4.md`): human-side vendoring as above.
+- **RUN-021.D1** (lead, provisional; `docs/plans/m4.md`): human-side vendoring as above. **No host tooling or desk downloads it:** neither npm nor a CDN is on RUN-007.D1's list, and `gh` is for metadata only. The human obtains the file themselves. The PR records the version, the upstream release it came from, and its SHA-256, and the reviewer checks the hash against that release.
