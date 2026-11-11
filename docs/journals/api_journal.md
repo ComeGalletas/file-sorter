@@ -46,6 +46,16 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - a bad value gets a 422 with fixed text.
 - **API-001.D6 — the report's default path** (lead, provisional): `/results/reports/report-<UTC timestamp>.html`, opened exclusively; `--out` overrides it.
 - **API-001.D7 — imgs/min** (lead, provisional): the rows whose `updated_at` falls inside the current (or last) run's window, divided by its elapsed minutes.
+- **API-001.D8 — thumbnail markup and the adult predicate** (lead, 2026-11-10, on #214 and #216; **corrected** the same night, as the human's session pointed out).
+  - Every thumbnail in served HTML is `<img class="thumb" src="/thumbs/<source_hash>" data-hash="<short_hash>" data-blur="1|0" alt="">`, with no `title`.
+  - `data-blur="1"` is set server-side by default for adult rows. The click-to-reveal toggles one image in the browser and is never persisted.
+  - "Adult" is **one predicate**: `classifier.api.views.is_adult(branch)` against `ADULT_BRANCH`, the ledger's `branch = 'nsfw'` (R-CLS-1), pinned by a test to `classify_rules.branch_for_level`. The UI, the grid's split (`GridCell.adult`), the report and gate 4 all use it, and never retype the string. The first wording keyed on `'adult'`, a value the ledger never holds, which would have left every real adult thumbnail unblurred.
+  - `FileRow.blurred` (the 16th field, API-001.3) carries it.
+- **API-001.D9 — the review queue route** (lead, on #214 and #216). `GET /ui/review?page=N`, 50 per page, newest first. It returns one `<tr data-hash data-source-hash>` per queued row: `needs_review`, or the `unsorted` fallback format (imported from the classify rules). An empty page is the end.
+- **API-001.D10 — SSE keep-alive** (lead, on #211): a comment after 15 s with no frame.
+- **API-001.D11 — SSE on failure** (lead, on #211): one fixed `unavailable` event per transition, and the stream stays open.
+- **API-001.D12 — one fixed 404** (lead, on #212): every refusal on `/thumbs/` (malformed, unknown, not regular, a link, too big, any `OSError`) is the same `{"detail": "not found"}`.
+- **API-001.D13 — the UI's CSP** (lead, on #214): `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, plus `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`. The page has no inline script; the few lines of `EventSource` and click-to-reveal live in a served `classifier/ui/app.js`.
 
 ## API-001 — Plan
 
@@ -146,6 +156,11 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `report` writes `render_report`'s HTML to API-001.D6's path, or to `--out`.
 - **Constraint:** both are thin wrappers, with no logic beyond config and file handling. Errors are fixed text and unchained, and `report` never overwrites a file.
 - **Implements:** R-API-1, R-API-7, §7.
+
+## CLI-008 — Confirmed reading
+
+- **CLI-008.D1 — the report makes no Ollama call** (lead, on #215): a static file depends on nothing live, so its models section is "n/a".
+- **The split** (lead, on #215): CLI-008.1 is `serve` only (#215), so RUN-019.2 could land early. `report` is CLI-008.2 (#234).
 
 ## CLI-008 — Tasks
 
