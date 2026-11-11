@@ -22,8 +22,8 @@ def services() -> dict:
 
 
 def networks_of(service: dict) -> set[str]:
-    nets = service.get("networks") or []
-    return set(nets) if isinstance(nets, list) else set(nets)
+    # The list form and the mapping form both iterate as network names.
+    return set(service.get("networks") or [])
 
 
 def nginx_conf() -> str:
@@ -65,6 +65,19 @@ def test_the_proxy_image_is_pinned_and_the_container_read_only() -> None:
     assert re.fullmatch(r"nginx:\d+\.\d+\.\d+-alpine", proxy["image"])
     assert proxy.get("read_only") is True
     assert "./docker/ui-proxy/nginx.conf:/etc/nginx/nginx.conf:ro" in proxy["volumes"]
+    # nginx writes only to these, so read_only holds.
+    assert set(proxy["tmpfs"]) == {"/var/cache/nginx", "/var/run", "/tmp"}
+
+
+def test_app_serves_on_the_internal_network() -> None:
+    # RUN-019.D2: app runs serve; only the proxy publishes it.
+    assert services()["app"]["command"] == ["classifier", "serve", "--host", "0.0.0.0"]
+
+
+def test_nginx_resolves_only_through_dockers_dns_and_pins_host() -> None:
+    conf = nginx_conf()
+    assert re.findall(r"resolver\s+([^;]+);", conf) == ["127.0.0.11 valid=30s ipv6=off"]
+    assert re.findall(r"proxy_set_header\s+Host\s+([^;]+);", conf) == ["127.0.0.1:8000"]
 
 
 def test_nginx_forwards_get_only_to_app_and_buffers_nothing() -> None:
@@ -82,7 +95,12 @@ def test_nginx_forwards_get_only_to_app_and_buffers_nothing() -> None:
 def test_gate_4_runs_from_the_main_checkout_with_the_dsn_by_name() -> None:
     make = (REPO / "Makefile").read_text(encoding="utf-8")
     rule = make.split("\ngate-4:", 1)[1].split("\nendif", 1)[0]
-    assert "-e APP_DB_DSN" in rule and "scripts/gate_4.py" in rule
+    main_branch, worktree_branch = rule.split("\nelse\n", 1)
+    assert "-e APP_DB_DSN " in main_branch and "scripts/gate_4.py" in main_branch
+    assert "-e APP_DB_DSN=" not in rule  # by name only: a value here would be echoed
+    # A worktree has no app database: it fails with fixed text and never runs the gate.
+    assert "gate 4 FAIL" in worktree_branch and "exit 1" in worktree_branch
+    assert "scripts/gate_4.py" not in worktree_branch
     assert "echo $$APP_DB_DSN" not in rule and "echo $${APP_DB_DSN}" not in rule
     # The line that builds the DSN is @-silenced, so make never echoes it.
     dsn_lines = [line for line in rule.splitlines() if "DB_PASSWORD=" in line]

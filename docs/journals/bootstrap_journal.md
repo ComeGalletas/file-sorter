@@ -968,7 +968,7 @@ and then (PR #43 review round 2):
 ## RUN-019 — Tasks
 
 - [x] RUN-019.1 — `ui-proxy`, the `ui` network, `docker/ui-proxy/nginx.conf`, the `gate-4` rule, `make up`, CLAUDE.md's exception, DESIGN R-API-1 and §9 · the human's session · acceptance: `tests/unit/runtime/test_ui_proxy.py`
-- [ ] RUN-019.2 — `app`'s command becomes `classifier serve --host 0.0.0.0` (after CLI-008.1, #215) · the human's session
+- [x] RUN-019.2 — `app`'s command becomes `classifier serve --host 0.0.0.0` (after CLI-008.1, #237); the proxy pins `Host`; review minors from #221 and #223 · the human's session · acceptance: `tests/unit/runtime/test_ui_proxy.py`
 
 ## RUN-019 — Results
 
@@ -980,6 +980,13 @@ and then (PR #43 review round 2):
     - the `Server` header carries no version;
     - a probe query string did not appear in `docker logs`.
   - **Status:** DONE for .1; .2 waits on CLI-008.1. **Self-rating:** 9/10, yes. The gap: the end-to-end path through `serve` is only checkable after RUN-019.2.
+- **RUN-019.2:**
+  - **The change:** `app` runs `classifier serve --host 0.0.0.0`. The proxy sends a fixed `Host: 127.0.0.1:8000`, so a client's Host header never reaches `app`.
+  - **Tests added:** `app`'s command, the tmpfs set, the resolver being Docker's DNS only, and the pinned Host; the `gate-4` rule passes the DSN by name only (no `-e APP_DB_DSN=`), and its worktree branch fails with fixed text without running the gate. `networks_of` lost its dead conditional.
+  - **DESIGN:** §9's Networks bullet names `ui-proxy` on `ui`. R-API-5's sub-bullet is split into "until M7" and "until M8" (#223's minors). DOC-015's Results say "landed".
+  - **Tests:** `tests/unit/runtime/` passes 53; `make lint` is clean; `docker compose config` is valid.
+  - **End to end** (a throwaway project on #237's code, with an unmigrated database): `GET /api/status` through `127.0.0.1:8000` gives `serve`'s fixed 503, an unknown path 404, and POST 403. The `Server` header has no version, and `app`'s log has no request line.
+  - **Status:** DONE. **Self-rating:** 9/10, yes. The gap: a 200 end to end needs a migrated app database, which G1's dry run provides.
 - **Privacy:** no host path, no value from `.env`; the DSN is never echoed.
 
 ---

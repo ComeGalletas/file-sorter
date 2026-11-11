@@ -380,6 +380,6 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 ## DOC-015 — Results
 
 - **Status:** DONE.
-- **Self-rating:** 9/10, yes; C-30 cites R-API-1's new wording, which lands with #221.
+- **Self-rating:** 9/10, yes; C-30 cites R-API-1's new wording, which landed with #221.
 - **Triage:** small. Spec text only.
 - **Privacy:** generic wording only.
