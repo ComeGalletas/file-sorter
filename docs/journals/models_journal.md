@@ -232,8 +232,19 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Constraint:** the existing transport seam and the host check are unchanged. The tests use a fake transport with synthetic JSON, and nothing calls a live Ollama outside the `gpu` tier.
 - **Implements:** R-API-2, R-MOD-1; the human's G0 answer 7.
 
+## MOD-003 — Confirmed reading
+
+- **MOD-003.D1** — **A short timeout for the status read** (lead, 2026-11-10, provisional). The client's default timeout is 300 s, sized for a model load (MOD-001.D4), which would hang a status page. `loaded_models()` passes a per-request `PS_TIMEOUT = 5.0` s, a module constant in `classifier/models/ollama.py` beside `DEFAULT_TIMEOUT`, so every caller gets it.
+
 ## MOD-003 — Tasks
 
-- [ ] MOD-003.1 — `loaded_models()` · #209 · ML · acceptance: `tests/unit/models/test_ollama_ps.py`
+- [x] MOD-003.1 — `loaded_models()` · #209 · ML · acceptance: `tests/unit/models/test_ollama_ps.py` · branch `office/sprocket-16b2` · commit: this one (hash in the PR)
 
 ## MOD-003 — Results
+
+### MOD-003.1 (ML)
+
+- **What landed:** `LoadedModel` (frozen; `name`, `size_vram` in bytes), `PS_PATH`, `PS_TIMEOUT` (MOD-003.D1) and `OllamaClient.loaded_models()` in `classifier/models/ollama.py`. It sends `GET /api/ps` through the existing transport seam and host check, both unchanged. It returns `[]` when nothing is loaded, and `None` on any transport, status or parse failure, including one malformed entry. It never raises and keeps no exception text.
+- **Tests:** `tests/unit/models/test_ollama_ps.py`, 30 passed (unit, `httpx.MockTransport`, synthetic tags only). `make test`: 2449 passed, 48 deselected. `make lint`: clean.
+- **Reviewer / Privacy auditor:** pending (lead).
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. The one point is that the 5 s timeout is provisional (MOD-003.D1) and is checked only against the fake transport.
