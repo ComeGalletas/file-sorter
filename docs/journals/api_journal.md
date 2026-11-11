@@ -82,8 +82,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12) · 20f8ed0
   - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
-  - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests
-  - [ ] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers)
+  - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests · 381cd13
+  - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers)
   - [ ] API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
