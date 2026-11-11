@@ -541,12 +541,12 @@ references or host paths here. Use hashes.
   - [x] TST-009.1.4 — README and Results (.1.1 to .1.3 are commit `24f40d4`; .1.4 is `e3483d6`)
   - [x] TST-009.1.5 — review fix (PR #143): one field allowlist for every Ollama request in `canonical_request`, so record, replay and lint refuse unknown fields before forwarding or writing; README prompt-rule wording · `62c98fa`
   - [x] TST-009.1.6 — review fix (PR #143): `image_digest` raises its refusal outside the `except`, so a truncated image leaves no `__context__` · `52da42a` (PR #143, merged as `ba030a3`)
-- [ ] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
+- [x] TST-009.2 — Gate 3 by level at `min_level`, the 85% format target, and the optional `nsfw_level` column (TST-009.D1); then the G1 run with TST-008.3 · #134 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py` (the G1 run is `make gate-3`)
   - [x] TST-009.2.1 — Loader: the optional trailing `nsfw_level` column, `expects_adult(min_level)`, `labels.example.csv` · `e174308`
   - [x] TST-009.2.2 — Gate: flagged/safe by branch and level at `min_level` (from the loaded config), format target 85% · `923a804`
   - [x] TST-009.2.3 — Tests for the above (synthetic ledger rows; public form unchanged)
   - [x] TST-009.2.4 — Results and self-rating · `8adc3d6` (PR #151, merged as `3a211b3`)
-  - [ ] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5 (now after CLS-004.5.8, and judged at 80% once TST-009.3 merges)
+  - [x] TST-009.2.5 — The `make gate-3` G1 run, on the lead's go after CLS-004.5 (now after CLS-004.5.8, and judged at 80% once TST-009.3 merges) (2026-11-10, run by the human's session from the main checkout at `88e55f7`, through TST-013's rule: gate 3 PASS; the public output is in `docs/plans/m3.md` Results; no PR)
 - [x] TST-009.3 — Gate 3 at format and topic ≥ 80% on a single run (CLS-004.D12 as amended by the human, 2026-10-19): `FORMAT_MIN`/`TOPIC_MIN` 80, the criterion text, the tests that pin 85 (the lead approves the pinned-value edits in `tests/unit/eval/` and `tests/gpu/models/`) · #169 · QA · acceptance: `tests/unit/gate/test_gate_3_measures.py`
 
 ## TST-009 — Results
@@ -695,7 +695,7 @@ references or host paths here. Use hashes.
 
 ## TST-013 — Tasks
 
-- [x] TST-013.1 — `--categories-from-app-db` in `scripts/gate_3.py`, the `gate-3` Makefile rule, DESIGN §11, tests · QA · acceptance: `tests/unit/gate/test_gate_3_runner.py`
+- [x] TST-013.1 — `--categories-from-app-db` in `scripts/gate_3.py`, the `gate-3` Makefile rule, DESIGN §11, tests · QA · acceptance: `tests/unit/gate/test_gate_3_runner.py` (`9d43261`; PR #202, merged as `f3ac342`)
 
 ## TST-013 — Results
 
@@ -721,7 +721,7 @@ references or host paths here. Use hashes.
 
 ## TST-014 — Tasks
 
-- [x] TST-014.1 — `tests/db/cli/test_categories_cli.py` drops `│` before matching · QA · acceptance: `tests/db/cli/test_categories_cli.py`
+- [x] TST-014.1 — `tests/db/cli/test_categories_cli.py` drops `│` before matching · QA · acceptance: `tests/db/cli/test_categories_cli.py` (`0154e89`; PR #204, merged as `c0059b6`)
 
 ## TST-014 — Results
 

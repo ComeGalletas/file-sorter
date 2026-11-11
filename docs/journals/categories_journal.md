@@ -517,7 +517,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
-- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; no issue yet
+- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; carried into M4 (`docs/plans/m4.md`), no issue yet
 - [x] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
@@ -740,18 +740,18 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - Descriptions are neutralized like the name hint.
   - `unsorted` and `none` take the committed prompt's own wording.
   - `vlm_classify` gets the descriptions through a new keyword argument; `formats` and `topics` are unchanged.
-- **CLS-007.D2 — `traces`** (human: "traces in the nsfw_level schema"; the line is the lead's, provisional).
+- **CLS-007.D2 — `traces`** (human: "traces in the nsfw_level schema"; the line is the lead's; the committed generic line confirmed by the human at G1, 2026-11-10).
   - The committed `nsfw_level_v1.md` gains a required boolean `traces` and one generic definition line, from the human's proposal.
   - A missing or non-boolean value is an answer failure, which takes the one retry.
 - **CLS-007.D3 — the floor** (human: `nsfw.conservative_traces: true`; the storage is the lead's reading of "re-applied or turned off later").
   - The ledger stores the model's raw `nsfw_level` and `nsfw_traces`.
   - `decide` computes the effective level and the branch from them.
   - The floor raises only `safe` to `suggestive`, so at `min_level: nudity` it never changes the Adult cut.
-- **CLS-007.D4 — the eval reads the human's descriptions** (lead, 2026-11-10, provisional).
+- **CLS-007.D4 — the eval reads the human's descriptions** (lead, 2026-11-10; confirmed by the human at G1, 2026-11-10, the same as the gate, TST-013.D1).
   - The eval runs in a throwaway schema seeded with the generic text. `--categories-from-app-db` copies the local app database's categories and descriptions into it, from a DSN passed at run time (`APP_DB_DSN`).
   - The default output says only `category descriptions: app database | seeded` and `conservative traces: on | off`.
-- **CLS-007.D5 — the Falconsai cross-check compares the raw level** (lead, 2026-11-10, provisional; DESIGN R-CLS-1 follows, DOC-012). The two conditions are "raw safe with score ≥ `safe_above`" and "raw ≥ `min_level` with score ≤ `adult_below`". With the floored level, a safe image with traces could never trip the first.
-- **CLS-007.D6 — the eval cache may hold category names** (lead, 2026-11-10, provisional; ruled on #198 over the privacy auditor's FAIL). `eval/.cache/` is git-ignored and stays on the box, like the local ledger, which stores the same names in `files.format` and `files.topic`. Descriptions are only digested into the cache key, never stored.
+- **CLS-007.D5 — the Falconsai cross-check compares the raw level** (lead, 2026-11-10; confirmed by the human at G1, 2026-11-10; DESIGN R-CLS-1 follows, DOC-012). The two conditions are "raw safe with score ≥ `safe_above`" and "raw ≥ `min_level` with score ≤ `adult_below`". With the floored level, a safe image with traces could never trip the first.
+- **CLS-007.D6 — the eval cache may hold category names** (lead, 2026-11-10; confirmed by the human at G1, 2026-11-10; ruled on #198 over the privacy auditor's FAIL). `eval/.cache/` is git-ignored and stays on the box, like the local ledger, which stores the same names in `files.format` and `files.topic`. Descriptions are only digested into the cache key, never stored.
 - **DESIGN** (§4.3's "describing user-added categories is a possible follow-up", §5, §6, R-CLS-7) needs a human-side DOC PR. It was asked of the human's session.
 
 ## CLS-007 — Plan
@@ -766,7 +766,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - Numbering note: the gpu-test fix `e07a99e` reused the ID .1; it only completes .1's contract change (`rate_nsfw` returning `LevelAnswer`), so no number of its own was allocated.
 - [x] CLS-007.2 — `nsfw.conservative_traces: true` (its own commit); the node passes the descriptions, applies the floor, and writes the raw level and `nsfw_traces` · #189 · Pipeline · acceptance: `tests/db/graph/test_classify_node.py` (subtasks .1 `d1dd09c` the config field, .2 `5f44a7b` the key in `config.yaml`, .3 `4bdd336` the node, .4 `4fe64b6` the integration test, .5 this journal tick)
 - [x] CLS-007.3 — The eval passes the descriptions and the flag; `--categories-from-app-db`; two content-free output lines · #190 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtask .1 `d98b2a6`)
-- [x] CLS-007.4 — The eval's review fixes: a refused description update is skipped and counted; real plants in the privacy tests; `collect` end to end with the app's categories · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtasks .1 `cc906fc`, .2 `b3e3200`, .3 `5372073`, .4 `28e2f04` the journal tick, .5 review round 1: the plants proved held)
+- [x] CLS-007.4 — The eval's review fixes: a refused description update is skipped and counted; real plants in the privacy tests; `collect` end to end with the app's categories · #199 · ML · acceptance: `tests/unit/eval/test_classify_eval.py` (subtasks .1 `cc906fc`, .2 `b3e3200`, .3 `5372073`, .4 `28e2f04` the journal tick, .5 `3ffad2f` review round 1: the plants proved held; PR #203, merged as `88e55f7`)
 
 ## CLS-007 — Results
 
@@ -816,7 +816,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ## CLS-008 — Tasks
 
-- [x] CLS-008.1 — `Prompt.render` stops adding a newline to the local replacement; the replacement tests follow, plus a regression test · ML · acceptance: `tests/unit/models/test_prompts.py`
+- [x] CLS-008.1 — `Prompt.render` stops adding a newline to the local replacement; the replacement tests follow, plus a regression test · ML · acceptance: `tests/unit/models/test_prompts.py` (`a637edb`; PR #200, merged as `e69a614`)
 
 ## CLS-008 — Results
 

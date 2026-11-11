@@ -214,7 +214,7 @@ references or host paths here. Use hashes.
 ## DB-006 — Confirmed reading
 
 - **DB-006.D1 — the description rule** (lead, 2026-11-10, matching the human's "one line, at most 200 characters"): nullable `text`, with a CHECK that a value is non-blank, at most 200 characters and without a line break. The CLI checks the same rule (CLI-007.D1). User-added categories stay null until described.
-- **DB-006.D2 — the downgrade** (lead, provisional): a plain drop of both columns. This is development tooling, and the description values live only in a local database.
+- **DB-006.D2 — the downgrade** (lead; confirmed by the human at G1, 2026-11-10): a plain drop of both columns. This is development tooling, and the description values live only in a local database.
 
 ## DB-006 — Tasks
 
@@ -225,7 +225,7 @@ references or host paths here. Use hashes.
 ### DB-006.1 (Pipeline)
 
 - Migration `0006` (down_revision `0005`, one head): `categories.description` (text, null) with the CHECK `categories_description`, the 18 defaults seeded by (axis, name) from DESIGN §4.3, and `files.nsfw_traces` (boolean, null). Downgrade drops both columns and the constraint.
-- The CHECK covers non-blank, at most 200 characters, and **no control character** (``-``, ``: line breaks and tabs included), matching the CLI rule exactly (lead's go-ahead). NUL can't be stored in `text`.
+- The CHECK covers non-blank, at most 200 characters, and **no control character** (`\x01`–`\x1f` and `\x7f`: line breaks and tabs included), matching the CLI rule exactly (lead's go-ahead). NUL can't be stored in `text`.
 - A refused downgrade (0005's `nsfw_disagreement` guard) now rolls back the whole run, 0006's step included, so the revision stays at head. `test_review_reason_migration.py` expects `0006` accordingly.
 - ORM: `Category.description` and `File.nsfw_traces`; `Category.__repr__` already omitted user text, and a planted-secret repr test covers it.
 - Tests: acceptance file 20 cases (head, upgrade, seeds, nulls, CHECK accepts/refuses, traces, repr, downgrade and back). Three older tests updated for the new column and constraint.
