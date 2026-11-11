@@ -1,7 +1,7 @@
 """DB-006.1 acceptance: migration 0006 adds `categories.description` and `files.nsfw_traces`.
 
 Isolated like test_nsfw_level_migration.py: a throwaway schema per test, dropped with `cascade`.
-Every value is synthetic (the seed spot checks quote DESIGN §4.3, which is public).
+Every value is synthetic (the golden seeds quote DESIGN §4.3, which is public).
 """
 
 import uuid
@@ -21,21 +21,45 @@ from tests.db.db_support import require_db_dsn
 
 INI = Path(__file__).resolve().parents[3] / "classifier" / "db" / "alembic.ini"
 HASH = "a" * 64
-FORMATS = ("photos", "game-screenshots", "screenshots", "memes", "artwork", "documents")
-TOPICS = (
-    "videogames",
-    "anime",
-    "cartoons",
-    "pc-equipment",
-    "animals",
-    "people",
-    "landscapes",
-    "music",
-    "tv-shows",
-    "software",
-    "memes",
-    "documents",
-)
+# DESIGN §4.3's generic descriptions, typed out from its two tables (bold markers dropped,
+# DB-006.D1), not imported from migration 0006, so a seed that drifts from the spec fails
+# (DB-008.1).
+GOLDEN: dict[tuple[str, str], str] = {
+    ("format", "photos"): (
+        "a real-world photograph taken with a camera or phone camera, not a capture of a screen"
+    ),
+    ("format", "game-screenshots"): (
+        "a capture taken inside a video game: the game world, a game HUD, or a menu rendered by "
+        "the game, on any platform"
+    ),
+    ("format", "screenshots"): (
+        "a capture of a computer or phone screen showing an app, website, chat, social media post "
+        "or OS interface, even when its content is about games"
+    ),
+    ("format", "memes"): (
+        "a joke: an image made or shared as a joke, in any style (a captioned picture, a meme "
+        "template, a funny drawing or photo, an edited image)"
+    ),
+    ("format", "artwork"): (
+        "a drawing, digital illustration, anime or cartoon art, concept art, 3D render or "
+        "abstract graphic"
+    ),
+    ("format", "documents"): "a scanned or photographed document, receipt or form",
+    ("topic", "videogames"): "video games: game captures, game characters, game interfaces",
+    ("topic", "anime"): "anime characters or manga-style art",
+    ("topic", "cartoons"): "western cartoon characters or comics",
+    ("topic", "pc-equipment"): "computer cases, PC hardware and components",
+    ("topic", "animals"): "animals, pets",
+    ("topic", "people"): "real people, faces, groups of people",
+    ("topic", "landscapes"): "landscapes, beaches, cityscapes, views",
+    ("topic", "music"): "music: song lists, music players, artists' albums",
+    ("topic", "tv-shows"): "stills or scenes from TV shows or films",
+    ("topic", "software"): "software: code editors, app screens, programs",
+    ("topic", "memes"): (
+        "a joke: the image's meaning is a joke, humor or irony (its meaning, not its form)"
+    ),
+    ("topic", "documents"): "documents, receipts, forms, lists of text, as its subject",
+}
 INSERT_FILE = (
     "insert into files (source_hash, short_hash, source_path, source_mtime, ext) "
     "values (%s, 'aaaaaaaa', '/source/x', now(), 'png')"
@@ -125,25 +149,17 @@ def test_upgrade_adds_both_columns_and_the_check(alembic_cfg: Config, schema: st
 
 def test_every_default_category_is_seeded(conn: psycopg.Connection) -> None:
     rows = conn.execute("select axis, name, description from categories").fetchall()
-    seeded = {(axis, name): description for axis, name, description in rows}
-    for name in FORMATS:
-        assert seeded[("format", name)]
-    for name in TOPICS:
-        assert seeded[("topic", name)]
-    for (axis, name), description in seeded.items():
-        if (axis, name) == ("format", "unsorted"):
-            continue  # a fallback, not a described category
+    described = {(axis, name): d for axis, name, d in rows if d is not None}
+    assert len(GOLDEN) == 18
+    # Exact both ways: no seed missing, none changed, nothing extra described.
+    assert described == GOLDEN
+    for description in GOLDEN.values():
         assert description == description.strip()
         assert "**" not in description  # the bold markers are gone
         assert len(description) <= 200
-    # Verbatim spot checks; the same name differs per axis.
-    assert seeded[("format", "photos")] == (
-        "a real-world photograph taken with a camera or phone camera, not a capture of a screen"
-    )
-    assert seeded[("format", "memes")].startswith("a joke: an image made or shared as a joke")
-    assert seeded[("topic", "memes")].startswith("a joke: the image's meaning is a joke")
-    assert seeded[("topic", "animals")] == "animals, pets"
-    assert seeded[("format", "documents")] != seeded[("topic", "documents")]
+    # The same name differs per axis.
+    assert GOLDEN[("format", "memes")] != GOLDEN[("topic", "memes")]
+    assert GOLDEN[("format", "documents")] != GOLDEN[("topic", "documents")]
 
 
 def test_unsorted_and_user_added_categories_stay_null(conn: psycopg.Connection) -> None:
