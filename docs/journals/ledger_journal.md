@@ -266,6 +266,14 @@ references or host paths here. Use hashes.
 
 ## DB-008 — Tasks
 
-- [ ] DB-008.1 — The golden dict in `tests/db/ledger/test_category_description_migration.py` · #217 · Pipeline · acceptance: that file
+- [x] DB-008.1 — The golden dict in `tests/db/ledger/test_category_description_migration.py` · #217 · Pipeline · acceptance: that file
 
 ## DB-008 — Results
+
+### DB-008.1 (Pipeline)
+
+- `GOLDEN` holds all 18 `(axis, name) -> description` pairs, typed out from DESIGN §4.3's tables (bold markers dropped, DB-006.D1), not imported from migration `0006`. `test_every_default_category_is_seeded` asserts that the non-null seeded descriptions equal `GOLDEN` exactly: no seed missing, none changed, nothing extra described. The old name tuples and spot checks are gone. The seeds and the migration are unchanged.
+- Drift check: changing one golden value by one character made the test fail; the value was then restored.
+- The DB-006.1 Results' raw control bytes were already fixed in #206; nothing further needed.
+- Tests: acceptance file 20 passed (db tier). `make lint`: clean. No gpu or eval tier (no models or prompts touched).
+- Completion: DONE. Self-rating: 10/10, proud: yes. This closes DB-006.1's stated gap (seeds only spot-checked).
