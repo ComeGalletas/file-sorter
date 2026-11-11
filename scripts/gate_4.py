@@ -314,6 +314,60 @@ def check_report(report: str | None) -> Finding:
     return _finding(6, issues)
 
 
+# --- 7. compose ---------------------------------------------------------------------------
+
+LOCALHOST = "127.0.0.1"
+
+
+def _local_port(entry: Any) -> bool:
+    """Short syntax must be `127.0.0.1:<host>:<container>[/proto]`; long syntax must set
+    `host_ip: 127.0.0.1`. Anything else (a bare container port, an interpolated host, an
+    IPv6 or wildcard address) publishes beyond localhost or can't be proved not to."""
+    if isinstance(entry, str):
+        parts = entry.split(":")
+        return len(parts) == 3 and parts[0] == LOCALHOST and all(parts[1:])
+    if isinstance(entry, dict):
+        return entry.get("host_ip") == LOCALHOST
+    return False
+
+
+def check_compose(text: str | None) -> Finding:
+    """Every service's `ports` binds 127.0.0.1, and no service uses the host network (R-RUN-1)."""
+    if text is None:
+        return _unavailable(7)
+    import yaml
+
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError:
+        doc = None
+    services = doc.get("services") if isinstance(doc, dict) else None
+    if not isinstance(services, dict):  # outside the except block: nothing chained
+        return Finding(7, False, ((NO_HASH, Code.UNREADABLE),))
+    issues: list[tuple[str, Code]] = []
+    for service in services.values():
+        if not isinstance(service, dict):
+            issues.append((NO_HASH, Code.UNREADABLE))
+            continue
+        if service.get("network_mode") == "host":
+            issues.append((NO_HASH, Code.HOST_NETWORK))
+        ports = service.get("ports") or []
+        if not isinstance(ports, list):
+            issues.append((NO_HASH, Code.UNREADABLE))
+            continue
+        if not all(_local_port(entry) for entry in ports):
+            issues.append((NO_HASH, Code.PORT_NOT_LOCAL))
+    return _finding(7, issues)
+
+
+def read_compose(path: Path = COMPOSE) -> str | None:
+    """The compose file's text, or None when it can't be read (fixed handling, no path)."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+
+
 # --- the verdict --------------------------------------------------------------------------
 
 

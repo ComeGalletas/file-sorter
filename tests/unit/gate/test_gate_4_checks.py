@@ -361,3 +361,64 @@ def test_report_missing_is_not_available() -> None:
 def test_main_fails_closed_until_the_runner_is_wired(capsys: pytest.CaptureFixture[str]) -> None:
     assert gate_4.main([]) == 1
     assert "FAIL" in capsys.readouterr().err
+
+
+# --- 7. compose -----------------------------------------------------------------------------
+
+LOCAL_COMPOSE = """
+services:
+  qorvex-db:
+    image: postgres:16
+  qorvex-proxy:
+    image: nginx:1-alpine
+    ports:
+      - "127.0.0.1:8000:8000"
+      - target: 9000
+        published: 9000
+        host_ip: 127.0.0.1
+"""
+
+
+def test_compose_publishing_localhost_only_passes() -> None:
+    assert gate_4.check_compose(LOCAL_COMPOSE).passed
+
+
+def test_the_repo_compose_file_passes() -> None:
+    assert gate_4.check_compose(gate_4.read_compose()).passed
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        '"8000:8000"',
+        '"8000"',
+        "8000",
+        '"0.0.0.0:8000:8000"',
+        '"[::1]:8000:8000"',
+        '"${QORVEX_HOST}:8000:8000"',
+        '"127.0.0.1::8000"',
+        "{target: 8000, published: 8000}",
+        "{target: 8000, published: 8000, host_ip: 0.0.0.0}",
+    ],
+)
+def test_compose_flags_a_port_beyond_localhost(entry: str) -> None:
+    text = LOCAL_COMPOSE + f"  qorvex-app:\n    image: x\n    ports:\n      - {entry}\n"
+    finding = gate_4.check_compose(text)
+    assert finding.issues == (("-", Code.PORT_NOT_LOCAL),)
+    assert "qorvex-app" not in detail_text([finding])
+
+
+def test_compose_flags_the_host_network() -> None:
+    text = LOCAL_COMPOSE + "  qorvex-app:\n    image: x\n    network_mode: host\n"
+    assert gate_4.check_compose(text).issues == (("-", Code.HOST_NETWORK),)
+
+
+@pytest.mark.parametrize("text", ["services: [", "- a list", "services:\n  x: 3\n", ""])
+def test_compose_that_cannot_be_read_fails(text: str) -> None:
+    finding = gate_4.check_compose(text)
+    assert finding.issues == (("-", Code.UNREADABLE),)
+
+
+def test_compose_missing_is_not_available(tmp_path: Path) -> None:
+    assert gate_4.read_compose(tmp_path / "missing.yml") is None
+    assert gate_4.check_compose(None).issues == (("-", Code.NOT_AVAILABLE),)
