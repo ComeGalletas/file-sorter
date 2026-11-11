@@ -10,11 +10,12 @@ response body.
 import logging
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import Connection, Engine, create_engine, event, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
@@ -26,6 +27,7 @@ from classifier.api.views import (
     StatusView,
     build_file_page,
     build_status,
+    with_loaded_models,
 )
 from classifier.config import Config
 from classifier.db.models import FileStatus
@@ -33,10 +35,30 @@ from classifier.db.url import to_sqlalchemy_url
 
 INVALID_QUERY = "invalid query"  # API-001.D5: fixed text, never the input echoed back
 DB_UNAVAILABLE = "database unavailable"
+INTERNAL_ERROR = "internal error"
 NO_DSN = "the database DSN is not set"
+BAD_DSN = "the database DSN is malformed"
 MAX_PAGE = 1_000_000  # keeps the offset far inside bigint
 
-T = TypeVar("T")
+_DETAILS = {503: DB_UNAVAILABLE, 500: INTERNAL_ERROR}
+
+
+def guarded[T](fn: Callable[[], T]) -> T:
+    """Run `fn`; any failure becomes a fixed-text HTTP error, raised unchained.
+
+    A database error is a 503, anything else a 500. Nothing is logged: SQLAlchemy errors can
+    quote SQL parameters (a category name) and pydantic errors quote `input_value`. The
+    HTTPException is raised after the `try` statement, so `__cause__` and `__context__` are
+    both None (m3 checklist item 5).
+    """
+    code = 0
+    try:
+        return fn()
+    except SQLAlchemyError:
+        code = 503
+    except Exception:
+        code = 500
+    raise HTTPException(status_code=code, detail=_DETAILS[code])
 
 
 def _set_read_only(dbapi_conn: Any, _record: Any) -> None:
@@ -50,14 +72,30 @@ def _set_read_only(dbapi_conn: Any, _record: Any) -> None:
 
 
 def make_read_only(engine: Engine) -> Engine:
+    """Add the read-only connect listener to `engine` (once), and return it.
+
+    This mutates the engine it is given, a caller-supplied one included: every connection
+    that engine opens from then on is read-only, for every user of the engine, not only the
+    app. Connections it opened before the listener was added are not changed.
+    """
     if not event.contains(engine, "connect", _set_read_only):
         event.listen(engine, "connect", _set_read_only)
     return engine
 
 
 def read_only_engine(dsn: str) -> Engine:
-    """A NullPool engine whose sessions are read-only; SQL parameters stay out of errors."""
-    engine = create_engine(to_sqlalchemy_url(dsn), poolclass=NullPool, hide_parameters=True)
+    """A NullPool engine whose sessions are read-only; SQL parameters stay out of errors.
+
+    A malformed DSN raises fixed text, unchained: SQLAlchemy's own error quotes the DSN,
+    password included.
+    """
+    failed = False
+    try:
+        engine = create_engine(to_sqlalchemy_url(dsn), poolclass=NullPool, hide_parameters=True)
+    except Exception:
+        failed = True
+    if failed:
+        raise ValueError(BAD_DSN)
     return make_read_only(engine)
 
 
@@ -105,34 +143,43 @@ def create_app(
     @contextmanager
     def _connection() -> Iterator[Connection]:
         with engine.connect() as conn:
-            conn.execute(text("set transaction read only"))
+            # One snapshot, so a page's rows and its total agree (round 1, optional).
+            conn.execute(text("set transaction isolation level repeatable read, read only"))
             yield conn
 
-    def _read(fn: Callable[[Connection], T]) -> T:
-        failed = False
-        try:
-            with _connection() as conn:
-                return fn(conn)
-        except SQLAlchemyError:
-            failed = True
-        if failed:  # raised outside the except block: no __cause__, no __context__
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE)
-        raise AssertionError("unreachable")
+    def _read[T](fn: Callable[[Connection], T]) -> T:
+        with _connection() as conn:
+            return fn(conn)
 
-    @app.get("/api/files", response_model=FilePage)
+    def _json(view: BaseModel) -> JSONResponse:
+        return JSONResponse(content=view.model_dump(mode="json"))
+
+    # The views are built and serialized inside `guarded`, so no exception reaches
+    # Starlette, whose error middleware would log the traceback.
+    @app.get("/api/files", response_class=JSONResponse)
     def api_files(
         status: FileStatus | None = None,
         format: str | None = None,
         topic: str | None = None,
         needs_review: bool | None = None,
         page: Annotated[int, Query(ge=1, le=MAX_PAGE)] = 1,
-    ) -> FilePage:
-        filters = FileFilters(status=status, format=format, topic=topic, needs_review=needs_review)
-        return _read(lambda conn: build_file_page(conn, filters, page))
+    ) -> JSONResponse:
+        def build() -> JSONResponse:
+            filters = FileFilters(
+                status=status, format=format, topic=topic, needs_review=needs_review
+            )
+            page_view: FilePage = _read(lambda conn: build_file_page(conn, filters, page))
+            return _json(page_view)
 
-    @app.get("/api/status", response_model=StatusView)
-    def api_status() -> StatusView:
-        return _read(lambda conn: build_status(conn, probe))
+        return guarded(build)
+
+    @app.get("/api/status", response_class=JSONResponse)
+    def api_status() -> JSONResponse:
+        def build() -> JSONResponse:
+            view: StatusView = _read(build_status)  # the connection is closed here
+            return _json(with_loaded_models(view, probe))  # then Ollama (round 1, item 4)
+
+        return guarded(build)
 
     app.state.engine = engine
     app.state.probe = probe

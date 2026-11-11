@@ -8,6 +8,7 @@ proved served before they are asserted absent.
 """
 
 import hashlib
+import logging
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -16,11 +17,23 @@ from typing import Any
 
 import psycopg
 import pytest
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, text
-from sqlalchemy.exc import DBAPIError
+from pydantic import ValidationError
+from sqlalchemy import Engine, create_engine, event, text
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
+from sqlalchemy.pool import NullPool
 
-from classifier.api.app import DB_UNAVAILABLE, INVALID_QUERY, create_app, read_only_engine
+from classifier.api import views
+from classifier.api.app import (
+    BAD_DSN,
+    DB_UNAVAILABLE,
+    INTERNAL_ERROR,
+    INVALID_QUERY,
+    create_app,
+    read_only_engine,
+)
 from classifier.api.views import FILE_ROW_FIELDS, PER_PAGE
 from classifier.config import Config, load_config
 
@@ -207,7 +220,6 @@ def test_db_failure_is_a_fixed_503(config) -> None:
 
 
 def test_access_log_is_off(config, engine) -> None:
-    import logging
 
     create_app(config, engine=engine)
     assert logging.getLogger("uvicorn.access").disabled is True
@@ -323,3 +335,110 @@ def test_status_db_failure_is_a_fixed_503(config) -> None:
     assert response.status_code == 503
     assert response.json() == {"detail": DB_UNAVAILABLE}
     assert SECRET not in response.text
+
+
+# --- API-001.1.5: plants that can fail (PR #224 round 1) ----------------------------------
+
+
+def _no_secret_logged(caplog: pytest.LogCaptureFixture) -> None:
+    text_logged = caplog.text + "".join(repr(r.args) + str(r.exc_info) for r in caplog.records)
+    assert SECRET not in text_logged
+    assert "Traceback" not in text_logged and "input_value" not in text_logged
+
+
+def test_422_plant_is_echoed_by_the_default_handler_not_ours(config, engine) -> None:
+    """Item 2: the default handler echoes the plant, so the absence check can fail."""
+    params = {"status": SECRET}
+    default = create_app(config, engine=engine, ollama=_Probe(None))
+    default.exception_handlers[RequestValidationError] = request_validation_exception_handler
+    echoed = TestClient(default).get("/api/files", params=params)
+    assert echoed.status_code == 422 and SECRET in echoed.text
+    ours = TestClient(create_app(config, engine=engine, ollama=_Probe(None)))
+    response = ours.get("/api/files", params=params)
+    assert response.status_code == 422
+    assert response.json() == {"detail": INVALID_QUERY} and SECRET not in response.text
+
+
+def _failing_engine() -> Engine:
+    def creator() -> psycopg.Connection:
+        raise psycopg.OperationalError(f"connection to {SECRET} failed")
+
+    return create_engine("postgresql+psycopg://", creator=creator, poolclass=NullPool)
+
+
+@pytest.mark.parametrize("route", ["/api/files", "/api/status"])
+def test_503_plant_is_in_the_db_error_not_the_response(config, route, caplog) -> None:
+    """Item 2: the captured SQLAlchemyError holds the plant; the 503 does not."""
+    caplog.set_level(logging.DEBUG)
+    dead = _failing_engine()
+    try:
+        with pytest.raises(SQLAlchemyError) as raw:
+            dead.connect()
+        assert SECRET in str(raw.value)
+        caplog.clear()
+        response = TestClient(create_app(config, engine=dead, ollama=_Probe(None))).get(route)
+    finally:
+        dead.dispose()
+    assert response.status_code == 503
+    assert response.json() == {"detail": DB_UNAVAILABLE}
+    assert SECRET not in response.text
+    _no_secret_logged(caplog)
+
+
+def test_500_plant_in_a_failing_row(config, engine, seed, tag, monkeypatch, caplog) -> None:
+    """Item 3: a view that fails to build is a fixed 500; nothing is logged."""
+    caplog.set_level(logging.DEBUG)
+    seed(topic=tag, original_sanitized=SECRET)
+    monkeypatch.setattr(views, "_sanitized_name", lambda stem, ext: [stem])  # a bad type
+    with engine.connect() as conn, pytest.raises(ValidationError) as raw:
+        views.build_file_page(conn, views.FileFilters(topic=tag), 1)
+    assert SECRET in str(raw.value)  # the row is read, and pydantic quotes it
+    caplog.clear()
+    client = TestClient(create_app(config, engine=engine, ollama=_Probe(None)))
+    response = client.get("/api/files", params={"topic": tag})
+    assert response.status_code == 500
+    assert response.json() == {"detail": INTERNAL_ERROR}
+    assert SECRET not in response.text
+    _no_secret_logged(caplog)
+
+
+def test_ollama_is_probed_with_no_connection_held(config, engine) -> None:
+    """Item 4: a slow Ollama holds no database connection."""
+    held = 0
+    checkouts: list[int] = []
+    seen: list[int] = []
+
+    def checkout(*_args: Any) -> None:
+        nonlocal held
+        held += 1
+        checkouts.append(held)
+
+    def checkin(*_args: Any) -> None:
+        nonlocal held
+        held -= 1
+
+    event.listen(engine, "checkout", checkout)
+    event.listen(engine, "checkin", checkin)
+
+    class Recording:
+        def loaded_models(self) -> list[_Model]:
+            seen.append(held)
+            return []
+
+    app = create_app(config, engine=engine, ollama=Recording())
+    assert _status(TestClient(app))["loaded_models"] == []
+    assert seen == [0]
+    assert checkouts == [1]  # the listener fires, so the 0 above could have been 1
+
+
+def test_create_app_malformed_dsn_is_fixed_text(config) -> None:
+    """Item 5: SQLAlchemy's error quotes the bad port; ours is fixed and unchained."""
+    bad = config.model_copy(deep=True)
+    bad.db.dsn = f"postgresql://qorvex:pw@127.0.0.1:{SECRET}/qorvex"
+    with pytest.raises(ValueError) as raw:
+        create_engine(bad.db.dsn)
+    assert SECRET in str(raw.value)
+    with pytest.raises(ValueError) as caught:
+        create_app(bad, ollama=_Probe(None))
+    assert str(caught.value) == BAD_DSN and SECRET not in repr(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None

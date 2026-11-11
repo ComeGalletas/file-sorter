@@ -240,21 +240,29 @@ def loaded_models_view(probe: ModelProbe | None) -> list[ModelView] | Literal["n
     """The loaded models, or "n/a" when Ollama can't tell (m4 answer 7, MOD-003.1)."""
     if probe is None:
         return NOT_AVAILABLE
+    views: list[ModelView] | None = None
     try:
         models = probe.loaded_models()
+        if models is not None:
+            views = [ModelView(name=m.name, size_vram=m.size_vram) for m in models]
     except Exception:  # the contract says it never raises; be safe, keep no text
-        models = None
-    if models is None:
-        return NOT_AVAILABLE
-    return [ModelView(name=m.name, size_vram=m.size_vram) for m in models]
+        views = None
+    return NOT_AVAILABLE if views is None else views
 
 
-def build_status(conn: Connection, probe: ModelProbe | None) -> StatusView:
+def build_status(conn: Connection) -> StatusView:
+    """The database part of the status; `loaded_models` is "n/a" until
+    `with_loaded_models` fills it, after the connection is closed (round 1, item 4)."""
     return StatusView(
         run=None,
         imgs_per_min=None,
         counts_by_status=_counts_by_status(conn),
         grid=_grid(conn),
-        loaded_models=loaded_models_view(probe),
+        loaded_models=NOT_AVAILABLE,
         last_error=_last_error(conn),
     )
+
+
+def with_loaded_models(status: StatusView, probe: ModelProbe | None) -> StatusView:
+    """`status` with the loaded models from Ollama; call it with no connection held."""
+    return status.model_copy(update={"loaded_models": loaded_models_view(probe)})
