@@ -35,7 +35,7 @@ from classifier.api.app import (
     create_app,
     read_only_engine,
 )
-from classifier.api.views import FILE_ROW_FIELDS, PER_PAGE
+from classifier.api.views import ADULT_BRANCH, FILE_ROW_FIELDS, PER_PAGE
 from classifier.config import Config, load_config
 from classifier.models.ollama import OllamaClient
 
@@ -268,11 +268,17 @@ def test_status_counts_per_status_are_deltas_of_seeded_rows(config, engine, seed
 def test_status_grid_is_topic_by_format_by_branch(config, engine, seed, tag) -> None:
     seed(topic=tag, format="Zhyndelform", branch="safe")
     seed(topic=tag, format="Zhyndelform", branch="safe")
-    seed(topic=tag, format="Zhyndelform", branch="adult")
+    seed(topic=tag, format="Zhyndelform", branch=ADULT_BRANCH)
     seed(topic=tag, format="Unsorted", branch="safe")
+    seed(topic=tag, format="Unsorted", status="queued")  # branch null: not classified yet
     grid = _status(_client(config, engine, ollama=_Probe(None)))["grid"]
-    got = {(c["format"], c["branch"]): c["count"] for c in grid if c["topic"] == tag}
-    want = {("Zhyndelform", "safe"): 2, ("Zhyndelform", "adult"): 1, ("Unsorted", "safe"): 1}
+    got = {(c["format"], c["branch"], c["adult"]): c["count"] for c in grid if c["topic"] == tag}
+    want = {
+        ("Zhyndelform", "safe", False): 2,
+        ("Zhyndelform", ADULT_BRANCH, True): 1,  # API-001.D8: the split keys on is_adult
+        ("Unsorted", "safe", False): 1,
+        ("Unsorted", None, False): 1,
+    }
     assert got == want
 
 

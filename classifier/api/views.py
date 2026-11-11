@@ -19,6 +19,9 @@ from classifier.db.models import File, FileStatus
 PER_PAGE = 50  # API-001.D5
 CROSS_CHECK_REASON = "nsfw_disagreement"  # CLS-004.D5, D13
 NOT_AVAILABLE = "n/a"  # m4 answer 7
+# API-001.D8 (corrected): the ledger's adult branch is classify_rules' "nsfw" (R-CLS-1).
+# Pinned to branch_for_level by tests/unit/api/test_views.py; use is_adult, never the literal.
+ADULT_BRANCH = "nsfw"
 
 # The contract's 15 fields (docs/plans/m4.md, "Contracts fixed here"). Nothing else.
 FILE_ROW_FIELDS = (
@@ -95,10 +98,16 @@ class RunView(_View):
     error: str | None  # a fixed error code
 
 
+def is_adult(branch: str | None) -> bool:
+    """True only for the classify rules' adult branch (API-001.D8); safe and null are not."""
+    return branch == ADULT_BRANCH
+
+
 class GridCell(_View):
     topic: str | None = Field(repr=False)
     format: str | None = Field(repr=False)
     branch: str | None
+    adult: bool  # the safe-vs-adult split, from is_adult (API-001.D8)
     count: int
 
 
@@ -215,7 +224,10 @@ def _grid(conn: Connection) -> list[GridCell]:
         .group_by(File.topic, File.format, File.branch)
         .order_by(File.topic, File.format, File.branch)
     )
-    return [GridCell(topic=t, format=f, branch=b, count=n) for t, f, b, n in conn.execute(query)]
+    return [
+        GridCell(topic=t, format=f, branch=b, adult=is_adult(b), count=n)
+        for t, f, b, n in conn.execute(query)
+    ]
 
 
 def _last_error(conn: Connection) -> LastError | None:

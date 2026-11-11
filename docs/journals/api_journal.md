@@ -70,7 +70,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.1.3 — `/api/status` (counts, the grid, the last error, the loaded models or "n/a") · 1fbc71b
   - [ ] API-001.1.4 — the run state and imgs/min (after DB-007.1, #207)
   - [x] API-001.1.5 — PR #224 round 1, items 1–5: a fixed, unchained 500 for any other failure, the plants proved able to fail (422, 503, 500), Ollama probed with no connection held, fixed text on a malformed DSN; plus REPEATABLE READ and the `make_read_only` docstring · 4a32f7b
-  - [x] API-001.1.6 — PR #224 round 1, item 6: the real `OllamaClient` over a fake transport (after MOD-003.1, #209) · (this commit)
+  - [x] API-001.1.6 — PR #224 round 1, item 6: the real `OllamaClient` over a fake transport (after MOD-003.1, #209) · bc274c4
+  - [x] API-001.1.7 — API-001.D8 as corrected: `views.ADULT_BRANCH` and `is_adult(branch)`, pinned to `classify_rules.branch_for_level`; the grid's safe-vs-adult split (`GridCell.adult`) keys on `is_adult` · (this commit)
 - [ ] API-001.2 — `/api/events` (SSE, API-001.D3) · #211 · API/UI · acceptance: `tests/db/api/test_events.py`
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`

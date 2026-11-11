@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from classifier.api.views import (
+    ADULT_BRANCH,
     FILE_ROW_FIELDS,
     NOT_AVAILABLE,
     FileFilters,
@@ -13,9 +14,12 @@ from classifier.api.views import (
     GridCell,
     LoadedModelLike,
     file_row,
+    is_adult,
     loaded_models_view,
 )
+from classifier.config import NsfwLevel
 from classifier.db.models import FileStatus
+from classifier.models.classify_rules import RULE_BRANCHES, branch_for_level
 
 SECRET = "Qorvex-Zhyndel-secret"
 HASH = "ab" * 32
@@ -71,7 +75,7 @@ def test_sanitized_name_is_null_before_sanitize() -> None:
 def test_reprs_hide_names() -> None:
     """The planted secret is held by each view (proved first), then absent from repr/str."""
     row = file_row(_mapping())
-    cell = GridCell(topic=SECRET, format=SECRET, branch="safe", count=1)
+    cell = GridCell(topic=SECRET, format=SECRET, branch="safe", adult=False, count=1)
     filters = FileFilters(topic=SECRET, format=SECRET)
     assert SECRET in (row.sanitized_name or "") and SECRET in (row.topic or "")
     assert cell.topic == SECRET and filters.format == SECRET
@@ -79,6 +83,23 @@ def test_reprs_hide_names() -> None:
         assert SECRET not in repr(view)
         assert SECRET not in str(view)
     assert HASH in repr(row)  # hashes stay visible
+
+
+def test_adult_branch_is_the_classify_rules_adult_branch() -> None:
+    """API-001.D8: pinned to the rules' own decision, so a renamed branch fails here."""
+    for min_level in NsfwLevel:
+        for level in NsfwLevel:
+            branch = branch_for_level(level, min_level)
+            assert is_adult(branch) is (level >= min_level)
+            if level >= min_level:
+                assert branch == ADULT_BRANCH
+    assert ADULT_BRANCH in RULE_BRANCHES
+
+
+@pytest.mark.parametrize(("branch", "adult"), [("nsfw", True), ("safe", False), (None, False)])
+def test_is_adult(branch: str | None, adult: bool) -> None:
+    assert is_adult(branch) is adult
+    assert is_adult("adult") is False  # the old D8 wording is not a ledger value
 
 
 class _Model:
