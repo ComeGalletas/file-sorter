@@ -568,6 +568,36 @@ def test_compose_missing_is_not_available(tmp_path: Path) -> None:
     assert gate_4.check_compose(None).issues == (("-", Code.NOT_AVAILABLE),)
 
 
+# --- 5. the served `blurred` flag (API-001.3) -----------------------------------------------
+
+
+def test_blur_flags_pass_when_each_equals_is_adult() -> None:
+    flags = {ADULT.source_hash: True, SAFE.source_hash: False, UNBRANCHED.source_hash: False}
+    finding = gate_4.check_blur([ADULT, SAFE, UNBRANCHED], [thumb(ADULT, "1")], flags)
+    assert finding.passed
+
+
+@pytest.mark.parametrize(
+    ("which", "value"),
+    [("adult", False), ("safe", True), ("adult", None), ("adult", 1), ("adult", "true")],
+)
+def test_blur_flags_flag_a_wrong_or_missing_flag(which: str, value) -> None:
+    flags = {ADULT.source_hash: True, SAFE.source_hash: False}
+    target = ADULT if which == "adult" else SAFE
+    flags[target.source_hash] = value
+    finding = gate_4.check_blur([ADULT, SAFE], [thumb(ADULT, "1")], flags)
+    assert finding.issues == ((target.short_hash, Code.BLUR_FLAG),)
+
+
+def test_blur_flags_run_while_the_html_is_not_available() -> None:
+    finding = gate_4.check_blur([ADULT, SAFE], None, {ADULT.source_hash: False})
+    assert set(finding.issues) == {
+        (ADULT.short_hash, Code.BLUR_FLAG),
+        (SAFE.short_hash, Code.BLUR_FLAG),  # never served a flag
+        ("-", Code.NOT_AVAILABLE),
+    }
+
+
 # --- the runner's pieces --------------------------------------------------------------------
 
 

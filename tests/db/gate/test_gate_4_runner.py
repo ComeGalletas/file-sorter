@@ -118,9 +118,19 @@ def test_the_runner_serves_every_row_and_never_a_path(migrated_db, seed) -> None
     # Every row was served (no NOT_SERVED), the plant included, so the absence of LEAK_* means
     # something; the only issue is the sources that haven't landed yet (SSE, the UI, the report).
     assert findings[4].issues == NOT_AVAILABLE
-    # Not landed yet: they fail, never pass (TST-015.1.4 wires them).
+    # Not landed yet: they fail, never pass (TST-015.1.4 wires them). Criterion 5's served
+    # `blurred` flags (API-001.3) are already checked: only the HTML is missing.
     for criterion in (3, 5, 6):
         assert findings[criterion].issues == NOT_AVAILABLE, criterion
+
+
+def test_the_served_blurred_flags_match_is_adult(migrated_db, seed) -> None:
+    _seed_folder(seed)
+    ledger, served = gate_4.serve(migrated_db, read_only_engine(migrated_db))
+    adult = [r for r in ledger if r.branch == ADULT_BRANCH]
+    assert adult and served.blurred is not None  # an adult row is there, and flags were served
+    assert all(served.blurred[r.source_hash] is True for r in adult)
+    assert gate_4.check_blur(ledger, None, served.blurred).issues == NOT_AVAILABLE
 
 
 def test_the_runner_fails_on_an_empty_ledger(migrated_db) -> None:

@@ -62,6 +62,7 @@ class Code(StrEnum):
     LEAK_DUP = "LEAK_DUP"
     LEAK_NAME = "LEAK_NAME"
     NOT_BLURRED = "NOT_BLURRED"
+    BLUR_FLAG = "BLUR_FLAG"
     NO_ADULT_THUMB = "NO_ADULT_THUMB"
     EXTERNAL_REF = "EXTERNAL_REF"
     THUMB_IN_REPORT = "THUMB_IN_REPORT"
@@ -315,16 +316,32 @@ def check_no_leak(ledger: Sequence[LedgerRow], bodies: Mapping[str, str | None])
 # --- 5. blur ------------------------------------------------------------------------------
 
 
-def check_blur(ledger: Sequence[LedgerRow], pages: Sequence[str] | None) -> Finding:
+def check_blur(
+    ledger: Sequence[LedgerRow],
+    pages: Sequence[str] | None,
+    flags: Mapping[str, Any] | None = None,
+) -> Finding:
     """API-001.D8: every `img.thumb` of an adult row (`is_adult`, never a retyped branch) has
     `data-blur="1"` in the served HTML, matched by `data-hash`. At least one adult thumbnail
-    must be seen when the ledger has adult rows, or the check would prove nothing."""
+    must be seen when the ledger has adult rows, or the check would prove nothing.
+
+    `flags` maps each `source_hash` to the `blurred` field `/api/files` served (API-001.3).
+    Every ledger row's flag must be a bool equal to `is_adult` of its branch; this part runs
+    even while the HTML isn't available."""
     from classifier.api.views import is_adult
 
-    if pages is None or not ledger:
+    if not ledger:
         return _unavailable(5)
-    adult = {row.short_hash for row in ledger if is_adult(row.branch)}
     issues: list[tuple[str, Code]] = []
+    if flags is not None:
+        for row in ledger:
+            flag = flags.get(row.source_hash)
+            if type(flag) is not bool or flag is not is_adult(row.branch):
+                issues.append((_short(row.short_hash), Code.BLUR_FLAG))
+    if pages is None:
+        issues.append((NO_HASH, Code.NOT_AVAILABLE))
+        return _finding(5, issues)
+    adult = {row.short_hash for row in ledger if is_adult(row.branch)}
     seen_adult = False
     for page in pages:
         for tag, attrs in _tags(page):
@@ -478,6 +495,7 @@ class Served:
     html: list[str] | None = field(repr=False)
     report: str | None = field(repr=False)
     bodies: dict[str, str | None] = field(repr=False)  # every body and header, for check 4
+    blurred: dict[str, Any] | None = field(default=None, repr=False)  # source_hash -> flag
 
 
 def load_config(dsn: str) -> Any:
@@ -546,27 +564,33 @@ def _max_pages(rows: int) -> int:
     return rows // PER_PAGE + 2  # one past the last full page, plus the empty end page
 
 
-def _files(client: Any, rows: int) -> tuple[list[str] | None, str | None]:
-    """Every `source_hash` from `/api/files`, paging until an empty page (API-001.D5)."""
+FilesRead = tuple[list[str] | None, str | None, dict[str, Any] | None]
+
+
+def _files(client: Any, rows: int) -> FilesRead:
+    """Every `source_hash` from `/api/files`, paging until an empty page (API-001.D5), the
+    served text, and each row's `blurred` flag (API-001.3; absent reads as None)."""
     hashes: list[str] = []
     texts: list[str] = []
+    flags: dict[str, Any] = {}
     for page in range(1, _max_pages(rows) + 1):
         response = client.get("/api/files", params={"page": page})
         if response.status_code != 200:
-            return None, None
+            return None, None, None
         texts.append(_text(response))
         body = response.json()
         page_rows = body.get("rows") if isinstance(body, dict) else None
         if not isinstance(page_rows, list):
-            return None, None
+            return None, None, None
         if not page_rows:
-            return hashes, "\n".join(texts)
+            return hashes, "\n".join(texts), flags
         for item in page_rows:
             value = item.get("source_hash") if isinstance(item, dict) else None
             if not isinstance(value, str):
-                return None, None
+                return None, None, None
             hashes.append(value)
-    return None, None  # never reached an empty page: paging is broken
+            flags[value] = item.get("blurred")
+    return None, None, None  # never reached an empty page: paging is broken
 
 
 def _review(client: Any, rows: int) -> tuple[list[str] | None, list[str] | None]:
@@ -610,7 +634,7 @@ def collect(client: Any, rows: int) -> Served:
     """Everything the gate reads from the app, in-process. The report lands with API-001.5."""
     status_response = client.get("/api/status")
     status = status_response.json() if status_response.status_code == 200 else None
-    files, files_text = _files(client, rows)
+    files, files_text, flags = _files(client, rows)
     queue, review_pages = _review(client, rows)
     ui = _page(client, "/")
     html_pages = None if ui is None or review_pages is None else [ui, *review_pages]
@@ -623,7 +647,13 @@ def collect(client: Any, rows: int) -> Served:
         "report": None,  # TST-015.1.4 (API-001.5)
     }
     return Served(
-        files, status if isinstance(status, dict) else None, queue, html_pages, None, bodies
+        files=files,
+        status=status if isinstance(status, dict) else None,
+        queue=queue,
+        html=html_pages,
+        report=None,  # API-001.5 (#235)
+        bodies=bodies,
+        blurred=flags,
     )
 
 
@@ -633,7 +663,7 @@ def evaluate(ledger: Sequence[LedgerRow], served: Served, compose: str | None) -
         check_counts(ledger, served.status),
         check_review_queue(ledger, served.queue),
         check_no_leak(ledger, served.bodies),
-        check_blur(ledger, served.html),
+        check_blur(ledger, served.html, served.blurred),
         check_report(served.report),
         check_compose(compose),
     ]
