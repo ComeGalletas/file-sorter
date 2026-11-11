@@ -9,6 +9,7 @@ readable first, so the 404 could have been a 200 (m4 privacy item 13).
 import hashlib
 import io
 import logging
+import os
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
@@ -206,6 +207,43 @@ def test_an_oserror_is_a_miss_with_nothing_kept(
     response = client.get(f"/thumbs/{h}")
     _assert_miss(response)
     assert SECRET not in response.text
+    logged = caplog.text + "".join(repr(r.args) + str(r.exc_info) for r in caplog.records)
+    assert SECRET not in logged and "Traceback" not in logged
+
+
+def test_a_failing_close_is_the_fixed_miss(
+    config, engine, seed, results, monkeypatch, caplog
+) -> None:
+    """#236 round 1: an OSError from os.close never escapes to Starlette's traceback log."""
+    caplog.set_level(logging.DEBUG)
+    h = seed()
+    _thumb(results, h).write_bytes(_webp())
+    client = _client(config, engine)
+    assert client.get(f"/thumbs/{h}").status_code == 200  # served before the fault
+    error = OSError(5, SECRET, f"/results/{SECRET}")
+    assert SECRET in str(error)  # the plant is in the OS error
+    real_open, real_close = os.open, os.close
+    thumb_fds: list[int] = []
+
+    def tracking_open(path: object, *args: object, **kwargs: object) -> int:
+        fd = real_open(path, *args, **kwargs)  # type: ignore[arg-type]
+        if str(path).endswith(".webp"):
+            thumb_fds.append(fd)
+        return fd
+
+    def failing_close(fd: int) -> None:
+        real_close(fd)  # only the thumbnail's own descriptor fails, after really closing
+        if fd in thumb_fds:
+            raise error
+
+    monkeypatch.setattr(thumbs.os, "open", tracking_open)
+    monkeypatch.setattr(thumbs.os, "close", failing_close)
+    caplog.clear()
+    response = client.get(f"/thumbs/{h}")
+    assert len(thumb_fds) == 1  # the route did open the file, so the close really failed
+    _assert_miss(response)
+    assert SECRET not in response.text
+    assert all(SECRET not in f"{k}: {v}" for k, v in response.headers.items())
     logged = caplog.text + "".join(repr(r.args) + str(r.exc_info) for r in caplog.records)
     assert SECRET not in logged and "Traceback" not in logged
 

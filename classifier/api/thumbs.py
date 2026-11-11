@@ -47,6 +47,16 @@ def _read_regular(path: Path) -> bytes | None:
         fd = os.open(path, _OPEN_FLAGS)
     except OSError:
         return None
+    data = _read_open(fd)
+    try:
+        os.close(fd)
+    except OSError:  # #236 round 1: a failed close is a refusal too, never an escape
+        data = None
+    return data
+
+
+def _read_open(fd: int) -> bytes | None:
+    """A regular file's bytes, up to the cap, from an open descriptor; None otherwise."""
     try:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_THUMB_BYTES:
@@ -61,8 +71,6 @@ def _read_regular(path: Path) -> bytes | None:
             total += len(chunk)
     except OSError:
         return None
-    finally:
-        os.close(fd)
     if total > MAX_THUMB_BYTES:  # it grew after the fstat
         return None
     return b"".join(chunks)

@@ -160,3 +160,30 @@ def test_oserror_is_none_with_no_exception_kept(tmp_path: Path, monkeypatch) -> 
 
     monkeypatch.setattr(thumbs.os, "open", refuse)
     assert read_thumbnail(root, h) is None
+
+
+def test_a_failing_close_is_none_and_never_escapes(tmp_path: Path, monkeypatch) -> None:
+    """#236 round 1: an OSError from os.close is a refusal too, and nothing escapes."""
+    root, folder = _results(tmp_path)
+    h = _hash("close")
+    (folder / f"{h}.webp").write_bytes(_webp())
+    error = OSError(5, SECRET, f"/results/{SECRET}")
+    assert SECRET in str(error)  # the plant is in the OS error
+    real_open, real_close = os.open, os.close
+    thumb_fds: list[int] = []
+
+    def tracking_open(path: object, *args: object, **kwargs: object) -> int:
+        fd = real_open(path, *args, **kwargs)  # type: ignore[arg-type]
+        if str(path).endswith(THUMB_SUFFIX):
+            thumb_fds.append(fd)
+        return fd
+
+    def failing_close(fd: int) -> None:
+        real_close(fd)  # really closed: no descriptor leaks from the test
+        if fd in thumb_fds:
+            raise error
+
+    monkeypatch.setattr(thumbs.os, "open", tracking_open)
+    monkeypatch.setattr(thumbs.os, "close", failing_close)
+    assert read_thumbnail(root, h) is None
+    assert len(thumb_fds) == 1  # the file was opened and read, then the close failed

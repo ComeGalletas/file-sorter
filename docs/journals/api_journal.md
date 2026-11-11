@@ -79,7 +79,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.2.2 — the `GET /api/events` route, its db acceptance test and the privacy plant · (this commit)
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
   - [x] API-001.3.1 — `FileRow.blurred` (the 16th field, approved on #212) from `is_adult(branch)` (API-001.D8); an `nsfw` row is blurred, safe and null rows are not · 1569e84
-  - [x] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12) · (this commit)
+  - [x] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12) · 20f8ed0
+  - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
 
@@ -112,8 +113,9 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 ### API-001.3 (#212)
 
 - **Tests:**
-  - acceptance `tests/db/api/test_thumbs.py`: 16 passed;
-  - `tests/unit/api/test_thumbs_reader.py`: 18 passed;
+  - acceptance `tests/db/api/test_thumbs.py`: 17 passed;
+  - `tests/unit/api/test_thumbs_reader.py`: 19 passed;
+  - round 1 on #236: the reviewer approved; privacy failed one hole (an escaping `os.close` error), fixed by API-001.3.3;
   - the required D8 test: the `nsfw`, safe and null rows, through `/api/files` (db) and `file_row` (unit).
 - **Decisions applied:** API-001.D12 (one fixed 404 for every refusal, an unmatched path included); `blurred` is the 16th `FileRow` field, from `is_adult`; the route serves the same bytes for adult rows, and the UI blurs them.
 - **Status:** DONE.

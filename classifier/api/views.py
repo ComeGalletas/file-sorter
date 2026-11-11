@@ -23,7 +23,8 @@ NOT_AVAILABLE = "n/a"  # m4 answer 7
 # Pinned to branch_for_level by tests/unit/api/test_views.py; use is_adult, never the literal.
 ADULT_BRANCH = "nsfw"
 
-# The contract's 15 fields (docs/plans/m4.md, "Contracts fixed here"). Nothing else.
+# The contract's 15 fields (docs/plans/m4.md, "Contracts fixed here"), plus `blurred`, the
+# 16th, approved on #212 (API-001.3). Nothing else.
 FILE_ROW_FIELDS = (
     "source_hash",
     "short_hash",
