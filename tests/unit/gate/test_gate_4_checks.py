@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from classifier.api.views import ADULT_BRANCH, is_adult
+
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "gate_4.py"
 _spec = importlib.util.spec_from_file_location("gate_4_checks", SCRIPT)
 assert _spec is not None and _spec.loader is not None
@@ -64,7 +66,8 @@ def status_of(ledger):
     return {
         "counts_by_status": by_status,
         "grid": [
-            {"topic": t, "format": f, "branch": b, "count": n} for (t, f, b), n in grid.items()
+            {"topic": t, "format": f, "branch": b, "adult": is_adult(b), "count": n}
+            for (t, f, b), n in grid.items()
         ],
     }
 
@@ -390,9 +393,118 @@ def test_report_missing_is_not_available() -> None:
 # --- main -----------------------------------------------------------------------------------
 
 
-def test_main_fails_closed_until_the_runner_is_wired(capsys: pytest.CaptureFixture[str]) -> None:
+def test_main_without_the_app_dsn_fails_with_fixed_text(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("APP_DB_DSN", raising=False)
     assert gate_4.main([]) == 1
-    assert "FAIL" in capsys.readouterr().err
+    out = capsys.readouterr()
+    assert out.err == f"gate 4 FAIL: {gate_4.NO_APP_DSN}\n" and out.out == ""
+
+
+def test_main_hides_a_failure_message(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(dsn: str, engine=None):
+        raise RuntimeError(PLANT_PATH)
+
+    monkeypatch.setenv("APP_DB_DSN", "postgresql://qorvex:Zhyndel-Pass@db:5432/x")
+    monkeypatch.setattr(gate_4, "run", boom)
+    with pytest.raises(RuntimeError, match=PLANT_DIR):  # the plant is held by the failure
+        boom("x")
+    assert gate_4.main([]) == 1
+    err = capsys.readouterr().err
+    assert err == "gate 4 FAIL: run errored (RuntimeError)\n"
+    assert PLANT_DIR not in err and "Zhyndel-Pass" not in err
+
+
+def test_main_prints_the_verdict_only(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("APP_DB_DSN", "postgresql://qorvex@db/x")
+    monkeypatch.setattr(gate_4, "run", lambda dsn, engine=None: all_ok())
+    assert gate_4.main([]) == 0
+    assert capsys.readouterr().out.splitlines() == list(gate_4.judge(all_ok()).lines)
+
+
+def test_the_gate_probe_makes_no_model_call() -> None:
+    assert gate_4.NoModels().loaded_models() is None
+
+
+def test_the_gate_names_every_scanned_source() -> None:
+    assert gate_4.SOURCES == ("status", "files", "review", "ui", "events", "report")
+
+
+# --- 5. blur --------------------------------------------------------------------------------
+
+ADULT = row(20, branch=ADULT_BRANCH)
+SAFE = row(21, branch="safe")
+UNBRANCHED = row(22, branch=None)
+
+
+def thumb(r, blur: str | None) -> str:
+    flag = "" if blur is None else f' data-blur="{blur}"'
+    src = f"/thumbs/{r.source_hash}"
+    return f'<img class="thumb" src="{src}" data-hash="{r.short_hash}"{flag} alt="">'
+
+
+def test_the_adult_rows_are_the_is_adult_ones() -> None:
+    assert [is_adult(r.branch) for r in (ADULT, SAFE, UNBRANCHED)] == [True, False, False]
+
+
+def test_blur_passes_when_every_adult_thumbnail_is_blurred() -> None:
+    page = thumb(ADULT, "1") + thumb(SAFE, "0") + thumb(UNBRANCHED, "0")
+    assert gate_4.check_blur([ADULT, SAFE, UNBRANCHED], [page, thumb(ADULT, "1")]).passed
+
+
+@pytest.mark.parametrize("blur", ["0", None, "true", ""])
+def test_blur_flags_an_adult_thumbnail_not_blurred_by_default(blur) -> None:
+    pages = [thumb(ADULT, "1"), thumb(ADULT, blur)]
+    finding = gate_4.check_blur([ADULT, SAFE], pages)
+    assert finding.issues == ((ADULT.short_hash, Code.NOT_BLURRED),)
+
+
+def test_blur_ignores_a_non_thumb_image_and_safe_rows() -> None:
+    other = f'<img class="logo" data-hash="{ADULT.short_hash}">'
+    pages = [thumb(ADULT, "1"), other, thumb(SAFE, "0")]
+    assert gate_4.check_blur([ADULT, SAFE], pages).passed
+
+
+def test_blur_needs_at_least_one_adult_thumbnail() -> None:
+    finding = gate_4.check_blur([ADULT, SAFE], [thumb(SAFE, "0")])
+    assert finding.issues == (("-", Code.NO_ADULT_THUMB),)
+    assert gate_4.check_blur([SAFE], [thumb(SAFE, "0")]).passed  # no adult rows, nothing owed
+
+
+def test_blur_without_html_or_ledger_is_not_available() -> None:
+    assert gate_4.check_blur([ADULT], None).issues == (("-", Code.NOT_AVAILABLE),)
+    assert gate_4.check_blur([], [thumb(ADULT, "1")]).issues == (("-", Code.NOT_AVAILABLE),)
+
+
+# --- 2. the grid's safe-vs-adult flag (API-001.D8) ------------------------------------------
+
+
+def test_counts_pass_with_an_adult_cell() -> None:
+    ledger = [*LEDGER, ADULT]
+    status = status_of(ledger)
+    assert any(cell["adult"] for cell in status["grid"])
+    assert gate_4.check_counts(ledger, status).passed
+
+
+def test_counts_flag_a_wrong_adult_flag() -> None:
+    ledger = [*LEDGER, ADULT]
+    status = status_of(ledger)
+    for cell in status["grid"]:
+        if cell["branch"] == ADULT_BRANCH:
+            cell["adult"] = False
+    assert gate_4.check_counts(ledger, status).issues == (("-", Code.GRID_MISMATCH),)
+
+
+@pytest.mark.parametrize("bad", [None, 1, "true"])
+def test_counts_require_a_bool_adult_flag(bad) -> None:
+    status = status_of(LEDGER)
+    status["grid"][0]["adult"] = bad
+    assert gate_4.check_counts(LEDGER, status).issues == (("-", Code.UNREADABLE),)
 
 
 # --- 7. compose -----------------------------------------------------------------------------

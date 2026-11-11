@@ -36,6 +36,11 @@ from urllib.parse import quote
 
 REPO = Path(__file__).resolve().parents[1]
 COMPOSE = REPO / "docker-compose.yml"
+CONFIG = REPO / "config.yaml"
+
+# `python scripts/gate_4.py` puts scripts/ on sys.path; the lazy `classifier` imports need the repo.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 UNSORTED_FORMAT = "unsorted"  # the format fallback (P-6)
 MIN_RAW_STEM = 4  # TST-015.D4: shorter raw stems are not checked (they match HTML noise)
@@ -156,7 +161,7 @@ def _count(value: Any) -> bool:
 
 def _served_counts(
     status: Mapping[str, Any],
-) -> tuple[dict[str, int], dict[tuple[Any, Any, Any], int]] | None:
+) -> tuple[dict[str, int], dict[tuple[Any, ...], int]] | None:
     """`/api/status`'s counts per status and per (topic, format, branch), or None when the
     shape isn't exactly the read model's. Checked by type, so nothing raises."""
     by_status = status.get("counts_by_status") if isinstance(status, Mapping) else None
@@ -165,14 +170,19 @@ def _served_counts(
         return None
     if not all(isinstance(k, str) and _count(n) for k, n in by_status.items()):
         return None
-    cells: Counter[tuple[Any, Any, Any]] = Counter()
+    from classifier.api.views import is_adult
+
+    cells: Counter[tuple[Any, ...]] = Counter()
     for cell in grid:
         if not isinstance(cell, Mapping) or not _count(cell.get("count")):
             return None
         key = (cell.get("topic"), cell.get("format"), cell.get("branch"))
         if not all(part is None or isinstance(part, str) for part in key):
             return None
-        cells[key] += cell["count"]
+        if type(cell.get("adult")) is not bool:
+            return None
+        # A wrong safe-vs-adult flag can't match any ledger cell: the flag is part of the key.
+        cells[(*key, cell["adult"] is is_adult(key[2]))] += cell["count"]
     return _nonzero(dict(by_status)), _nonzero(cells)
 
 
@@ -185,7 +195,7 @@ def check_counts(ledger: Sequence[LedgerRow], status: Mapping[str, Any] | None) 
         return Finding(2, False, ((NO_HASH, Code.UNREADABLE),))
     served_status, served_grid = served
     ledger_status = _nonzero(Counter(row.status for row in ledger))
-    ledger_grid = _nonzero(Counter((row.topic, row.format, row.branch) for row in ledger))
+    ledger_grid = _nonzero(Counter((row.topic, row.format, row.branch, True) for row in ledger))
     issues: list[tuple[str, Code]] = []
     for name in sorted(ledger_status.keys() | served_status.keys()):
         if ledger_status.get(name, 0) != served_status.get(name, 0):
@@ -303,8 +313,32 @@ def check_no_leak(ledger: Sequence[LedgerRow], bodies: Mapping[str, str | None])
 
 
 # --- 5. blur ------------------------------------------------------------------------------
-# Lands with TST-015.1.3: it uses `classifier.api.views.is_adult` (API-001.D8 as corrected), never
-# a retyped branch literal. Until then the criterion has no finding, so it fails.
+
+
+def check_blur(ledger: Sequence[LedgerRow], pages: Sequence[str] | None) -> Finding:
+    """API-001.D8: every `img.thumb` of an adult row (`is_adult`, never a retyped branch) has
+    `data-blur="1"` in the served HTML, matched by `data-hash`. At least one adult thumbnail
+    must be seen when the ledger has adult rows, or the check would prove nothing."""
+    from classifier.api.views import is_adult
+
+    if pages is None or not ledger:
+        return _unavailable(5)
+    adult = {row.short_hash for row in ledger if is_adult(row.branch)}
+    issues: list[tuple[str, Code]] = []
+    seen_adult = False
+    for page in pages:
+        for tag, attrs in _tags(page):
+            if tag != "img" or "thumb" not in attrs.get("class", "").split():
+                continue
+            short = attrs.get("data-hash", "")
+            if short not in adult:
+                continue
+            seen_adult = True
+            if attrs.get("data-blur") != "1":
+                issues.append((_short(short), Code.NOT_BLURRED))
+    if adult and not seen_adult:
+        issues.append((NO_HASH, Code.NO_ADULT_THUMB))
+    return _finding(5, issues)
 
 
 # --- 6. report ----------------------------------------------------------------------------
@@ -411,9 +445,220 @@ def judge(findings: Sequence[Finding], detail: bool = False) -> Verdict:
     return Verdict(passed, tuple(lines), tuple(extra))
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    print("gate 4 FAIL: the runner is not wired yet (TST-015.1.3)", file=sys.stderr)
-    return 1
+# --- the runner ---------------------------------------------------------------------------
+
+NO_APP_DSN = (
+    "APP_DB_DSN is not set: gate 4 reads the app database's dry run. Run it with "
+    "`make gate-4` from the main checkout."
+)
+LEDGER_FAILED = "the app database's ledger could not be read"
+SOURCES = ("status", "files", "review", "ui", "events", "report")
+
+
+class GateSetupError(Exception):
+    """Fixed text only: never a DSN, a path or a driver message."""
+
+
+class NoModels:
+    """The gate's model probe: no Ollama call, so `/api/status` shows "n/a" (m4 answer 7)."""
+
+    def loaded_models(self) -> None:
+        return None
+
+
+@dataclass(frozen=True)
+class Served:
+    """What the app served, per source; None = the source isn't available."""
+
+    files: list[str] | None
+    status: dict[str, Any] | None
+    queue: list[str] | None
+    html: list[str] | None
+    report: str | None
+    bodies: dict[str, str | None] = field(repr=False)  # every body and header, for check 4
+
+
+def load_config(dsn: str) -> Any:
+    """config.yaml with the app database's DSN (never echoed)."""
+    import yaml
+
+    from classifier.config import Config
+
+    data = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    data["db"] = {"dsn": dsn}
+    return Config.model_validate(data)
+
+
+def read_ledger(engine: Any) -> list[LedgerRow]:
+    """Every `files` row, on the read-only engine. A failure is fixed text, unchained."""
+    from sqlalchemy import select
+
+    from classifier.db.models import File
+
+    query = select(
+        File.source_hash,
+        File.short_hash,
+        File.status,
+        File.branch,
+        File.needs_review,
+        File.format,
+        File.topic,
+        File.source_path,
+        File.duplicate_paths,
+        File.original_sanitized,
+    )
+    rows: list[Any] | None = None
+    try:
+        with engine.connect() as conn:
+            rows = list(conn.execute(query))
+    except Exception:
+        rows = None
+    if rows is None:
+        raise GateSetupError(LEDGER_FAILED)
+    return [
+        LedgerRow(
+            source_hash=r.source_hash,
+            short_hash=r.short_hash,
+            status=getattr(r.status, "value", r.status),
+            branch=r.branch,
+            needs_review=bool(r.needs_review),
+            format=r.format,
+            topic=r.topic,
+            source_path=r.source_path,
+            duplicate_paths=tuple(r.duplicate_paths or ()),
+            original_sanitized=r.original_sanitized,
+        )
+        for r in rows
+    ]
+
+
+def _text(response: Any) -> str:
+    """A response's headers and body, as one string for check 4."""
+    head = "\n".join(f"{k}: {v}" for k, v in response.headers.items())
+    return f"{head}\n\n{response.text}"
+
+
+def _max_pages(rows: int) -> int:
+    from classifier.api.views import PER_PAGE
+
+    return rows // PER_PAGE + 2  # one past the last full page, plus the empty end page
+
+
+def _files(client: Any, rows: int) -> tuple[list[str] | None, str | None]:
+    """Every `source_hash` from `/api/files`, paging until an empty page (API-001.D5)."""
+    hashes: list[str] = []
+    texts: list[str] = []
+    for page in range(1, _max_pages(rows) + 1):
+        response = client.get("/api/files", params={"page": page})
+        if response.status_code != 200:
+            return None, None
+        texts.append(_text(response))
+        body = response.json()
+        page_rows = body.get("rows") if isinstance(body, dict) else None
+        if not isinstance(page_rows, list):
+            return None, None
+        if not page_rows:
+            return hashes, "\n".join(texts)
+        for item in page_rows:
+            value = item.get("source_hash") if isinstance(item, dict) else None
+            if not isinstance(value, str):
+                return None, None
+            hashes.append(value)
+    return None, None  # never reached an empty page: paging is broken
+
+
+def _review(client: Any, rows: int) -> tuple[list[str] | None, list[str] | None]:
+    """Every queued `data-source-hash` from `/ui/review`, paging to an empty page (API-001.D9)."""
+    queue: list[str] = []
+    pages: list[str] = []
+    for page in range(1, _max_pages(rows) + 1):
+        response = client.get("/ui/review", params={"page": page})
+        if response.status_code != 200:
+            return None, None  # a 404 on page 1: API-001.4 hasn't landed
+        pages.append(response.text)
+        entries = queue_entries([response.text])
+        if not entries:
+            return queue, pages
+        queue += entries
+    return None, None
+
+
+def _page(client: Any, path: str) -> str | None:
+    response = client.get(path)
+    return response.text if response.status_code == 200 else None
+
+
+def collect(client: Any, rows: int) -> Served:
+    """Everything the gate reads from the app, in-process. SSE and the report land in .1.4."""
+    status_response = client.get("/api/status")
+    status = status_response.json() if status_response.status_code == 200 else None
+    files, files_text = _files(client, rows)
+    queue, review_pages = _review(client, rows)
+    ui = _page(client, "/")
+    html_pages = None if ui is None or review_pages is None else [ui, *review_pages]
+    bodies: dict[str, str | None] = {
+        "status": _text(status_response) if status is not None else None,
+        "files": files_text,
+        "review": "\n".join(review_pages) if review_pages is not None else None,
+        "ui": ui,
+        "events": None,  # TST-015.1.4 (API-001.2)
+        "report": None,  # TST-015.1.4 (API-001.5)
+    }
+    return Served(
+        files, status if isinstance(status, dict) else None, queue, html_pages, None, bodies
+    )
+
+
+def evaluate(ledger: Sequence[LedgerRow], served: Served, compose: str | None) -> list[Finding]:
+    return [
+        check_reachable(ledger, served.files),
+        check_counts(ledger, served.status),
+        check_review_queue(ledger, served.queue),
+        check_no_leak(ledger, served.bodies),
+        check_blur(ledger, served.html),
+        check_report(served.report),
+        check_compose(compose),
+    ]
+
+
+def run(dsn: str, engine: Any = None) -> list[Finding]:
+    """Read the ledger and serve it through `create_app`, in-process and read-only.
+    `engine` is a test seam; by default the app's own read-only engine."""
+    from fastapi.testclient import TestClient
+
+    from classifier.api.app import create_app, make_read_only, read_only_engine
+
+    engine = read_only_engine(dsn) if engine is None else make_read_only(engine)
+    try:
+        ledger = read_ledger(engine)
+        app = create_app(load_config(dsn), engine=engine, ollama=NoModels())
+        with TestClient(app, raise_server_exceptions=False) as client:
+            served = collect(client, len(ledger))
+    finally:
+        engine.dispose()
+    return evaluate(ledger, served, read_compose())
+
+
+def main(argv: Sequence[str] | None = None, engine: Any = None) -> int:
+    """`engine` is a test seam (tests/db/gate/test_gate_4_runner.py)."""
+    import os
+
+    args = sys.argv[1:] if argv is None else argv
+    detail = "--detail" in args
+    try:
+        dsn = os.environ.get("APP_DB_DSN")
+        if not dsn:
+            raise GateSetupError(NO_APP_DSN)
+        findings = run(dsn, engine)
+    except GateSetupError as exc:  # fixed text
+        print(f"gate 4 FAIL: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:  # the type only: a message can carry a value, a path or the DSN
+        print(f"gate 4 FAIL: run errored ({type(exc).__name__})", file=sys.stderr)
+        return 1
+    verdict = judge(findings, detail)
+    print("\n".join((*verdict.lines, *verdict.detail)))
+    return 0 if verdict.passed else 1
 
 
 if __name__ == "__main__":
