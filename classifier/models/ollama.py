@@ -12,12 +12,15 @@ The `transport` argument is a plain `httpx.BaseTransport`: tests pass an `httpx.
 and the default tiers pass the recorded-response replay (TST-005.1), so they never reach Ollama.
 
 Errors never carry the prompt or the model's answer, only a short hash of the prompt.
+
+`loaded_models()` reads `/api/ps` for the status page (MOD-003.1) and never raises.
 """
 
 import hashlib
 import json
 import os
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from types import TracebackType
 from typing import Any, Self
 
@@ -27,6 +30,9 @@ HOST_ENV = "OLLAMA_HOST"
 GENERATE_PATH = "/api/generate"
 # MOD-001.D4: the first call after a model swap loads a 6–9 GB model (R-MOD-1).
 DEFAULT_TIMEOUT = 300.0
+PS_PATH = "/api/ps"
+# MOD-003.D1: a status read must not hang a page for a model-load timeout (R-API-2).
+PS_TIMEOUT = 5.0
 # The compose service and localhost, exactly (CLAUDE.md network rule). Never widen this.
 ALLOWED_HOSTS = frozenset({"ollama", "localhost", "127.0.0.1", "::1"})
 
@@ -41,6 +47,27 @@ class OllamaUnavailable(OllamaError):
     Unlike a bad status or a bad body, this says nothing about one answer, so a caller lets it
     propagate instead of marking the file as failed. It is still an `OllamaError`.
     """
+
+
+@dataclass(frozen=True)
+class LoadedModel:
+    """One model Ollama holds in memory, from `/api/ps` (MOD-003.1, R-API-2)."""
+
+    name: str
+    size_vram: int  # bytes
+
+
+def _loaded_model(entry: object) -> LoadedModel | None:
+    """One `/api/ps` entry, or None unless it has a non-empty name and a non-negative int VRAM."""
+    if not isinstance(entry, dict):
+        return None
+    name = entry.get("name")
+    size_vram = entry.get("size_vram")
+    if not isinstance(name, str) or not name:
+        return None
+    if type(size_vram) is not int or size_vram < 0:
+        return None
+    return LoadedModel(name=name, size_vram=size_vram)
 
 
 def _prompt_hash(prompt: str) -> str:
@@ -157,6 +184,34 @@ class OllamaClient:
         if not isinstance(answer, dict):
             raise OllamaError(f"Ollama's answer is not a JSON object ({where})")
         return answer
+
+    def loaded_models(self) -> list[LoadedModel] | None:
+        """The models Ollama holds now, from `GET /api/ps`; `[]` when none is loaded.
+
+        Any transport, status or parse failure returns None ("n/a" on the status page), and so
+        does one malformed entry: a partial list would look complete (MOD-003.1). Nothing is
+        raised and no exception text is kept.
+        """
+        failed = False
+        try:
+            response = self._http.get(PS_PATH, timeout=PS_TIMEOUT)
+        except httpx.HTTPError:
+            failed = True
+        if failed or response.is_error:
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            failed = True
+        if failed or not isinstance(payload, dict):
+            return None
+        entries = payload.get("models")
+        if not isinstance(entries, list):
+            return None
+        models = [_loaded_model(entry) for entry in entries]
+        if any(model is None for model in models):
+            return None
+        return [model for model in models if model is not None]
 
     def close(self) -> None:
         self._http.close()
