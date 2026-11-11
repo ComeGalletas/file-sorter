@@ -78,8 +78,9 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
-  - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests
-  - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213)
+  - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
+  - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
+  - [x] API-001.5.3 — round 1 (privacy): the unit test's no-script check proves the planted row is rendered and escaped before asserting absence
 
 ## API-001 — Results
 

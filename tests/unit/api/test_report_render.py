@@ -127,6 +127,9 @@ def test_grid_three_way_split() -> None:
 
 def test_no_script_img_or_url() -> None:
     html = render_report(_status(), [_row(sanitized_name='"><script>x</script>')])
+    # Proved served first: the planted row is rendered, its name escaped.
+    assert f'data-hash="{HASH[:8]}"' in html
+    assert "&quot;&gt;&lt;script&gt;x&lt;/script&gt;" in html
     lowered = html.lower()
     for bad in ("<script", "<img", "<link", "src=", "href="):
         assert bad not in lowered
