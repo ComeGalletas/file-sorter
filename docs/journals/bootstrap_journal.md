@@ -942,21 +942,45 @@ and then (PR #43 review round 2):
 
 ---
 
-## RUN-019 — Requirement (human, M4 G0 answer 5, 2026-11-10; human-side)
+## RUN-019 — Requirement (human, 2026-11-10)
 
-- **Objective:** Publish the UI on `127.0.0.1:8000` only, through RUN-001.D5's localhost-only proxy, and add `make gate-4`.
-- **Constraint:** the human's session writes the PR (compose and the Makefile are human-side). `app` never joins `egress` or a published network.
-- **Implements:** RUN-001.D5, R-RUN-1, R-API-1.
+- **Objective:** the M4 UI is reachable from the host on `127.0.0.1:8000` only, through the localhost-only proxy RUN-001.D5 planned. `make gate-4` reads the real dry run.
+- **Details:** the human's G0 answer 5 (m4.md): "localhost only, through the RUN-001.D5 proxy". Docker can't publish a port from the internal-only network, so a proxy on `internal` plus a publishing network is needed.
+- **Constraint:** human-side (RUN-002.D16): `docker-compose.yml`, the Makefile, `CLAUDE.md` and DESIGN. The index row is the lead's (RUN-002.D13).
 
-## RUN-019 — Confirmed reading (the lead's proposed shape, `docs/plans/m4.md`; the human's session decides)
+## RUN-019 — Confirmed reading
 
-- **RUN-019.D1 — the proxy** (lead, provisional):
-  - a pinned `nginx:<version>-alpine` service, `ui-proxy`, on `internal` plus a new non-internal network `ui` that **only the proxy** joins (`app`, `db`, `ollama`, `searxng` and `test` never do);
-  - `127.0.0.1:8000:8000` only;
-  - `read_only: true`, with tmpfs for nginx's cache and pid;
-  - a committed `docker/ui-proxy/nginx.conf` whose one fixed upstream is `proxy_pass http://app:8000` (no resolver, no other `proxy_pass`), `GET` and `HEAD` only, `proxy_buffering off` (SSE) and `server_tokens off`.
-- **RUN-019.D2 — `app` serves on the internal network** (lead, provisional): `command: ["classifier", "serve", "--host", "0.0.0.0"]`. `api.host` stays `127.0.0.1` for `serve` anywhere else, and `docker compose exec app classifier …` still works.
-- **RUN-019.D3 — `make gate-4`** (lead, provisional): a main-checkout rule like TST-013's `gate-3`. It starts the app `db` and passes `APP_DB_DSN` by name, never echoed. In a worktree it fails with a fixed message.
+- **RUN-019.D1 (lead's shape, m4.md; built by the human's session):** **a pinned `nginx:1.30.5-alpine` service, `ui-proxy`.**
+  - **Networks:** `internal`, plus a new bridge network `ui` that no other service joins.
+  - **Port:** `127.0.0.1:8000:8000` only.
+  - **Container:** `read_only: true`, with tmpfs for nginx's cache, pid and temp.
+  - **Config, `docker/ui-proxy/nginx.conf`:**
+    - the only upstream is `app:8000`, resolved per request by Docker's DNS, so the proxy starts before `app` listens;
+    - `GET`/`HEAD` only, with anything else answered 403;
+    - `proxy_buffering off` for SSE;
+    - `server_tokens off`, no access log, and the error log at `crit`, because nginx's `error` lines quote the request line, with its filters and hashes.
+
+  `CLAUDE.md`'s hard rule lists the `ui` network as a designed runtime exception that makes no outbound call. DESIGN R-API-1 now says "reachable from the host only on `127.0.0.1:8000`", and §9 describes the proxy. (human, 2026-11-10)
+- **RUN-019.D2:** `app` serves with `classifier serve --host 0.0.0.0` on the internal network only. That needs CLI-008.1's `serve`, so it's RUN-019.2, after CLI-008.1 merges. Until then the proxy answers 502. (lead, provisional, m4.md)
+- **RUN-019.D3:** **`make gate-4` is a main-checkout rule, like TST-013's `gate-3`.** It starts the app `db` and hands `APP_DB_DSN` to the container by name, from an `@`-silenced line, so make never echoes it. In a worktree it fails with a fixed message. (lead, provisional, m4.md)
+- `make up` also starts `ui-proxy`.
+
+## RUN-019 — Tasks
+
+- [x] RUN-019.1 — `ui-proxy`, the `ui` network, `docker/ui-proxy/nginx.conf`, the `gate-4` rule, `make up`, CLAUDE.md's exception, DESIGN R-API-1 and §9 · the human's session · acceptance: `tests/unit/runtime/test_ui_proxy.py`
+- [ ] RUN-019.2 — `app`'s command becomes `classifier serve --host 0.0.0.0` (after CLI-008.1, #215) · the human's session
+
+## RUN-019 — Results
+
+- **RUN-019.1:**
+  - **Tests:** `tests/unit/runtime/` passes 52 (7 new); `make lint` is clean; `docker compose config` is valid.
+  - **A smoke run of the proxy** in a throwaway project (`app` only sleeping):
+    - it is published only as `127.0.0.1:8000`;
+    - GET and HEAD answer 502 (nothing listening yet), and POST answers 403;
+    - the `Server` header carries no version;
+    - a probe query string did not appear in `docker logs`.
+  - **Status:** DONE for .1; .2 waits on CLI-008.1. **Self-rating:** 9/10, yes. The gap: the end-to-end path through `serve` is only checkable after RUN-019.2.
+- **Privacy:** no host path, no value from `.env`; the DSN is never echoed.
 
 ---
 

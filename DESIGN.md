@@ -197,12 +197,13 @@ ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Fa
 
 ### 4.8 Status UI and API
 
-- **R-API-1** FastAPI is served by `classifier serve` on `127.0.0.1:8000` only. No auth in the MVP.
+- **R-API-1** FastAPI is served by `classifier serve`, reachable from the host only on `127.0.0.1:8000`, through the localhost-only `ui-proxy` (RUN-019). No auth in the MVP.
 - **R-API-2** Read: `GET /api/status` (run state, counts per status and category, imgs/min, VRAM, loaded model, last error), `GET /api/events` (SSE), and `GET /api/files?status=&format=&topic=&needs_review=&page=`.
 - **R-API-3** Write (M8): `POST /api/files/{hash}/assign` (body: `format`, `topic`; either may be omitted), `POST /api/files/{hash}/rerun`, `POST /api/run/{action}` with `action ∈ {sort, pause, resume}`.
 - **R-API-4** Every write calls the same graph nodes as the CLI. The UI never calls models.
-- **R-API-5** UI: one `ui/index.html` (htmx or Alpine, no build step). The dashboard shows a run banner, a topic × format count grid (safe vs adult), the last 20 filed files, and errors with retry. The review queue shows unsorted and `needs_review` files with the top-3 scores and the judge's reason, with **adult thumbnails blurred by default**.
-- **R-API-6** Run state lives in a `runs` table, plus a Postgres advisory lock held by `sort`, `watch` and `reclassify`.
+- **R-API-5** UI: one `ui/index.html` with **vendored htmx** (no CDN, no build step; RUN-021). The dashboard shows a run banner, a topic × format count grid (safe vs adult), the last 20 filed files, and errors with retry. The review queue shows unsorted and `needs_review` files with the VLM's answers (format, topic, NSFW level, `traces`, the Falconsai cross-check flag) and the review reason; the judge's reason joins in M6. **Adult thumbnails are blurred by default**, with click-to-reveal per image. Thumbnails come only from the sanitized working copy, and the report embeds none (C-31).
+  - **Until M7 and M8 (API-001.D1, D2):** a dry run files nothing, so the dashboard shows the latest 20 rows, labelled "latest". Errors are shown without a retry button, because retry is a write (M8).
+- **R-API-6** Run state lives in a `runs` table, plus a Postgres advisory lock held by `sort`, `watch`, `reclassify` and `dry-run` (PIPE-002.D1).
 - **R-API-7** `classifier report [--out report.html]` produces self-contained HTML from the same JSON as the API.
 - **R-API-8** No deletion in the UI.
 
@@ -328,7 +329,7 @@ db:
 - **As built (RUN-001):**
   - **Networks:** `internal` has no internet route (`app`, `db`, `test`). Only `ollama` and `searxng` also join `egress`.
   - **Model downloads:** Hugging Face weights come through a one-off `fetch` service (profile `tools`), the only app-image container with internet.
-  - **UI port:** Docker can't publish ports for internal-only containers, so the UI port waits for M4's localhost-only proxy (RUN-001.D5).
+  - **UI port:** Docker can't publish ports for internal-only containers (RUN-001.D5), so the `ui-proxy` service (a pinned nginx) publishes `127.0.0.1:8000` and forwards GET and HEAD to `app:8000`. It alone also joins the `ui` bridge network, which no other service joins (RUN-019).
   - **`test`:** has no `/source` or `/results` mount at all (RUN-001.D6).
   - **Pins:** see the RUN-001 journal.
 - **R-RUN-5** The RTX 5080 is Blackwell (sm_120). The `app` image must use PyTorch wheels built for **CUDA 12.8 or newer** (`cu128`+); `cu124` builds don't support the card. The `ollama/ollama` image is pinned to a version with qwen3vl support.
@@ -477,6 +478,9 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 | C-27 | R-MOD-1: `keep_alive` per stage | **One resident Ollama model** (`OLLAMA_MAX_LOADED_MODELS=1`), **one `num_ctx` (4096) in every prompt file**, and the instruct builds (R-MOD-1, R-MOD-1a; RUN-016, CLS-004.D8, D9) | Two models resident at once exhaust 16 GB of VRAM; a context-size change reloads the model; the thinking build can return empty answers (R-MOD-1a). | **changed** (human, 2026-10-17) |
 | C-28 | Gate 3: ≥ 90% format agreement, ≥ 85% topic agreement (CLS-001.D5) | **≥ 80% format and ≥ 80% topic agreement**, on a single run (§11; CLS-004.D12) | The human's decision: 85% format on 2026-10-17, then 80% for both axes on 2026-10-18 after the repo's checkpoint run. Personal exemplars are proposed for later (CLS-005). | **changed** (human, 2026-10-18) |
 | C-29 | Categories are listed to the classifier by name (user-added ones by name alone); the NSFW level is the model's answer as given | **Every category is described to the model**: `categories.description`, the definition slots and a required `--description` on `categories add` (R-CLS-2, R-CLS-7; CLS-007.D1, CLI-007, DB-006). **A reversible traces floor**: with `nsfw.conservative_traces: true`, `safe` with `traces` counts as `suggestive`, never higher; the ledger keeps the raw level and `files.nsfw_traces` (R-CLS-1; CLS-007.D2, D3) | The human's follow-up after the M3 checkpoint runs: a category the user adds should reach the model with a meaning, and a cautious NSFW option is wanted for now that can be turned off later. | **changed** (human, 2026-11-10) |
+| C-30 | R-API-1: `serve` on `127.0.0.1:8000` only | **Reachable from the host only on `127.0.0.1:8000`, through the localhost-only `ui-proxy`.** Inside its container, `serve` binds `0.0.0.0` on the internal network, and the proxy alone also joins the `ui` bridge, so it can publish (R-API-1, §9; RUN-019.D1, D2) | Docker can't publish a port from an internal-only network (RUN-001.D5), and `app` must stay off any network with a route out. | **changed** (human, 2026-11-10, M4 G0 answer 5) |
+| C-31 | R-API-5: htmx or Alpine; the last 20 filed files; errors with retry; the top-3 scores and the judge's reason | **Vendored htmx** (answer 4); in a dry run, **the latest 20 rows** and **errors without retry** until M7/M8 (API-001.D1, D2); the review queue shows **the VLM's answers and the review reason** (answer 2); **thumbnails from the sanitized copy, blurred for adult, none in the report** (answer 3) | Nothing is filed before M7, and retry is a write (M8). The VLM path has no scores, and the judge is M6. A self-contained report is easy to share by accident. | **changed** (human, 2026-11-10, M4 G0) |
+| C-32 | R-API-6: the run lock is held by `sort`, `watch` and `reclassify` | **`dry-run` also records a run and takes the lock** (PIPE-002.D1) | `dry-run` writes the ledger too, and the run banner needs a run. | **changed** (human, 2026-11-10, M4 G0) |
 
 ## 14. Open questions (human)
 
