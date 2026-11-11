@@ -601,6 +601,18 @@ def test_blur_flags_run_while_the_html_is_not_available() -> None:
 # --- the runner's pieces --------------------------------------------------------------------
 
 
+class BrokenEngine:
+    def connect(self):
+        raise RuntimeError(PLANT_PATH)
+
+
+def test_a_report_that_cannot_be_built_is_none_with_no_text() -> None:
+    with pytest.raises(RuntimeError, match=PLANT_DIR):  # the plant is held by the failure
+        BrokenEngine().connect()
+    assert gate_4.build_report(BrokenEngine()) is None
+    assert gate_4.check_report(None).issues == (("-", Code.NOT_AVAILABLE),)
+
+
 class FakeResponse:
     def __init__(self, status_code: int, text: str) -> None:
         self.status_code = status_code

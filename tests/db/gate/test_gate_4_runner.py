@@ -118,10 +118,24 @@ def test_the_runner_serves_every_row_and_never_a_path(migrated_db, seed) -> None
     # Every row was served (no NOT_SERVED), the plant included, so the absence of LEAK_* means
     # something; the only issue is the sources that haven't landed yet (SSE, the UI, the report).
     assert findings[4].issues == NOT_AVAILABLE
-    # Not landed yet: they fail, never pass (TST-015.1.4 wires them). Criterion 5's served
-    # `blurred` flags (API-001.3) are already checked: only the HTML is missing.
-    for criterion in (3, 5, 6):
+    assert findings[6].passed, findings[6].issues  # the real report is self-contained
+    # Not landed yet: the UI (API-001.4). Criterion 5's served `blurred` flags (API-001.3) are
+    # already checked: only the HTML is missing.
+    for criterion in (3, 5):
         assert findings[criterion].issues == NOT_AVAILABLE, criterion
+
+
+def test_the_report_holds_every_row_and_no_plant(migrated_db, seed) -> None:
+    _, planted = _seed_folder(seed)
+    ledger, served = gate_4.serve(migrated_db, read_only_engine(migrated_db))
+    report = served.report
+    assert report is not None and served.bodies["report"] == report
+    # Every row is in the report (held), the plant included, before its absence is asserted.
+    assert all(f'data-hash="{r.short_hash}"' in report for r in ledger)
+    assert planted[:8] in report
+    for secret in (PLANT_DIR, PLANT_STEM, PLANT_DUP_STEM, "/source/"):
+        assert secret not in report
+    assert gate_4.check_report(report).passed
 
 
 def test_the_served_blurred_flags_match_is_adult(migrated_db, seed) -> None:

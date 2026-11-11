@@ -27,7 +27,7 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
@@ -631,7 +631,7 @@ def _page(client: Any, path: str) -> str | None:
 
 
 def collect(client: Any, rows: int) -> Served:
-    """Everything the gate reads from the app, in-process. The report lands with API-001.5."""
+    """Everything the gate reads from the app, in-process; `serve` adds the report."""
     status_response = client.get("/api/status")
     status = status_response.json() if status_response.status_code == 200 else None
     files, files_text, flags = _files(client, rows)
@@ -644,17 +644,44 @@ def collect(client: Any, rows: int) -> Served:
         "review": "\n".join(review_pages) if review_pages is not None else None,
         "ui": ui,
         "events": _events(client),
-        "report": None,  # TST-015.1.4 (API-001.5)
+        "report": None,  # filled by `serve`, from the ledger (API-001.5)
     }
     return Served(
         files=files,
         status=status if isinstance(status, dict) else None,
         queue=queue,
         html=html_pages,
-        report=None,  # API-001.5 (#235)
+        report=None,  # filled by `serve`
         bodies=bodies,
         blurred=flags,
     )
+
+
+def build_report(engine: Any) -> str | None:
+    """`render_report` over the whole ledger, as `classifier report` builds it (API-001.5):
+    the status and every row from API-001.1's views, in one read-only snapshot, with the
+    gate's no-call model probe. Any failure reads as None (criterion 6 fails), no text kept."""
+    from sqlalchemy import text
+
+    from classifier.api.report import render_report
+    from classifier.api.views import (
+        FileFilters,
+        build_status,
+        file_row,
+        rows_query,
+        with_loaded_models,
+    )
+
+    report: str | None = None
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("set transaction isolation level repeatable read, read only"))
+            status = with_loaded_models(build_status(conn), NoModels())
+            rows = (file_row(m) for m in conn.execute(rows_query(FileFilters())).mappings())
+            report = render_report(status, rows)
+    except Exception:
+        report = None
+    return report
 
 
 def evaluate(ledger: Sequence[LedgerRow], served: Served, compose: str | None) -> list[Finding]:
@@ -690,6 +717,8 @@ def serve(dsn: str, engine: Any = None) -> tuple[list[LedgerRow], Served]:
         app.state.events_sleep = _no_sleep
         with TestClient(app, raise_server_exceptions=False) as client:
             served = collect(client, len(ledger))
+        report = build_report(engine)
+        served = replace(served, report=report, bodies={**served.bodies, "report": report})
     finally:
         engine.dispose()
     return ledger, served
