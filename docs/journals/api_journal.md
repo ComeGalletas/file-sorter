@@ -78,6 +78,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.2.1 — the stream (`events.py`: frames on change, the keep-alive after 15 s (API-001.D10), one fixed `unavailable` per transition with the stream open (API-001.D11), the end on disconnect or cancellation), unit tests · fa82e19
   - [x] API-001.2.2 — the `GET /api/events` route, its db acceptance test and the privacy plant · (this commit)
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
+  - [x] API-001.3.1 — `FileRow.blurred` (the 16th field, approved on #212) from `is_adult(branch)` (API-001.D8); an `nsfw` row is blurred, safe and null rows are not · (this commit)
+  - [ ] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
 
