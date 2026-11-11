@@ -83,6 +83,10 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
+  - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
+  - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
+  - [x] API-001.5.3 — round 1 (privacy): the unit test's no-script check proves the planted row is rendered and escaped before asserting absence · 69142ee
+  - [x] API-001.5.4 — after API-001.3 (#236): the report shows `FileRow.blurred` as a column (no thumbnail), and the unit rows carry it
 
 ## API-001 — Results
 
@@ -122,6 +126,15 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **Self-rating:** 9/10, proud: yes. The gaps:
   - the folder names `.work` and `thumbs` are repeated in `classifier/api/thumbs.py` rather than imported, because importing the sanitize node would pull in its model clients. A unit test pins them to the node's;
   - the app's 404 handler now gives every 404 the body `{"detail": "not found"}`, including unknown `/api/...` routes, which is a small change to API-001.1's behaviour.
+
+### API-001.5 (#213)
+
+- **Tests:**
+  - acceptance `tests/db/api/test_report.py`: 5 passed (planted secrets proved served then absent; escaping; no outbound reference; the three-way adult split through `is_adult`; every ledger row, streamed once, newest first);
+  - `tests/unit/api/test_report_render.py`: 7 passed; `tests/unit/ui/test_html.py`: 15 passed;
+  - `make test` (unit + db + integration): 2612 passed, 48 deselected; `make lint` clean.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. Pass 1 found a gap (no test for a row with no sanitized name yet), fixed in pass 2. The remaining point: the report holds every row in one string, so a very large ledger costs memory in CLI-008.1; the signature returns `str`, so streaming would be a contract change.
 
 ---
 
