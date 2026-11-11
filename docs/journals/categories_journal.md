@@ -517,7 +517,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
-- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · #219 · Pipeline · on the G1 hardening list; carried into M4 (`docs/plans/m4.md`) · acceptance: `tests/db/graph/test_classify_node.py`
+- [x] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · #219 · Pipeline · on the G1 hardening list; carried into M4 (`docs/plans/m4.md`) · acceptance: `tests/db/graph/test_classify_node.py`
 - [x] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
@@ -606,6 +606,17 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Built:** `load_effective_prompt` uses `prompts/local/<name>.md` as the whole system text. Front matter and `user`/`user_alt` stay committed. A slot the committed body lacks is refused (fewer slots are allowed). Cap 16384 bytes. `Prompt.addendum*` became `replacement*`. Eval says `local prompts: present|absent` and `with the provisional H8 local prompts`.
 - **Tests:** full default tiers (`make test`): 2366 passed; `make lint` clean. The gpu tier runs at pre-push.
 - **Status:** DONE (PR #180). **Reviewer / Privacy auditor:** posted on PR #180 (RUN-002.D14).
+
+### CLS-004.7 (Pipeline, #219)
+
+- **Built:** the classify node's `update files` also sets `prompt_version` from `VlmAnswer.prompt_version`: `classify_v1`, or with a local replacement `classify_v1+<8 hex>`, plus `/nsfw_level_v1+<8 hex>` when the NSFW prompt is replaced too (CLS-004.8). It stays in the local ledger only: no log line or result type carries it.
+- **Tests (db tier, coined hashes set in memory; `prompts/local/` never read):**
+  - the committed prompts store `classify_v1`;
+  - a classify-only replacement and a two-prompt replacement each store the expected version. Each hash is first proved held, then shown absent from the captured logs and from the `ClassifyResult` repr and str;
+  - an unanswered row and an unreadable copy keep `prompt_version` null, and a re-run leaves the stored version unchanged.
+  - With the code change set aside, the new tests fail.
+- Acceptance file: 42 passed. `make lint`: clean. No gpu or eval tier: no prompt or model changed.
+- **Status:** DONE. **Self-rating:** 10/10, proud: yes.
 
 ---
 
