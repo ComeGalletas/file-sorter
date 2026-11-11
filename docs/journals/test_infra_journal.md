@@ -1,6 +1,6 @@
 # Test infrastructure — journal
 
-**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1); TST-008, TST-010, TST-011 done; TST-009 in progress; TST-012 open · **Milestone:** m1 (TST-003 to TST-007: m2; TST-008 to TST-012: m3) ·
+**ID:** TST-002 · **Systems:** TST (+ RUN) · **Type:** feature · **Status:** TST-002 done (.2 with named gaps); TST-003 to TST-007 done (TST-005.2's real PASS at G1); TST-008 to TST-014 done (M3 approved, 2026-11-10; TST-013 and TST-014 human-side) · **Milestone:** m1 (TST-003 to TST-007: m2; TST-008 to TST-014: m3) ·
 **Issues:** #19 (PR #31), #20 (PR #28), #21 (PR #29), #22 (PR #41); M2: #53 (TST-003.1), #54 (TST-004.1), #55 (TST-005.1), #58 (TST-005.2), #68 (TST-006.1), #78 (TST-007.1); M3: #96 (TST-008.1), #95 (TST-008.2), #103 (TST-008.3) · **Branch:** `office/pixel-0e36` (.1), `office/sprocket-debd` (.2), `office/nibble-f70d` (.3), `office/nibble-7c73` (.4)
 
 <!--
@@ -647,7 +647,7 @@ references or host paths here. Use hashes.
 - **Subprocess check:** every `env=` in `tests/` is built from `os.environ`, and no default-tier test starts a real compose process, so no RUN issue.
 - **Found along the way (.1.3):** the autouse switch broke 13 loader tests from CLS-004.6, which set up addenda. They opt out with a marker, and a test pins which modules may.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a test that builds its own `env=` without `os.environ` would not see the switch, and none exists today.
-- **Reviewer and Privacy auditor:** pending.
+- **Reviewer and Privacy auditor:** posted on PR #165 (RUN-002.D14).
 
 ---
 

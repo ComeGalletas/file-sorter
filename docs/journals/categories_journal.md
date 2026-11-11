@@ -1,6 +1,6 @@
 # Categories — journal
 
-**ID:** CLS-001 (+ CLS-002, CLS-003, FOP-002, CLI-004, CLS-004, CLS-005, CLI-006, CLS-006) · **Systems:** CLS (+ NAME, FOP, DB, API, TST, MOD, CLI) · **Type:** feature · **Status:** CLS-001 design done; CLS-002, FOP-002, CLI-004 done; CLS-003.2 dropped (superseded by CLS-004); CLS-004 in progress; CLS-005 parked; CLI-006 and CLS-006 open (M3) ·
+**ID:** CLS-001 (+ CLS-002, CLS-003, FOP-002, CLI-004, CLS-004, CLS-005, CLI-006, CLS-006, CLI-007, CLS-007, CLS-008) · **Systems:** CLS (+ NAME, FOP, DB, API, TST, MOD, CLI) · **Type:** feature · **Status:** CLS-001 done (built in M3); CLS-002, FOP-002, CLI-004, CLS-004, CLI-006, CLS-006, CLI-007, CLS-007, CLS-008 done (M3 approved, 2026-11-10; CLS-004.7 carried into M4); CLS-003.2 dropped (superseded by CLS-004); CLS-005 parked ·
 **Milestone:** m3 (CLS-001 designed pre-repo) · **Issues:** CLS-001: — (pre-repo); M3: see each Tasks section · **Branch:** CLS-001 pre-repo, committed at bootstrap; M3 per task (`office/*`)
 
 ---
@@ -192,7 +192,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **D9 (`nsfw.mode: separate` fails fast)** belongs to the node (CLS-002.2): this module never sees `nsfw.mode`.
 - **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) no caller yet, because the node (CLS-002.2) and the calibration (CLS-003.1) wire it in, so the integration is untested here; (2) `Choice` holds plain lists inside a frozen dataclass, so a caller could mutate them (the node serialises them straight away).
 - **Completion status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### CLS-002.2 (#99, pipeline desk)
 
@@ -201,7 +201,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Side effects:** `NodeContext.vision` and `run(vision=...)` are the seam; `RunResult.classify` is the accessor. The M2 integration tests now pass `nodes=` (ingest and sanitize) so they keep testing M2, and `test_dry_run_cli.py` pins the CLI to the same nodes until CLI-005.1 (#100) moves the dry run to M3.
 - **Self-rating:** 9/10, proud: yes. Gaps: (1) `classifier dry-run` still prints M2 counts and does not build the real SigLIP backend: that is CLI-005.1 (#100); (2) the acceptance run uses flat synthetic pictures, so it proves the wiring and the pure rules, not classification quality (that is CLS-003); (3) writes are per row inside `run`'s node transaction, so a database error rolls the whole node back rather than one row.
 - **Completion status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ---
 
@@ -251,7 +251,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Behavior:** `result_folder()` returns `[Adult/]<Topic|General>/<Format>[/Animated]` or `[Adult/]Unsorted` as a relative `PurePosixPath`. It does no file system access (R-CLS-5, R-ING-9, FOP-002.D1, D2). Every segment (topic path, `no_topic`, format, `Unsorted`, the `nsfw` root) is validated, and errors are fixed text with no cause or context.
 - **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) no caller yet, because CLI-005.1 and M7 wire it in, so the integration is untested here; (2) case-insensitive collisions are left to FOP-002.2 (FOP-002.D4).
 - **Completion status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### FOP-002.2 (#98, pipeline desk)
 
@@ -260,7 +260,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Deviation:** planned subtasks 2.1 and 2.2 landed as one commit (one module), and the command's tests shipped with the module's.
 - **Self-rating:** 9/10, proud: yes. Gaps: (1) a race between the check and `mkdir` is not guarded (single-user tool); (2) the `separate` text is defined here until the classify node (CLS-002.2) lands, so the two should be unified then.
 - **Completion status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ---
 
@@ -304,7 +304,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and cited R-IDs: (1) `edit` cannot change the parent or the name, which the issue doesn't ask for; (2) D3 waits for the lead's confirmation.
 - **CLS-002.2.5 (review of #123):** the `classified` write runs in its own savepoint. A rejected write sends only that row to `error` with the registered reason `classify_ledger_write_failed` (like sanitize's `LEDGER_REJECTED`; the next run retries it from ingest), and the other rows still reach `classified`. Regression test: a db test with one row the ledger refuses. `sanitize.py` now names the published copy with `working_copy_name`. With no `sanitized` rows the node returns before `validate_rules` and `check_work_dir`: harmless, as nothing is read or written. Counts, one basis: after merging main, the default tiers (unit, db, integration) give 1808 passed, 39 deselected; the earlier figures (1231, 1719, 1777) were taken at earlier commits and are superseded.
 - **Completion status:** DONE.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ---
 
@@ -551,7 +551,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: `vlm_scenario.py` copies the node's scenario instead of importing it, because #135 is unpushed; switch to the import once it is on `main` (follow-up, tell Bolt on #135 if the bytes ever differ).
 - **Commit subjects:** `1cf48e7` and `124ba67` both carry the subject CLS-004.2.3 (the second only changed how the slot lists are joined). History is not rewritten; the journal lists both under .2.3.
 - **Self-rating:** 9/10, proud: yes. Gap: no recordings yet (.2.6), and the Reviewer and Privacy auditor verdicts are pending.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### CLS-004.3 (ML, #133)
 
@@ -561,7 +561,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Decision applied:** `nsfw_disagreement` wins over `unsorted` as `review_reason` (lead, CLS-004.D13, provisional).
 - **Deferred:** removing the dead SigLIP functions (`nsfw_branch`, `choose`, `_judge`, `_pick_axis`, `top_scores`) after #135 and #136, under a new ID the lead allocates.
 - **Self-rating:** 9/10, proud: yes. Gap: the pre-push `gpu` tier and the Reviewer and Privacy auditor verdicts are not in yet, and the module carries both paths until the follow-up. Neither blocks the acceptance criteria.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### CLS-004.4 (Pipeline, #135)
 
@@ -589,7 +589,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - A non-VLM integration test that reaches `classify` without `ollama_transport` would hit a live Ollama if one is up, and fail with `OllamaUnavailable` if not. Every test I touched passes a transport; I did not audit other desks' tests.
   - An unanswered file stays in `error` until the next run retries it from ingest (D4); M4's review lists such rows.
 - **Self-rating:** 9/10, proud: yes. Gaps: (1) the node has not run against the real model; its only evidence is the scripted and recorded runs, until CLS-004.5's box run (CLS-004.D11); (2) the Reviewer and Privacy auditor verdicts are not in yet. Neither blocks the acceptance criteria.
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### CLS-004.6 (ML, #148)
 
@@ -598,14 +598,14 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Tests:** `tests/unit` plus `tests/integration/test_classify_node.py`: 1595 passed; the pre-push gate (default tiers and the acceptance test) passed; `tests/unit/models/test_prompts.py` gained 24 tests, including that `resolve()` refuses a body rendered with an addendum. No `gpu` or `eval` run: the committed prompt files and the no-addendum rendering are unchanged.
 - **Open:** #161 sets `PROMPTS_LOCAL=off` for the default tiers and must merge with or right after this PR. The node write of `VlmAnswer.prompt_version` into `files.prompt_version` is a Pipeline follow-up on the G1 list.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: the loader is proven on tmp_path stand-ins only, never against the human's real addenda (by design).
-- **Reviewer / Privacy auditor:** pending.
+- **Reviewer / Privacy auditor:** posted as a comment on the task's PR (RUN-002.D14).
 
 ### CLS-004.8 (ML, #168)
 
 - **Commits:** .8.1 loader, `vlm_classify` and tests (`7d18e6c`), .8.2 eval wording and tests (`57efaa6`), .8.3 example files (`3c086f4`), journal (`a17f416`); PR #180, merged as `0e7fabb`.
 - **Built:** `load_effective_prompt` uses `prompts/local/<name>.md` as the whole system text. Front matter and `user`/`user_alt` stay committed. A slot the committed body lacks is refused (fewer slots are allowed). Cap 16384 bytes. `Prompt.addendum*` became `replacement*`. Eval says `local prompts: present|absent` and `with the provisional H8 local prompts`.
 - **Tests:** full default tiers (`make test`): 2366 passed; `make lint` clean. The gpu tier runs at pre-push.
-- **Status:** pending PR. **Reviewer / Privacy auditor:** pending.
+- **Status:** DONE (PR #180). **Reviewer / Privacy auditor:** posted on PR #180 (RUN-002.D14).
 
 ---
 
@@ -711,7 +711,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 
 ### CLI-007.1 (Pipeline)
 
-- **Status:** DONE. `make test` 2359 passed (unit + db + integration), `make lint` clean; acceptance `tests/db/cli/test_categories_cli.py` green against DB-006.1's column. Reviewer and Privacy auditor verdicts: pending.
+- **Status:** DONE. `make test` 2359 passed (unit + db + integration), `make lint` clean; acceptance `tests/db/cli/test_categories_cli.py` green against DB-006.1's column. Reviewer and Privacy auditor verdicts: posted on PR #195 (RUN-002.D14).
 
 ---
 
@@ -791,14 +791,14 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Built:** `eval/classify_eval.py` passes `format_definitions` and `topic_definitions` (one map per axis, read from the throwaway schema) to `vlm_classify`, and `nsfw.conservative_traces` to `decide`. `--categories-from-app-db` reads `APP_DB_DSN` read-only and applies descriptions plus app-only categories (parents first; a category with no parent anywhere is skipped and counted). The cache key digests the descriptions and the flag, and cached answers carry `traces`. The output gains `category descriptions: app database | seeded` and `conservative traces: on | off`, plus `categories skipped: N` only with the option.
 - **Tests:** unit 36 in `tests/unit/eval/test_classify_eval.py`, db 3 in `tests/db/eval/test_apply_app_categories.py`; `make lint` clean. The planted-description test uses a local replacement with the slots, so the plant provably reaches the model call before absence is asserted elsewhere.
 - **Not run here:** the real run (the human's descriptions, the VLM) is another desk's.
-- **Status, self-rating, Reviewer and Privacy auditor verdicts:** pending.
+- **Status:** DONE (PR #198, merged as `1dc5ef2`); the self-rating is in the PR body. **Reviewer:** APPROVE, with minors taken up in CLS-007.4. **Privacy auditor:** FAIL on the eval cache's category names, overruled by the lead as CLS-007.D6 (since confirmed by the human). Both posted on PR #198 (RUN-002.D14).
 
 ### CLS-007.4 — Results (ML)
 
 - **Built:** `apply_app_categories` runs the description update in a savepoint with the same `psycopg.Error` catch as the insert; a refusal counts as skipped and the driver text is dropped. The `Answer` repr test plants a value in every field; the `render` test feeds a planted local prompt body and user message in the public and console forms; the stub-collect assertion is replaced by an absence check. One integration test runs `collect` with a fake app source: an app description and an app-only category reach the model request, and three runs write three cache files.
 - **Tests:** `make lint` clean; the three touched files pass in this desk's test project: unit 36, `tests/db/eval/test_apply_app_categories.py` 4, `tests/integration/eval` 1. The full `make test` ran green (2413).
 - **Not run:** the real eval, and no gpu tier (`classifier/models/` and `prompts/` untouched).
-- **Status, self-rating, Reviewer and Privacy auditor verdicts:** in the PR.
+- **Status:** DONE (PR #203, merged as `88e55f7`); the self-rating is in the PR body. **Reviewer and Privacy auditor:** posted on PR #203 (RUN-002.D14); round 1's privacy finding (plants not proved held) was fixed in .5.
 
 ---
 
