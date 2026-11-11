@@ -195,3 +195,75 @@ def test_a_planted_name_is_held_in_the_ledger_and_absent_from_runs(
     assert len(whole) == 1 and '"state":"finished"' in whole[0][0]
     assert PLANT not in whole[0][0]
     assert PLANT not in caplog.text
+
+
+# --- PIPE-002.2: orphaned running rows (PIPE-002.D3) ---------------------------------------
+
+ORPHAN = (
+    "insert into runs (kind, state, started_at, counts) "
+    "values ('dry_run', 'running', now() - interval '1 hour', %s) returning id"
+)
+
+
+def _seed(dsn: str, sql: str, *params: object) -> int:
+    with psycopg.connect(dsn) as conn:
+        return conn.execute(sql, params).fetchone()[0]
+
+
+def _by_id(dsn: str) -> dict[int, tuple]:
+    rows = _rows(dsn, "select id, state, error, counts, finished_at >= started_at from runs")
+    return {row[0]: row[1:] for row in rows}
+
+
+def test_the_next_run_marks_an_orphan_interrupted(
+    config: Config, caplog: pytest.LogCaptureFixture
+) -> None:
+    dsn = config.db.dsn
+    first = _seed(dsn, ORPHAN, '{"ingest": {"new": 2}}')
+    second = _seed(dsn, ORPHAN, "{}")
+
+    with caplog.at_level(logging.INFO, logger="classifier.graph.run"):
+        result = run(config, dry_run=True, nodes=(_node("ingest", 1),))
+
+    rows = _by_id(dsn)
+    assert rows[first] == ("failed", "interrupted", {"ingest": {"new": 2}}, True)  # counts kept
+    assert rows[second] == ("failed", "interrupted", {}, True)
+    assert rows[result.record_id] == ("finished", None, {"ingest": {"count": 1}}, True)
+    swept = [r.getMessage() for r in caplog.records if "orphaned" in r.getMessage()]
+    assert len(swept) == 1 and swept[0].endswith("marked 2 orphaned run(s) interrupted")
+
+
+def test_finished_and_failed_rows_are_untouched(config: Config) -> None:
+    dsn = config.db.dsn
+    done = _seed(
+        dsn,
+        "insert into runs (kind, state, started_at, finished_at, counts) values "
+        "('sort', 'finished', now() - interval '2 hours', now() - interval '1 hour', %s) "
+        "returning id",
+        '{"ingest": {"new": 5}}',
+    )
+    failed = _seed(
+        dsn,
+        "insert into runs (kind, state, started_at, finished_at, error) values "
+        "('dry_run', 'failed', now() - interval '2 hours', now() - interval '1 hour', "
+        "'database') returning id",
+    )
+    before = _rows(dsn, f"select * from runs where id in ({done}, {failed}) order by id")
+
+    run(config, dry_run=True, nodes=(_node("ingest", 1),))
+
+    assert _rows(dsn, f"select * from runs where id in ({done}, {failed}) order by id") == before
+
+
+def test_with_the_lock_held_elsewhere_the_orphan_stays_running(config: Config) -> None:
+    dsn = config.db.dsn
+    orphan = _seed(dsn, ORPHAN, "{}")
+    with psycopg.connect(dsn, autocommit=True) as holder:
+        assert holder.execute("select pg_try_advisory_lock(%s)", (RUN_LOCK_KEY,)).fetchone()[0]
+        with pytest.raises(RunLockedError):
+            run(config, dry_run=True, nodes=(_node("ingest", 1),))
+        holder.execute("select pg_advisory_unlock(%s)", (RUN_LOCK_KEY,))
+
+    assert _rows(dsn, "select id, state, error, finished_at from runs") == [
+        (orphan, "running", None, None)
+    ]

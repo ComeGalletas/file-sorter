@@ -236,7 +236,8 @@ references or host paths here. Use hashes.
 
 - [x] PIPE-002.1 — `run()` and `dry-run` record the run and hold the lock · #208 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
   - [x] PIPE-002.1.1 — `run()` takes the lock and records `running` → counts per node → `finished`, or `failed` with a fixed code (`classifier/graph/run_record.py`) · 3cd109f
-  - [x] PIPE-002.1.2 — `dry-run` exits 3 with fixed text on a held lock (PIPE-002.D2)
+  - [x] PIPE-002.1.2 — `dry-run` exits 3 with fixed text on a held lock (PIPE-002.D2) · c9e34ea
+- [x] PIPE-002.2 — The next run marks orphaned `running` rows `failed`/`interrupted` (PIPE-002.D3) · #232 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
 
 ## PIPE-002 — Results
 
@@ -276,6 +277,22 @@ references or host paths here. Use hashes.
   - **Concern (low):** if the process is killed or the record connection dies, the lock drops with the session but the row stays `running`, so the run banner could show a run that isn't happening. Proposed follow-up, the lead's call:
     - either the next run, once it holds the lock, marks leftover `running` rows `failed`/`interrupted` (any such row is an orphan);
     - or API-001 treats `running` as live only while the lock shows in `pg_locks`.
+
+    The lead chose the first, as PIPE-002.2 (#232; see below).
 - **Self-rating:** 8/10, proud: yes. Gaps:
   - the orphaned `running` row above;
   - `errored_<reason>` is a reading of the lead's `<field>_<reason>`, forced by the 32-character limit; flagged on the PR.
+
+### PIPE-002.2 (#232, Pipeline)
+
+- **PIPE-002.D3, implemented.** Right after `run()` holds the lock, and before it inserts its own row, one update in the record connection marks every `running` row `failed`, with `error = 'interrupted'` and `finished_at = clock_timestamp()`. It commits together with the new run's row. A row's `counts` are kept as they were. The log line carries the count only (`marked <n> orphaned run(s) interrupted`). With the lock held elsewhere, `RunLockedError` is raised first, so nothing is written.
+- **PIPE-002.D4, confirmed** (lead, on #232): reason maps flatten to `errored_<reason>` (PIPE-002.1 above).
+- **Tests:**
+  - acceptance `tests/db/graph/test_run_record.py`: 12 passed (3 new):
+    - two orphans both end `failed`/`interrupted`, with their counts kept, `finished_at >= started_at`, and the count-only log line;
+    - an earlier `finished` row and a `failed`/`database` row are byte-for-byte untouched;
+    - with the lock held elsewhere, the orphan stays `running` and no row is added.
+
+    The first test fails on the code before this change.
+  - `make test`: 2655 passed, 48 deselected; `make lint`: clean.
+- **Status:** DONE. **Self-rating (small):** 9/10, yes.
