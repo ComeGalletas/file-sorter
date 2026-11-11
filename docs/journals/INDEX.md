@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-003 · SAN-005 · CLS-009 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-002 · MOD-004 · PIPE-003 · CFG-005 · RUN-022 · DB-009 · CLI-010 · TST-016 · DOC-015
+**Next free:** ING-003 · SAN-005 · CLS-009 · CAP-001 · RAG-001 · NAME-001 · FOP-003 · API-002 · MOD-004 · PIPE-003 · CFG-005 · RUN-022 · DB-009 · CLI-010 · TST-016 · DOC-016
 
 ## Work items
 
@@ -100,7 +100,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | PIPE-002 | `dry-run` records its run and holds the run lock | PIPE, DB | feature | done (PRs #231, #239) | m4 | #208, #232 | [pipeline_journal.md](pipeline_journal.md) | — | 2026-11-10 |
 | MOD-003 | The Ollama client reads `/api/ps` (loaded model, VRAM) | MOD, API | feature | done (PR #228) | m4 | #209 | [models_journal.md](models_journal.md) | — | 2026-11-10 |
 | API-001 | The read-only API, SSE, thumbnails, the dashboard and review queue, the HTML report | API, UI | feature | in progress (.1, .2, .3, .5 merged: PRs #224, #233, #236, #235; .4 is PR #241, waiting on RUN-021) | m4 | #210, #211, #212, #214, #213 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
-| CLI-008 | `classifier serve` and `classifier report` | CLI, API | feature | in progress (.1 merged, PR #237; .2 is PR #240) | m4 | #215, #234 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
+| CLI-008 | `classifier serve` and `classifier report` | CLI, API | feature | done (PRs #237, #240) | m4 | #215, #234 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
 | TST-015 | Gate 4: automated checks on the real dry run | TST, API | feature | in progress (PR #230, a draft until API-001.4) | m4 | #216 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-10 |
 | DB-008 | M3 hardening: pin the 18 seeded category descriptions in the migration test | DB, TST | refactor | done (PR #225) | m4 | #217 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
 | CLI-009 | M3 hardening: a planted secret on `categories edit --description` | CLI, TST | refactor | done (PR #227) | m4 | #218 | [categories_journal.md](categories_journal.md) | — | 2026-11-10 |

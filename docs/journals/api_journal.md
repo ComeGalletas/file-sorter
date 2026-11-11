@@ -164,7 +164,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## CLI-008 — Tasks
 
-- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234)
+- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234) (`65d4435`; PR #237, merged as `4eb347b`)
 
 ## CLI-008 — Results
 
