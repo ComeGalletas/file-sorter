@@ -120,6 +120,27 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## CLI-008 — Tasks
 
-- [ ] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py`
+- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234)
 
 ## CLI-008 — Results
+
+### CLI-008.1 (#215, Pipeline): `serve`
+
+- **What:** `classifier/cli/serve.py`, registered as `classifier serve [--host] [--port] [--config]`. The host and port default to `api.host` and `api.port`; the port is checked to be 1–65535. It calls `uvicorn.run(create_app(config), host, port, access_log=False, server_header=False, log_config=None)`.
+  - `access_log=False` is m4 item 15 (Nibble's note on #215), on top of `create_app` disabling `uvicorn.access`.
+  - There is no request logging of its own. It prints one line, `serving on <host>:<port>`.
+- **Errors:** fixed text, and none echoes a value.
+  - A config error exits 2 with `load_config`'s own fixed text; for a missing DSN that's `no database DSN: set DB_DSN`.
+  - `create_app` failing exits 2 with `error: the app could not start`.
+  - When uvicorn can't bind or start, it logs the OS error, address included, on `uvicorn.error`, then `sys.exit(1)`. `serve` therefore drops ERROR records on that logger while it runs (the filter is removed afterwards) and exits 1 with `error: could not listen on the configured address`. An `OSError` gets the same treatment, and a clean stop exits 0.
+- **Tests:**
+  - acceptance `tests/db/cli/test_serve_report_cli.py`: 13 passed. `uvicorn.run` is replaced by a recorder, so no port is opened. The tests cover:
+    - the defaults and the overrides (`--host 0.0.0.0 --port 8123`);
+    - the exact keyword set, including `access_log=False`;
+    - the app as `create_app`'s read-only API, through TestClient: `GET /api/status` 200, `POST` 405, `/docs` 404;
+    - bad ports and a missing DSN or config, all before serving;
+    - a bind failure with a planted message, hidden, with the filter removed afterwards;
+    - an `OSError`, a clean stop, and a `create_app` failure;
+  - `make test`: 2636 passed, 48 deselected;
+  - `make lint`: clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: while `serve` runs, any ERROR on `uvicorn.error` is dropped, not only the bind message. A protocol-level error's detail is then invisible on the box console too. This trades local diagnostics for never echoing OS or exception text. Request handling itself is guarded in `create_app`, so the API's own errors never reach uvicorn.
