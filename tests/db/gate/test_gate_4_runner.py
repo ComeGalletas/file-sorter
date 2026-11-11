@@ -146,3 +146,35 @@ def test_main_detail_prints_hashes_and_codes_only(
     for secret in secrets:
         assert secret not in out.out and secret not in out.err
     assert "postgresql" not in out.out and "postgresql" not in out.err
+
+
+def test_the_runner_reads_one_bounded_sse_frame(migrated_db, seed) -> None:
+    _, planted = _seed_folder(seed)
+    ledger, served = gate_4.serve(migrated_db, read_only_engine(migrated_db))
+    assert any(r.source_hash == planted for r in ledger)  # the plant is held
+    events = served.bodies["events"]
+    assert events is not None and gate_4.STATUS_FRAME in events  # the stream ended on its own
+    assert served.bodies["files"] is not None and planted[:8] in served.bodies["files"]
+    for body in (events, served.bodies["status"], served.bodies["files"]):
+        assert body is not None and PLANT_DIR not in body and PLANT_STEM not in body
+
+
+def test_a_write_on_the_gates_engine_fails(migrated_db, seed) -> None:
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+
+    planted = seed()
+    engine = read_only_engine(migrated_db)
+    try:
+        with engine.connect() as conn:
+            assert (
+                conn.execute(
+                    text("select count(*) from files where source_hash = :h"), {"h": planted}
+                ).scalar_one()
+                == 1
+            )  # the row is there to be written
+            with pytest.raises(DBAPIError):
+                conn.execute(text("delete from files where source_hash = :h"), {"h": planted})
+    finally:
+        engine.dispose()
+    assert any(r.source_hash == planted for r in _ledger(migrated_db))

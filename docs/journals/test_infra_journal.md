@@ -757,8 +757,9 @@ references or host paths here. Use hashes.
   - [x] TST-015.1.1 — the pure checks 1–4 and 6, the verdict and `--detail` (short hashes and fixed codes only), with unit tests on synthetic rows; the raw-name skips of TST-015.D4
   - [x] TST-015.1.2 — check 7 on a synthetic compose text (short and long port syntax, `network_mode: host`), plus the repo's own `docker-compose.yml` · .1.1 was bff2dc3
   - [x] TST-015.1.3 — the runner (read-only ledger, `create_app`, `/api/files` paging, `/api/status`) and check 5 with `classifier.api.views.is_adult` (API-001.D8 as corrected); db-tier runner test · after #224
-  - [ ] TST-015.1.4 — wire the SSE read (API-001.2), `/ui/review` and the UI HTML (API-001.4, D8, D9) and `render_report` (API-001.5) as each merges; until then `NOT_AVAILABLE`
+  - [ ] TST-015.1.4 — wire `/ui/review` and the UI HTML (API-001.4, D8, D9) and `render_report` (API-001.5) as each merges; until then `NOT_AVAILABLE`
   - [ ] TST-015.1.5 — Results
   - [x] TST-015.1.6 — round 1 on #230 (privacy auditor): each plant proved held before absence; an empty ledger fails criteria 1, 3 and 4 (`NOT_AVAILABLE`); any `<meta http-equiv="refresh">` fails the report; counts must be plain ints; the D4 skip covers the stem plus its extension · .1.2 was 2a7923b, .1.6 was 3e914c7; round 1 item 6: the grid matches API-001.1's `GridCell`, and each cell's `adult` must equal `is_adult(branch)`
+  - [x] TST-015.1.7 — the SSE read (API-001.2: one bounded status frame through the app's `events_max_ticks` seam), `repr=False` on every `Served` content field (round 2 on #230), and a test that a write on the gate's engine fails · .1.3 was e0bc1ce
 
 ## TST-015 — Results

@@ -566,3 +566,60 @@ def test_compose_that_cannot_be_read_fails(text: str) -> None:
 def test_compose_missing_is_not_available(tmp_path: Path) -> None:
     assert gate_4.read_compose(tmp_path / "missing.yml") is None
     assert gate_4.check_compose(None).issues == (("-", Code.NOT_AVAILABLE),)
+
+
+# --- the runner's pieces --------------------------------------------------------------------
+
+
+class FakeResponse:
+    def __init__(self, status_code: int, text: str) -> None:
+        self.status_code = status_code
+        self.text = text
+        self.headers = {"content-type": "text/event-stream"}
+
+
+class FakeClient:
+    def __init__(self, response: FakeResponse) -> None:
+        self.response = response
+        self.paths: list[str] = []
+
+    def get(self, path: str, params=None) -> FakeResponse:
+        self.paths.append(path)
+        return self.response
+
+
+def test_events_keeps_a_stream_with_a_status_frame() -> None:
+    frame = 'event: status\ndata: {"counts_by_status":{}}\n\n'
+    client = FakeClient(FakeResponse(200, frame))
+    text = gate_4._events(client)
+    assert client.paths == ["/api/events"]
+    assert text is not None and frame in text and "content-type: text/event-stream" in text
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        FakeResponse(404, '{"detail":"Not Found"}'),
+        FakeResponse(200, ": keep-alive\n\n"),
+        FakeResponse(200, 'event: unavailable\ndata: {"detail":"database unavailable"}\n\n'),
+    ],
+)
+def test_events_without_a_status_frame_is_not_available(response) -> None:
+    assert gate_4._events(FakeClient(response)) is None
+
+
+def test_served_repr_hides_every_content_field() -> None:
+    plant = "Qorvex-Served-Plant"
+    served = gate_4.Served(
+        files=[plant],
+        status={"grid": [{"topic": plant}]},
+        queue=[plant],
+        html=[plant],
+        report=plant,
+        bodies={"ui": plant},
+    )
+    # Each plant is held before its absence from the repr is asserted.
+    assert served.files == [plant] and served.queue == [plant] and served.html == [plant]
+    assert served.report == plant and plant in str(served.status) and served.bodies["ui"] == plant
+    assert plant not in repr(served) and plant not in str(served)
+    assert all(not f.repr for f in dataclasses.fields(served))

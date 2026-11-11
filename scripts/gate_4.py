@@ -470,11 +470,13 @@ class NoModels:
 class Served:
     """What the app served, per source; None = the source isn't available."""
 
-    files: list[str] | None
-    status: dict[str, Any] | None
-    queue: list[str] | None
-    html: list[str] | None
-    report: str | None
+    # Every content field is repr=False: the HTML and the report carry sanitized names, and the
+    # status carries category names (round 2 on #230).
+    files: list[str] | None = field(repr=False)
+    status: dict[str, Any] | None = field(repr=False)
+    queue: list[str] | None = field(repr=False)
+    html: list[str] | None = field(repr=False)
+    report: str | None = field(repr=False)
     bodies: dict[str, str | None] = field(repr=False)  # every body and header, for check 4
 
 
@@ -583,13 +585,29 @@ def _review(client: Any, rows: int) -> tuple[list[str] | None, list[str] | None]
     return None, None
 
 
+STATUS_FRAME = "event: status\n"
+
+
+def _events(client: Any) -> str | None:
+    """One bounded `/api/events` read: the app is set to stop after one tick (see `run`), so
+    the body ends. It must hold a status frame, or there was nothing to scan (API-001.D3)."""
+    response = client.get("/api/events")
+    if response.status_code != 200 or STATUS_FRAME not in response.text:
+        return None
+    return _text(response)
+
+
+async def _no_sleep(_seconds: float) -> None:
+    return None
+
+
 def _page(client: Any, path: str) -> str | None:
     response = client.get(path)
     return response.text if response.status_code == 200 else None
 
 
 def collect(client: Any, rows: int) -> Served:
-    """Everything the gate reads from the app, in-process. SSE and the report land in .1.4."""
+    """Everything the gate reads from the app, in-process. The report lands with API-001.5."""
     status_response = client.get("/api/status")
     status = status_response.json() if status_response.status_code == 200 else None
     files, files_text = _files(client, rows)
@@ -601,7 +619,7 @@ def collect(client: Any, rows: int) -> Served:
         "files": files_text,
         "review": "\n".join(review_pages) if review_pages is not None else None,
         "ui": ui,
-        "events": None,  # TST-015.1.4 (API-001.2)
+        "events": _events(client),
         "report": None,  # TST-015.1.4 (API-001.5)
     }
     return Served(
@@ -622,6 +640,12 @@ def evaluate(ledger: Sequence[LedgerRow], served: Served, compose: str | None) -
 
 
 def run(dsn: str, engine: Any = None) -> list[Finding]:
+    """Read the ledger, serve it through `create_app`, and run the seven checks."""
+    ledger, served = serve(dsn, engine)
+    return evaluate(ledger, served, read_compose())
+
+
+def serve(dsn: str, engine: Any = None) -> tuple[list[LedgerRow], Served]:
     """Read the ledger and serve it through `create_app`, in-process and read-only.
     `engine` is a test seam; by default the app's own read-only engine."""
     from fastapi.testclient import TestClient
@@ -632,11 +656,13 @@ def run(dsn: str, engine: Any = None) -> list[Finding]:
     try:
         ledger = read_ledger(engine)
         app = create_app(load_config(dsn), engine=engine, ollama=NoModels())
+        app.state.events_max_ticks = 1  # one status frame, then the stream ends (API-001.2 seam)
+        app.state.events_sleep = _no_sleep
         with TestClient(app, raise_server_exceptions=False) as client:
             served = collect(client, len(ledger))
     finally:
         engine.dispose()
-    return evaluate(ledger, served, read_compose())
+    return ledger, served
 
 
 def main(argv: Sequence[str] | None = None, engine: Any = None) -> int:
