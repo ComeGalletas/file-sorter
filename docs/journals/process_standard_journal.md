@@ -360,3 +360,26 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Self-rating:** 10/10, yes; one paragraph, checked against `main`.
 - **Triage:** small. Rule text only.
 - **Privacy:** generic wording only.
+
+---
+
+## DOC-015 — Requirement (human, 2026-11-10)
+
+**Objective:** DESIGN records the M4 G0 deviations from R-API-1, R-API-5 and R-API-6 in §13, with §4.8 edited in the same step (CLAUDE.md), as `docs/plans/m4.md` asks under "Decisions needed from the human".
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13). R-API-1's own wording is changed in RUN-019.1 (#221).
+
+## DOC-015 — Confirmed reading
+
+- **DOC-015.D1:** §13 gains C-30 (R-API-1, through `ui-proxy`), C-31 (R-API-5: vendored htmx, latest 20 and no retry until M7/M8, the VLM's answers in the review queue, the thumbnail rules) and C-32 (R-API-6: `dry-run` takes the lock). R-API-5 and R-API-6 are edited to match. These follow the human's M4 G0 answers and "confirmed, keep going past G0 with the current answers" (2026-11-10, 23:30 COT). (human, 2026-11-10)
+
+## DOC-015 — Tasks
+
+- [x] DOC-015.1 — DESIGN §4.8 R-API-5 and R-API-6, §13 C-30 to C-32
+
+## DOC-015 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; C-30 cites R-API-1's new wording, which lands with #221.
+- **Triage:** small. Spec text only.
+- **Privacy:** generic wording only.
