@@ -537,6 +537,10 @@ def test_create_app_malformed_dsn_is_fixed_text(config) -> None:
         create_app(bad, ollama=_Probe(None))
     assert str(caught.value) == BAD_DSN and SECRET not in repr(caught.value)
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+    with pytest.raises(ValueError) as direct:  # read_only_engine itself, too
+        read_only_engine(bad.db.dsn)
+    assert str(direct.value) == BAD_DSN
+    assert direct.value.__cause__ is None and direct.value.__context__ is None
 
 
 # --- API-001.1.6: the real OllamaClient over a fake transport (PR #224 round 1, item 6) ----

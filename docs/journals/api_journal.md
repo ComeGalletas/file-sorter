@@ -68,7 +68,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.1.1 — the read model (`views.py`: the allowlisted row query, `FileRow`, `FilePage`, `StatusView`), unit tests · 835937f
   - [x] API-001.1.2 — `create_app`, the read-only engine, `/api/files`, the fixed 422, the access log off · a6ed61b
   - [x] API-001.1.3 — `/api/status` (counts, the grid, the last error, the loaded models or "n/a") · 1fbc71b
-  - [x] API-001.1.4 — the run state and imgs/min (after DB-007.1, #207) · (this commit)
+  - [x] API-001.1.4 — the run state and imgs/min (after DB-007.1, #207) · bc0d624
+  - [x] API-001.1.8 — the malformed-DSN check moves from `tests/unit/api` to the db tier (the tier audit counts `create_engine` as db work) · (this commit)
   - [x] API-001.1.5 — PR #224 round 1, items 1–5: a fixed, unchained 500 for any other failure, the plants proved able to fail (422, 503, 500), Ollama probed with no connection held, fixed text on a malformed DSN; plus REPEATABLE READ and the `make_read_only` docstring · 4a32f7b
   - [x] API-001.1.6 — PR #224 round 1, item 6: the real `OllamaClient` over a fake transport (after MOD-003.1, #209) · bc274c4
   - [x] API-001.1.7 — API-001.D8 as corrected: `views.ADULT_BRANCH` and `is_adult(branch)`, pinned to `classify_rules.branch_for_level`; the grid's safe-vs-adult split (`GridCell.adult`) keys on `is_adult` · 22a3d15
@@ -83,7 +84,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 - **Tests:**
   - acceptance `tests/db/api/test_status_files.py`: 36 passed;
-  - `tests/unit/api`: 17 passed;
+  - `tests/unit/api`: 16 passed;
   - the default tiers at pre-push: see the PR body.
 - **Round 1 (PR #224):** the reviewer approved the draft scope; the privacy auditor failed it on test strength. That was addressed by API-001.1.5 and .1.6, and API-001.D8's correction by .1.7.
 - **Status:** DONE.

@@ -1,4 +1,4 @@
-"""API-001.1.5: fixed, unchained errors (m3 checklist item 5; PR #224 round 1, items 1, 3, 5).
+"""API-001.1.5: fixed, unchained errors (m3 checklist item 5; PR #224 round 1, items 1, 3).
 
 Each plant is first shown to be in the underlying library error, so the absence check could
 have failed, and only then asserted absent from what the app raises.
@@ -7,10 +7,9 @@ have failed, and only then asserted absent from what the app raises.
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
-from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
 
-from classifier.api.app import BAD_DSN, DB_UNAVAILABLE, INTERNAL_ERROR, guarded, read_only_engine
+from classifier.api.app import DB_UNAVAILABLE, INTERNAL_ERROR, guarded
 from classifier.api.views import ModelView
 
 SECRET = "Zhyndel-planted-secret"
@@ -59,14 +58,3 @@ def test_guarded_raises_fixed_text_unchained(make, code, detail) -> None:
 
 def test_guarded_returns_the_value() -> None:
     assert guarded(lambda: 7) == 7
-
-
-def test_malformed_dsn_is_fixed_text_unchained() -> None:
-    dsn = f"postgresql://qorvex:pw@127.0.0.1:{SECRET}/qorvex"
-    with pytest.raises(ValueError) as raw:  # the plant is in SQLAlchemy's own error
-        create_engine(dsn.replace("postgresql://", "postgresql+psycopg://"))
-    assert SECRET in str(raw.value)
-    with pytest.raises(ValueError) as caught:
-        read_only_engine(dsn)
-    assert str(caught.value) == BAD_DSN
-    assert caught.value.__cause__ is None and caught.value.__context__ is None
