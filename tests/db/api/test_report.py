@@ -172,6 +172,11 @@ def test_adult_split_uses_is_adult(engine, seed, tag) -> None:
     row = _row(html, unclassified)
     assert 'class="adult"' not in row and "<td>not classified</td>" in row
 
+    # API-001.3's `blurred` flag is shown (no thumbnail): yes only on the adult row.
+    assert "<th>blurred</th>" in html
+    assert "<td>yes</td>" in _row(html, adult)
+    assert "<td>yes</td>" not in _row(html, safe) and "<td>yes</td>" not in row
+
 
 def test_every_ledger_row_is_in_the_report(engine, seed, tag) -> None:
     hashes = [seed(topic=tag, updated_at=BASE.replace(minute=i)) for i in range(7)]

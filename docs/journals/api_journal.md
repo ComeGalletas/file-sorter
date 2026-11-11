@@ -85,7 +85,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
   - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
-  - [x] API-001.5.3 — round 1 (privacy): the unit test's no-script check proves the planted row is rendered and escaped before asserting absence
+  - [x] API-001.5.3 — round 1 (privacy): the unit test's no-script check proves the planted row is rendered and escaped before asserting absence · 69142ee
+  - [x] API-001.5.4 — after API-001.3 (#236): the report shows `FileRow.blurred` as a column (no thumbnail), and the unit rows carry it
 
 ## API-001 — Results
 

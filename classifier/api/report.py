@@ -53,6 +53,7 @@ _ROW_HEADERS = (
     "NSFW level",
     "traces",
     "cross-check disagrees",
+    "blurred",
     "needs review",
     "review reason",
     "error",
@@ -169,6 +170,7 @@ def _file_row(r: FileRow) -> str:
         r.nsfw_level,
         r.nsfw_traces,
         r.cross_check_disagrees,
+        r.blurred,  # API-001.3; the report embeds no thumbnail, it only shows the flag
         r.needs_review,
         r.review_reason,
         r.error,

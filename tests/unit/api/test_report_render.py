@@ -53,6 +53,7 @@ def _row(**kw: object) -> FileRow:
         "updated_at": T,
     }
     base.update(kw)
+    base["blurred"] = is_adult(base["branch"])  # type: ignore[arg-type]  # API-001.3
     return FileRow(**base)  # type: ignore[arg-type]
 
 
