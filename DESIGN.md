@@ -197,7 +197,7 @@ ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Fa
 
 ### 4.8 Status UI and API
 
-- **R-API-1** FastAPI is served by `classifier serve` on `127.0.0.1:8000` only. No auth in the MVP.
+- **R-API-1** FastAPI is served by `classifier serve`, reachable from the host only on `127.0.0.1:8000`, through the localhost-only `ui-proxy` (RUN-019). No auth in the MVP.
 - **R-API-2** Read: `GET /api/status` (run state, counts per status and category, imgs/min, VRAM, loaded model, last error), `GET /api/events` (SSE), and `GET /api/files?status=&format=&topic=&needs_review=&page=`.
 - **R-API-3** Write (M8): `POST /api/files/{hash}/assign` (body: `format`, `topic`; either may be omitted), `POST /api/files/{hash}/rerun`, `POST /api/run/{action}` with `action ∈ {sort, pause, resume}`.
 - **R-API-4** Every write calls the same graph nodes as the CLI. The UI never calls models.
@@ -328,7 +328,7 @@ db:
 - **As built (RUN-001):**
   - **Networks:** `internal` has no internet route (`app`, `db`, `test`). Only `ollama` and `searxng` also join `egress`.
   - **Model downloads:** Hugging Face weights come through a one-off `fetch` service (profile `tools`), the only app-image container with internet.
-  - **UI port:** Docker can't publish ports for internal-only containers, so the UI port waits for M4's localhost-only proxy (RUN-001.D5).
+  - **UI port:** Docker can't publish ports for internal-only containers (RUN-001.D5), so the `ui-proxy` service (a pinned nginx) publishes `127.0.0.1:8000` and forwards GET and HEAD to `app:8000`. It alone also joins the `ui` bridge network, which no other service joins (RUN-019).
   - **`test`:** has no `/source` or `/results` mount at all (RUN-001.D6).
   - **Pins:** see the RUN-001 journal.
 - **R-RUN-5** The RTX 5080 is Blackwell (sm_120). The `app` image must use PyTorch wheels built for **CUDA 12.8 or newer** (`cu128`+); `cu124` builds don't support the card. The `ollama/ollama` image is pinned to a version with qwen3vl support.
