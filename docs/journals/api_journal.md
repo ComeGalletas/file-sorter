@@ -165,8 +165,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 ## CLI-008 — Tasks
 
 - [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234) (`65d4435`; PR #237, merged as `4eb347b`)
-- [x] CLI-008.2 — `report [--out]` · #234 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the report cases)
-  - [x] CLI-008.2.1 — Round 1 on PR #240: a fixed `ConfigError` text in `report` and `serve`, a broad catch around the render, and the reviewer's test gaps
+- [x] CLI-008.2 — `report [--out]` · #234 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the report cases) (`5494aaa`; PR #240, merged as `6c017d5`)
+  - [x] CLI-008.2.1 — Round 1 on PR #240: a fixed `ConfigError` text in `report` and `serve`, a broad catch around the render, and the reviewer's test gaps (`4102537`)
 
 ## CLI-008 — Results
 
