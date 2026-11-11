@@ -1,22 +1,30 @@
-"""CLI-008.1 acceptance: `classifier serve` runs uvicorn on `create_app` with no request log.
+"""CLI-008 acceptance: `classifier serve` (CLI-008.1) and `classifier report` (CLI-008.2).
 
-`uvicorn.run` is replaced by a recorder, so no port is ever opened. The app it receives is
-exercised through Starlette's TestClient on a migrated schema. Every value is synthetic.
+`serve`: `uvicorn.run` is replaced by a recorder, so no port is ever opened. The app it
+receives is exercised through Starlette's TestClient on a migrated schema.
+`report`: writes to a results root under tmp_path, never the real one, from a planted ledger.
+Every value is synthetic.
 """
 
+import json
 import logging
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import psycopg
 import pytest
+import yaml
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
 from classifier.cli import app
+from classifier.cli import report as report_module
 from classifier.cli import serve as serve_module
 from classifier.config import load_config
+from classifier.models import ollama
 from tests.db.db_support import require_db_dsn
 from tests.integration.schema_support import migrated_schema
 
@@ -171,3 +179,162 @@ def test_a_create_app_failure_is_fixed_text(
     result = _serve()
     assert result.exit_code == 2
     assert result.output == "error: the app could not start\n"
+
+
+# --- CLI-008.2: classifier report -------------------------------------------------------
+
+SANITIZED = "Brindle_one"  # a made-up sanitized stem; served as Brindle_one.png
+RAW = "Zhyndel"  # a made-up raw name, in the paths only
+INSERT_FILE = (
+    "insert into files (source_hash, short_hash, source_path, duplicate_paths, source_mtime,"
+    " ext, status, original_sanitized, proposed_path, caption)"
+    " values (%s, %s, %s, %s, now(), 'png', 'queued', %s, %s, %s)"
+)
+
+
+@pytest.fixture
+def report_env(
+    schema_dsn: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path]:
+    """A config whose roots are under tmp_path, DB_DSN at the schema, and a planted ledger."""
+    monkeypatch.setenv("DB_DSN", schema_dsn)
+    data = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    results = tmp_path / "results"
+    (tmp_path / "source").mkdir()
+    results.mkdir()
+    data["paths"] = {"source_root": str(tmp_path / "source"), "results_root": str(results)}
+    data["db"] = {"dsn": None}  # CFG-001.D2
+    config = tmp_path / "config.yaml"
+    config.write_text(yaml.safe_dump(data), encoding="utf-8")
+    caption = json.dumps({"text": f"{PLANT} {RAW} caption"})
+    with psycopg.connect(schema_dsn) as conn:
+        conn.execute("truncate files, runs cascade")
+        conn.execute(
+            INSERT_FILE,
+            (
+                "a" * 64, "aaaaaaaa",
+                f"/source/{PLANT} trip/{PLANT}_{RAW}.png",
+                [f"/source/{RAW} copy/{RAW}_{PLANT}.png"],
+                SANITIZED,
+                f"/results/{PLANT}/{RAW}.png",
+                caption,
+            ),
+        )  # fmt: skip
+        conn.execute(
+            INSERT_FILE,
+            ("b" * 64, "bbbbbbbb", "/source/x.png", [], "<script>alert(1)</script>", None, None),
+        )
+    return config, results
+
+
+def _report(config: Path, *extra: str):
+    return runner.invoke(app, ["report", "--config", str(config), *extra])
+
+
+def test_the_report_serves_sanitized_names_and_never_a_path_or_raw_name(
+    report_env: tuple[Path, Path], schema_dsn: str
+) -> None:
+    config, results = report_env
+    # Proved held first: the ledger stores the plants (DOC-004.D3).
+    with psycopg.connect(schema_dsn) as conn:
+        held = conn.execute(
+            "select source_path, duplicate_paths, proposed_path, caption::text from files"
+            " where short_hash = 'aaaaaaaa'"
+        ).fetchone()
+    assert all(PLANT in str(value) and RAW in str(value) for value in held)
+
+    result = _report(config)
+    assert result.exit_code == 0, result.output
+    (written,) = (results / "reports").glob("report-*.html")
+    assert result.output == f"report written: {written.name}\n"  # the name only, no folder
+    html = written.read_text(encoding="utf-8")
+
+    # Proved served: the sanitized names and hashes are in the report...
+    assert f"{SANITIZED}.png" in html and "aaaaaaaa" in html and "bbbbbbbb" in html
+    # ...and only then: no path, no raw name, no caption, no live HTML from a name.
+    for absent in (PLANT, RAW, "/source/", "/results/", "<script>alert(1)"):
+        assert absent not in html
+    assert "&lt;script&gt;" in html
+    assert "n/a" in html  # CLI-008.D1: no Ollama probe, the models stay n/a
+
+
+def test_the_report_makes_no_ollama_call(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("report built an Ollama client")
+
+    monkeypatch.setattr(ollama.OllamaClient, "__init__", refuse)
+    monkeypatch.setattr(ollama.OllamaClient, "from_env", refuse, raising=False)
+    result = _report(report_env[0])
+    assert result.exit_code == 0, result.output
+
+
+class _Frozen(datetime):
+    @classmethod
+    def now(cls, tz: object = None) -> "_Frozen":
+        return cls(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+
+def test_the_default_name_is_the_utc_stamp_and_a_clash_gets_a_suffix(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(report_module, "datetime", _Frozen)
+    config, results = report_env
+    folder = results / "reports"
+    first = _report(config)
+    first_bytes = (folder / "report-20260102T030405Z.html").read_bytes()
+    second = _report(config)
+
+    assert first.output == "report written: report-20260102T030405Z.html\n"
+    assert second.output == "report written: report-20260102T030405Z-1.html\n"
+    assert (folder / "report-20260102T030405Z.html").read_bytes() == first_bytes
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "report-20260102T030405Z-1.html", "report-20260102T030405Z.html",
+    ]  # fmt: skip
+
+
+def test_out_writes_a_new_file_and_refuses_an_existing_one(
+    report_env: tuple[Path, Path], tmp_path: Path
+) -> None:
+    config, results = report_env
+    target = tmp_path / "mine.html"
+    made = _report(config, "--out", str(target))
+    assert made.exit_code == 0, made.output
+    assert made.output == "report written: mine.html\n"
+    assert "aaaaaaaa" in target.read_text(encoding="utf-8")
+    assert not (results / "reports").exists()  # --out replaces the default target
+
+    target.write_bytes(b"keep me")
+    refused = _report(config, "--out", str(target))
+    assert refused.exit_code == 2
+    assert refused.output == "error: --out already exists; choose a new file\n"
+    assert target.read_bytes() == b"keep me"
+
+
+def test_an_unwritable_folder_is_fixed_text(report_env: tuple[Path, Path]) -> None:
+    config, results = report_env
+    (results / "reports").write_text("a file where the folder goes")
+    result = _report(config)
+    assert result.exit_code == 1
+    assert result.output == "error: could not write the report\n"
+
+
+def test_a_database_error_is_fixed_text_without_the_dsn(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DB_DSN", "postgresql://user:hunter2@127.0.0.1:1/db?connect_timeout=2")
+    config, results = report_env
+    result = _report(config)
+    assert result.exit_code == 1
+    assert result.output == "error: database error, see the db service logs\n"
+    assert not (results / "reports").exists()
+
+
+def test_report_with_no_dsn_exits_2(
+    report_env: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("DB_DSN")
+    result = _report(report_env[0])
+    assert result.exit_code == 2
+    assert result.output == "error: no database DSN: set DB_DSN\n"
