@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import psycopg
 import pytest
 from fastapi.exception_handlers import request_validation_exception_handler
@@ -36,6 +37,7 @@ from classifier.api.app import (
 )
 from classifier.api.views import FILE_ROW_FIELDS, PER_PAGE
 from classifier.config import Config, load_config
+from classifier.models.ollama import OllamaClient
 
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / "config.yaml"
@@ -442,3 +444,33 @@ def test_create_app_malformed_dsn_is_fixed_text(config) -> None:
         create_app(bad, ollama=_Probe(None))
     assert str(caught.value) == BAD_DSN and SECRET not in repr(caught.value)
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+# --- API-001.1.6: the real OllamaClient over a fake transport (PR #224 round 1, item 6) ----
+
+
+def _real_client(status_code: int, payload: object, paths: list[str]) -> OllamaClient:
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        return httpx.Response(status_code, json=payload)
+
+    return OllamaClient("http://ollama", transport=httpx.MockTransport(handler))
+
+
+def test_status_with_the_real_ollama_client(config, engine) -> None:
+    """MOD-003.1's real `loaded_models()` signature, through `create_app`'s probe."""
+    paths: list[str] = []
+    payload = {"models": [{"name": "qorvex-vlm:7b", "size_vram": VRAM}]}
+    with _real_client(200, payload, paths) as client:
+        body = _status(_client(config, engine, ollama=client))
+    assert body["loaded_models"] == [{"name": "qorvex-vlm:7b", "size_vram": VRAM}]
+    assert paths == ["/api/ps"]
+
+
+def test_status_real_client_failure_is_na(config, engine) -> None:
+    paths: list[str] = []
+    with _real_client(500, {"error": SECRET}, paths) as client:
+        response = _client(config, engine, ollama=client).get("/api/status")
+    assert paths == ["/api/ps"]  # the probe really ran
+    assert response.json()["loaded_models"] == "n/a"
+    assert SECRET not in response.text
