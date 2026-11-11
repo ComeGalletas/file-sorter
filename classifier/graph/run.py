@@ -10,6 +10,8 @@ PIPE-002.1: a run first takes the run lock (DB-007.D1) on its own record connect
 lives as long as the run, then records itself in `runs`: `running`, its counts after each
 node, then `finished`, or `failed` with a fixed code (DB-007.D3). The lock is released in a
 `finally`. If another run holds it, `run` raises RunLockedError and writes nothing.
+PIPE-002.2: once it holds the lock, a run first marks any leftover `running` row
+`failed`/`interrupted` (PIPE-002.D3).
 """
 
 import logging
@@ -98,8 +100,17 @@ def _locked_run(
     dsn: str,
 ) -> RunResult:
     kind = "dry_run" if dry_run else "sort"
+    # PIPE-002.D3: holding the lock proves no other run is live, so any `running` row is an
+    # orphan (a killed run, or one whose record connection died). Committed with our own row.
+    swept = record.execute(
+        update(_RUNS)
+        .where(_RUNS.c.state == "running")
+        .values(state="failed", error="interrupted", finished_at=func.clock_timestamp())
+    ).rowcount
     record_id = record.execute(insert(_RUNS).values(kind=kind).returning(_RUNS.c.id)).scalar_one()
     record.commit()
+    if swept:
+        log.info("run %s: marked %d orphaned run(s) interrupted", run_id[:8], swept)
     log.info(
         "run %s (record %d): dry_run=%s nodes=%s",
         run_id[:8], record_id, dry_run, [n.name for n in steps],
