@@ -174,7 +174,8 @@ _CLASSIFIED = """
 update files
    set status = 'classified', branch = %s, nsfw_score = %s, nsfw_level = %s, nsfw_traces = %s,
        format = %s, topic = %s, format_scores = null, topic_scores = null, needs_review = %s,
-       review_reason = %s, image_vec = %s::vector, error = null, updated_at = now()
+       review_reason = %s, image_vec = %s::vector, prompt_version = %s, error = null,
+       updated_at = now()
  where source_hash = %s and status = 'sanitized'
 """
 
@@ -356,6 +357,9 @@ def _batches(
                 choice.needs_review,
                 choice.review_reason,
                 _vector_literal(vector),
+                # CLS-004.7, R-CLS-8: the effective version, local hash included; ledger only,
+                # never logged or printed.
+                answer.prompt_version,
                 row.source_hash,
             )
             moved = 0
