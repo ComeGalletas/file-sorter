@@ -213,3 +213,27 @@ references or host paths here. Use hashes.
 - **Completion status:** DONE.
 - **Self-rating:** 9/10, proud: yes. Gaps against the acceptance test and R-IDs: (1) the integration tests use a fake backend with arbitrary hashed scores, so they prove the wiring, folders and contract, not classification quality (CLS-003); (2) a lone surrogate cannot come back from Postgres, so that case is covered at CLI level with a faked row (`CliRunner`, no database) rather than in the integration tier.
 - **Deferred:** none.
+
+---
+
+## PIPE-002 — Requirement (DESIGN.md m4, 2026-11-10)
+
+- **Objective:** Make `dry-run` record its run in `runs` and hold the run lock for its whole length.
+- **Details:**
+  - the run takes the lock first (DB-007.1), then inserts a `running` row;
+  - it updates the row's `counts` after each node;
+  - it ends `finished`, or `failed` with a fixed error code;
+  - the lock is released in a `finally`.
+  - A second `dry-run` while the lock is held exits non-zero with a fixed message and writes no row.
+- **Constraint:** the node logic and the dry-run CSV are unchanged, and no path or name goes in `runs`.
+- **Implements:** R-API-6, R-PIPE-2.
+
+## PIPE-002 — Confirmed reading
+
+- **PIPE-002.D1 — `dry-run` records a run and takes the lock** (lead, 2026-11-10, provisional; `docs/plans/m4.md`). R-API-6 names `sort`, `watch` and `reclassify`, but `dry-run` writes the ledger too, and the run banner needs a run.
+
+## PIPE-002 — Tasks
+
+- [ ] PIPE-002.1 — `run()` and `dry-run` record the run and hold the lock · #208 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
+
+## PIPE-002 — Results
