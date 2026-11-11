@@ -16,8 +16,8 @@ import uvicorn
 from classifier.api.app import create_app
 from classifier.config import ConfigError, load_config
 
-CONFIG_FAILED = "error: {error}"
-NO_DSN = "error: config.db.dsn is not set"
+# CLI-008.2.1: fixed, as categories.py's; load_config's own texts can carry the path.
+CONFIG_FAILED = "error: the config could not be loaded; check the config file and DB_DSN"
 LISTEN_FAILED = "error: could not listen on the configured address"
 APP_FAILED = "error: the app could not start"
 
@@ -46,13 +46,13 @@ def serve(
     ] = None,
 ) -> None:
     """Serve the read-only status API and dashboard (no request is ever logged)."""
+    config = None
     try:
         config = load_config(config_path)
-    except ConfigError as error:  # value-free: load_config wraps YAML and validation errors
-        typer.echo(CONFIG_FAILED.format(error=error), err=True)
-        raise typer.Exit(2) from None
-    if not config.db.dsn:
-        typer.echo(NO_DSN, err=True)
+    except ConfigError:  # CLI-008.2.1: its text can carry the --config path
+        pass
+    if config is None or not config.db.dsn:
+        typer.echo(CONFIG_FAILED, err=True)
         raise typer.Exit(2)
     bind_host = host if host is not None else config.api.host
     bind_port = port if port is not None else config.api.port

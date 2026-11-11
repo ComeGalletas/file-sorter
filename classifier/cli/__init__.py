@@ -29,6 +29,7 @@ import typer
 from classifier import __version__
 from classifier.cli import dry_run_report
 from classifier.cli.categories import categories_app
+from classifier.cli.report import report as report_command  # keeps cli.report the module
 from classifier.cli.serve import serve as serve_command  # keeps cli.serve the module
 from classifier.config import ConfigError, load_config
 from classifier.graph.classify import ClassifyConfigError
@@ -42,6 +43,7 @@ from classifier.sanitize.rules import SanitizeConfigError
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="file-sorter image classifier.")
 app.add_typer(categories_app, name="categories")
 app.command("serve")(serve_command)  # CLI-008.1
+app.command("report")(report_command)  # CLI-008.2
 
 
 def _print_version(value: bool) -> None:
