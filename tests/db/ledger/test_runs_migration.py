@@ -14,11 +14,12 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from classifier.db.models import RUN_KINDS, RUN_STATES, Run
+from classifier.db.runlock import RUN_LOCK_KEY, release_run_lock, try_run_lock
 from classifier.db.url import to_sqlalchemy_url
 from tests.db.db_support import require_db_dsn
 
@@ -236,3 +237,60 @@ def test_downgrade_drops_the_table_and_upgrade_restores_it(
     command.upgrade(alembic_cfg, "head")
     assert _columns(conn, schema) == RUN_COLUMNS
     assert conn.execute("select count(*) from runs").fetchone() == (0,)
+
+
+# --- the run lock (DB-007.D1) -------------------------------------------------------------
+
+
+def test_the_lock_key_is_pinned() -> None:
+    assert RUN_LOCK_KEY == 0x667372756E6C636B
+    assert -(2**63) <= RUN_LOCK_KEY < 2**63  # fits pg's bigint key
+
+
+def _held_by_others(conn: psycopg.Connection) -> int:
+    """Advisory locks on the run key held by other sessions (bigint keys split in two)."""
+    row = conn.execute(
+        "select count(*) from pg_locks where locktype = 'advisory' and granted "
+        "and classid::bigint = %s and objid::bigint = %s and objsubid = 1 "
+        "and pid <> pg_backend_pid()",
+        ((RUN_LOCK_KEY >> 32) & 0xFFFFFFFF, RUN_LOCK_KEY & 0xFFFFFFFF),
+    ).fetchone()
+    return row[0]
+
+
+def test_only_one_session_holds_the_lock(engine: Engine, conn: psycopg.Connection) -> None:
+    with engine.connect() as first, engine.connect() as second:
+        assert try_run_lock(first) is True
+        assert _held_by_others(conn) == 1
+        assert try_run_lock(second) is False
+
+        release_run_lock(first)
+        assert _held_by_others(conn) == 0
+        assert try_run_lock(second) is True
+        release_run_lock(second)
+
+
+def test_the_lock_survives_a_commit(engine: Engine) -> None:
+    """DB-007.D1: session-level, so the per-node commits of a run (PIPE-001.D3) keep it."""
+    with engine.connect() as holder, engine.connect() as other:
+        assert try_run_lock(holder) is True
+        holder.commit()
+        holder.execute(select(1))
+        holder.rollback()
+        assert try_run_lock(other) is False
+
+        release_run_lock(holder)
+        holder.commit()
+        assert try_run_lock(other) is True
+        release_run_lock(other)
+
+
+def test_the_lock_drops_when_the_holder_closes(engine: Engine) -> None:
+    with engine.connect() as other:
+        holder = engine.connect()
+        assert try_run_lock(holder) is True
+        assert try_run_lock(other) is False
+        holder.invalidate()  # the session ends, as when the process dies
+        holder.close()
+        assert try_run_lock(other) is True
+        release_run_lock(other)

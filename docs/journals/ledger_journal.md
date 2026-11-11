@@ -252,10 +252,17 @@ references or host paths here. Use hashes.
 ## DB-007 — Tasks
 
 - [ ] DB-007.1 — Migration `0007` `runs`, the ORM model, `runlock.py` · #207 · Pipeline · acceptance: `tests/db/ledger/test_runs_migration.py`
-  - [x] DB-007.1.1 — Migration `0007` and the ORM `Run`, with the DB-007.D2 CHECKs
-  - [ ] DB-007.1.2 — `classifier/db/runlock.py` (DB-007.D1)
+  - [x] DB-007.1.1 — Migration `0007` and the ORM `Run`, with the DB-007.D2 CHECKs · c88bda6
+  - [x] DB-007.1.2 — `classifier/db/runlock.py` (DB-007.D1)
 
 ## DB-007 — Results
+
+### DB-007.1 (#207, Pipeline)
+
+- **DB-007.D2 — the consistency CHECKs** (worker's plan, approved by the lead on #207, 2026-11-10). Beyond the per-column CHECKs, `runs` requires: `(state = 'running') = (finished_at is null)` (`runs_finished_iff_done`); `error is null or state = 'failed'` (`runs_error_only_failed`); `finished_at is null or finished_at >= started_at` (`runs_finished_after_start`). `error` must match `^[a-z][a-z0-9_]{0,63}$` (`runs_error_code`), so no path, name or free text fits. A failed run may have a null error.
+- **The lock (DB-007.D1):** `RUN_LOCK_KEY = 0x667372756E6C636B`, pinned by the test. `try_run_lock` and `release_run_lock` take a SQLAlchemy `Connection`; the lock is session-level, so it survives commits and rollbacks on the holding connection and drops when that connection closes (all three tested).
+- **Also changed:** `test_review_reason_migration.py` compared the revision after a refused downgrade with a literal `0006`; it now compares with the current head.
+- **Tests:** acceptance `tests/db/ledger/test_runs_migration.py` 34 passed; `tests/db/ledger` 126 passed; `make test` (unit + db + integration) 2453 passed, 48 deselected; `make lint` clean.
 
 ---
 
