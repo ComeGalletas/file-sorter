@@ -234,8 +234,48 @@ references or host paths here. Use hashes.
 
 ## PIPE-002 — Tasks
 
-- [ ] PIPE-002.1 — `run()` and `dry-run` record the run and hold the lock · #208 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
-  - [x] PIPE-002.1.1 — `run()` takes the lock and records `running` → counts per node → `finished`, or `failed` with a fixed code (`classifier/graph/run_record.py`)
-  - [ ] PIPE-002.1.2 — `dry-run` exits 3 with fixed text on a held lock (PIPE-002.D2)
+- [x] PIPE-002.1 — `run()` and `dry-run` record the run and hold the lock · #208 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
+  - [x] PIPE-002.1.1 — `run()` takes the lock and records `running` → counts per node → `finished`, or `failed` with a fixed code (`classifier/graph/run_record.py`) · 3cd109f
+  - [x] PIPE-002.1.2 — `dry-run` exits 3 with fixed text on a held lock (PIPE-002.D2)
 
 ## PIPE-002 — Results
+
+### PIPE-002.1 (#208, Pipeline)
+
+- **PIPE-002.D2 — exit 3 on a held lock** (lead, on #208, 2026-11-10). `dry-run` prints `error: another run holds the run lock; wait for it to finish` and exits 3, distinct from config (2) and database (1) errors. Nothing runs and no `runs` row is written.
+- **The record connection.** `run()` opens its own SQLAlchemy connection (NullPool) for the lock and the `runs` row, held for the whole run. The nodes keep their psycopg connection and per-node commits (PIPE-001.D3). The order is:
+  1. take the lock, or raise `RunLockedError`;
+  2. insert the `running` row (`dry_run`, or `sort` when not a dry run);
+  3. write the counts after each node's commit;
+  4. end `finished`, or `failed` with the code, re-raising the node's exception unchanged;
+  5. release the lock in a `finally`.
+- **Counts (DB-007.D3).** `run_record.flatten` gives `{field: number}` per node: dataclass fields; `None` as `{}`; a bare number as `{"count": n}`, since a node's result is typed `object` and stand-ins return ints. A `by_reason` map becomes `errored_<reason>`, with the node's own prefix dropped (`classify_vlm_unanswered` → `errored_vlm_unanswered`). The lead said `<field>_<reason>`. The literal `by_reason_working_copy_unreadable` is 33 characters, over `runs_counts_fields`' 32, so the field is named after the count the reasons break down, `errored`. A unit test checks that every registered sanitize and classify reason gives a key the CHECK accepts. A result that doesn't fit raises `CountsShapeError` (fixed text, names the node only), and the run ends `failed`/`internal`.
+- **Error codes.** `run_record.error_code` maps:
+  - `KeyboardInterrupt` → `interrupted`;
+  - the five pre-flight errors → `sanitize_config`, `work_dir`, `classify_config`, `classify_rules`, `vision`;
+  - `OllamaError` → `ollama`;
+  - psycopg and SQLAlchemy errors → `database`;
+  - anything else → `internal`.
+
+  A test pins the codes to `RUN_ERRORS`.
+- **Also changed:** the dry-run CLI's fixed-text database handler also catches `sqlalchemy.exc.SQLAlchemyError`. The record connection wraps the driver's error, and without this the dead-DSN test would show a traceback.
+- **Tests:**
+  - acceptance `tests/db/graph/test_run_record.py`: 9 passed. It covers:
+    - finished with nested counts;
+    - mid-run, the row is `running` with the earlier node's counts and the lock is held;
+    - failed with `internal` / `interrupted` / `database`, re-raised unchanged, lock freed;
+    - a held lock writes no row and runs no node, with fixed, unchained text;
+    - consecutive runs;
+    - a bad count fails the run with fixed text;
+    - a planted name, proved held in `files.source_path`, then absent from every `runs` column and from the log;
+  - `tests/unit/graph/test_run_record.py`;
+  - in `tests/integration/test_dry_run_cli.py`, exit 3 with the fixed message, no row, no ledger write and no report, then a normal run once the lock is free;
+  - `make test`: 2570 passed, 48 deselected;
+  - `make lint`: clean.
+- **Status:** DONE_WITH_CONCERNS.
+  - **Concern (low):** if the process is killed or the record connection dies, the lock drops with the session but the row stays `running`, so the run banner could show a run that isn't happening. Proposed follow-up, the lead's call:
+    - either the next run, once it holds the lock, marks leftover `running` rows `failed`/`interrupted` (any such row is an orphan);
+    - or API-001 treats `running` as live only while the lock shows in `pg_locks`.
+- **Self-rating:** 8/10, proud: yes. Gaps:
+  - the orphaned `running` row above;
+  - `errored_<reason>` is a reading of the lead's `<field>_<reason>`, forced by the 32-character limit; flagged on the PR.

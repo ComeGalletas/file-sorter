@@ -31,7 +31,7 @@ from classifier.cli import dry_run_report
 from classifier.cli.categories import categories_app
 from classifier.config import ConfigError, load_config
 from classifier.graph.classify import ClassifyConfigError
-from classifier.graph.run import run
+from classifier.graph.run import RunLockedError, run
 from classifier.graph.sanitize import WorkDirError
 from classifier.models.classify_rules import ClassifyRulesError
 from classifier.models.ollama import OllamaError
@@ -91,6 +91,10 @@ def dry_run(
         with psycopg.connect(dsn) as conn:
             rows = dry_run_report.rows_under_root(conn, config.paths.source_root)
             folder_of = dry_run_report.folder_resolver(conn, config)
+    except RunLockedError as error:
+        # PIPE-002.D1, D2: another run holds the lock; nothing ran and no row was written.
+        typer.echo(f"error: {error}", err=True)
+        raise typer.Exit(3) from None
     except (
         SanitizeConfigError,
         WorkDirError,
