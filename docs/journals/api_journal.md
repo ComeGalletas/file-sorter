@@ -75,6 +75,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.1.6 — PR #224 round 1, item 6: the real `OllamaClient` over a fake transport (after MOD-003.1, #209) · bc274c4
   - [x] API-001.1.7 — API-001.D8 as corrected: `views.ADULT_BRANCH` and `is_adult(branch)`, pinned to `classify_rules.branch_for_level`; the grid's safe-vs-adult split (`GridCell.adult`) keys on `is_adult` · 22a3d15
 - [ ] API-001.2 — `/api/events` (SSE, API-001.D3) · #211 · API/UI · acceptance: `tests/db/api/test_events.py`
+  - [x] API-001.2.1 — the stream (`events.py`: frames on change, the keep-alive after 15 s (API-001.D10), one fixed `unavailable` per transition with the stream open (API-001.D11), the end on disconnect or cancellation), unit tests · (this commit)
+  - [ ] API-001.2.2 — the `GET /api/events` route, its db acceptance test and the privacy plant
 - [ ] API-001.3 — `/thumbs/{source_hash}`, the blur flag in the views · #212 · API/UI · acceptance: `tests/db/api/test_thumbs.py`
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
