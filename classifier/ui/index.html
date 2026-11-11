@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>file-sorter</title>
+<style>
+:root{--fg:#1b1b1b;--bg:#fff;--head:#f2f2f2;--line:#ccc;--adult:#fbeaea}
+@media (prefers-color-scheme:dark){:root{--fg:#e6e6e6;--bg:#161616;--head:#262626;--line:#444;--adult:#3a1f1f}}
+body{font:14px/1.4 system-ui,sans-serif;margin:16px;color:var(--fg);background:var(--bg)}
+h1{font-size:20px}h2{font-size:16px;margin-top:24px}
+table{border-collapse:collapse;margin:8px 0}
+th,td{border:1px solid var(--line);padding:2px 6px;text-align:left;vertical-align:top}
+th{background:var(--head)}td.n{text-align:right}
+tr.adult td{background:var(--adult)}
+.scroll{overflow-x:auto}
+img.thumb{width:96px;height:96px;object-fit:cover;cursor:pointer;display:block}
+img.thumb[data-blur="1"]{filter:blur(16px)}
+</style>
+<script src="/ui/vendor/htmx.min.js" defer></script>
+<script src="/ui/app.js" defer></script>
+</head>
+<body>
+<h1>file-sorter</h1>
+<p>Read-only. Adult thumbnails are blurred; click one to reveal it.</p>
+
+<section id="banner" hx-get="/ui/banner" hx-trigger="load, refresh from:body"></section>
+
+<section id="grid" hx-get="/ui/grid" hx-trigger="load, refresh from:body"></section>
+
+<h2>Latest</h2>
+<div id="latest" class="scroll" hx-get="/ui/latest" hx-trigger="load, refresh from:body"></div>
+
+<h2>Errors</h2>
+<div class="scroll"><table>
+<thead><tr><th>hash</th><th>status</th><th>error</th><th>updated</th></tr></thead>
+<tbody id="errors" hx-get="/ui/errors?page=1" hx-trigger="load, refresh-queue from:body"></tbody>
+</table></div>
+
+<h2>Review queue</h2>
+<div class="scroll"><table>
+<thead><tr><th></th><th>hash</th><th>sanitized name</th><th>format</th><th>topic</th><th>NSFW level</th><th>traces</th><th>cross-check disagrees</th><th>review reason</th></tr></thead>
+<tbody id="review" hx-get="/ui/review?page=1" hx-trigger="load, refresh-queue from:body"></tbody>
+</table></div>
+</body>
+</html>
