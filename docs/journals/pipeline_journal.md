@@ -235,5 +235,7 @@ references or host paths here. Use hashes.
 ## PIPE-002 — Tasks
 
 - [ ] PIPE-002.1 — `run()` and `dry-run` record the run and hold the lock · #208 · Pipeline · acceptance: `tests/db/graph/test_run_record.py`
+  - [x] PIPE-002.1.1 — `run()` takes the lock and records `running` → counts per node → `finished`, or `failed` with a fixed code (`classifier/graph/run_record.py`)
+  - [ ] PIPE-002.1.2 — `dry-run` exits 3 with fixed text on a held lock (PIPE-002.D2)
 
 ## PIPE-002 — Results
