@@ -310,9 +310,96 @@ def test_status_loaded_models_or_na(config, engine, probe, want, monkeypatch) ->
     assert _status(_client(config, engine, ollama=probe))["loaded_models"] == want
 
 
-def test_status_run_state_is_null_until_db_007(config, engine) -> None:
+# --- API-001.1.4: the run state and imgs/min (DB-007.1, API-001.D7) ------------------------
+
+# Far in the future, so a seeded run is the newest whatever else the session committed.
+RUN_START = datetime(2099, 1, 1, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def seed_run(migrated_db: str) -> Iterator[Callable[..., int]]:
+    """Insert committed runs; delete them by id at teardown, whatever happens."""
+    ids: list[int] = []
+    conn = psycopg.connect(migrated_db, autocommit=True)
+
+    def add(**cols: Any) -> int:
+        row: dict[str, Any] = {"kind": "dry_run", "state": "running", "started_at": RUN_START}
+        row.update(cols)
+        if "counts" in row:
+            row["counts"] = psycopg.types.json.Jsonb(row["counts"])
+        names = ", ".join(row)
+        marks = ", ".join(f"%({k})s" for k in row)
+        [run_id] = conn.execute(
+            f"insert into runs ({names}) values ({marks}) returning id", row
+        ).fetchone()
+        ids.append(run_id)
+        return run_id
+
+    try:
+        yield add
+    finally:
+        try:
+            if ids:
+                conn.execute("delete from runs where id = any(%s)", [ids])
+        finally:
+            conn.close()
+
+
+def test_status_finished_run_and_its_rate(config, engine, seed, seed_run, tag) -> None:
+    counts = {"ingest": {"seen": 5}, "classify": {"classified": 4, "reason_unsorted": 1}}
+    run_id = seed_run(
+        state="finished", finished_at=RUN_START + timedelta(minutes=10), counts=counts
+    )
+    for minute in (1, 3, 5, 7, 9):  # inside the window
+        seed(topic=tag, updated_at=RUN_START + timedelta(minutes=minute))
+    seed(topic=tag, updated_at=RUN_START + timedelta(minutes=11))  # after it: not counted
     body = _status(_client(config, engine, ollama=_Probe(None)))
-    assert body["run"] is None and body["imgs_per_min"] is None
+    run = body["run"]
+    assert run["id"] == run_id
+    assert (run["kind"], run["state"], run["error"]) == ("dry_run", "finished", None)
+    assert run["counts"] == counts
+    assert set(run) == {"id", "kind", "state", "started_at", "finished_at", "counts", "error"}
+    assert body["imgs_per_min"] == pytest.approx(0.5)  # 5 rows / 10 min
+
+
+def test_status_running_run_window_ends_now(engine, seed, seed_run, tag) -> None:
+    seed_run(state="running")
+    for minute in (1, 2, 3):
+        seed(topic=tag, updated_at=RUN_START + timedelta(minutes=minute))
+    with engine.connect() as conn:
+        view = views.build_status(conn, now=RUN_START + timedelta(minutes=6))
+    assert view.run is not None and view.run.finished_at is None
+    assert view.imgs_per_min == pytest.approx(0.5)  # 3 rows / 6 min
+    with engine.connect() as conn:  # the database clock is before the run: no rate
+        assert views.build_status(conn).imgs_per_min is None
+
+
+def test_status_failed_run_shows_its_fixed_code(config, engine, seed_run) -> None:
+    seed_run(state="failed", finished_at=RUN_START, error="ollama")  # a zero-length window
+    body = _status(_client(config, engine, ollama=_Probe(None)))
+    assert (body["run"]["state"], body["run"]["error"]) == ("failed", "ollama")
+    assert body["imgs_per_min"] is None
+
+
+def test_status_newest_run_wins(config, engine, seed_run) -> None:
+    seed_run(state="finished", finished_at=RUN_START + timedelta(minutes=1))
+    newest = seed_run(state="running", started_at=RUN_START + timedelta(days=1))
+    assert _status(_client(config, engine, ollama=_Probe(None)))["run"]["id"] == newest
+
+
+def test_status_with_no_run(migrated_db: str) -> None:
+    """Inside a rolled-back transaction, with every run deleted, run and rate are null."""
+    writable = create_engine(
+        migrated_db.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool
+    )
+    try:
+        with writable.connect() as conn:
+            conn.execute(text("delete from runs"))
+            view = views.build_status(conn)
+            conn.rollback()
+    finally:
+        writable.dispose()
+    assert view.run is None and view.imgs_per_min is None
 
 
 def test_status_never_serves_paths_or_raw_names(config, engine, seed, tag) -> None:

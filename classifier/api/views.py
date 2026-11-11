@@ -14,7 +14,7 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Connection, Select, and_, func, select, true
 
-from classifier.db.models import File, FileStatus
+from classifier.db.models import File, FileStatus, Run
 
 PER_PAGE = 50  # API-001.D5
 CROSS_CHECK_REASON = "nsfw_disagreement"  # CLS-004.D5, D13
@@ -91,11 +91,15 @@ class FilePage(_View):
 
 
 class RunView(_View):
+    """The newest `runs` row. Its `counts` and `error` are closed sets (DB-007.D3)."""
+
+    id: int
     kind: str
     state: str
     started_at: datetime
     finished_at: datetime | None
-    error: str | None  # a fixed error code
+    counts: dict[str, dict[str, int | float]]  # {node: {field: number}}
+    error: str | None  # one of RUN_ERRORS
 
 
 def is_adult(branch: str | None) -> bool:
@@ -262,12 +266,69 @@ def loaded_models_view(probe: ModelProbe | None) -> list[ModelView] | Literal["n
     return NOT_AVAILABLE if views is None else views
 
 
-def build_status(conn: Connection) -> StatusView:
+def _latest_run(conn: Connection) -> tuple[RunView, datetime] | None:
+    """The newest run, and the database's `now()` (the end of a running run's window)."""
+    query = (
+        select(
+            Run.id,
+            Run.kind,
+            Run.state,
+            Run.started_at,
+            Run.finished_at,
+            Run.counts,
+            Run.error,
+            func.now().label("now"),
+        )
+        .order_by(Run.started_at.desc(), Run.id.desc())
+        .limit(1)
+    )
+    m = conn.execute(query).mappings().first()
+    if m is None:
+        return None
+    run = RunView(
+        id=m["id"],
+        kind=m["kind"],
+        state=m["state"],
+        started_at=m["started_at"],
+        finished_at=m["finished_at"],
+        counts=m["counts"],
+        error=m["error"],
+    )
+    return run, m["now"]
+
+
+def _imgs_per_min(conn: Connection, run: RunView, now: datetime) -> float | None:
+    """API-001.D7: rows with `updated_at` in the run's window, per elapsed minute.
+
+    The window ends at `finished_at`, or at `now` while the run is running. An empty or
+    negative window gives None.
+    """
+    end = run.finished_at if run.finished_at is not None else now
+    minutes = (end - run.started_at).total_seconds() / 60
+    if minutes <= 0:
+        return None
+    moved = conn.execute(
+        select(func.count())
+        .select_from(File)
+        .where(File.updated_at >= run.started_at, File.updated_at <= end)
+    ).scalar_one()
+    return moved / minutes
+
+
+def build_status(conn: Connection, *, now: datetime | None = None) -> StatusView:
     """The database part of the status; `loaded_models` is "n/a" until
-    `with_loaded_models` fills it, after the connection is closed (round 1, item 4)."""
+    `with_loaded_models` fills it, after the connection is closed (round 1, item 4).
+
+    `now` overrides the database clock for a running run's window (tests only).
+    """
+    latest = _latest_run(conn)
+    run = latest[0] if latest else None
+    rate = None
+    if latest is not None:
+        rate = _imgs_per_min(conn, latest[0], now if now is not None else latest[1])
     return StatusView(
-        run=None,
-        imgs_per_min=None,
+        run=run,
+        imgs_per_min=rate,
         counts_by_status=_counts_by_status(conn),
         grid=_grid(conn),
         loaded_models=NOT_AVAILABLE,
