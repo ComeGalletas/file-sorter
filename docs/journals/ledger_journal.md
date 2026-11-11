@@ -231,3 +231,41 @@ references or host paths here. Use hashes.
 - Tests: acceptance file 20 cases (head, upgrade, seeds, nulls, CHECK accepts/refuses, traces, repr, downgrade and back). Three older tests updated for the new column and constraint.
 - `make test`: 2344 passed, 48 deselected. `make lint`: clean. No gpu or eval tier (no models or prompts touched).
 - Completion: DONE. Self-rating: 9/10, proud: yes. The gap is a seed text check that only spot-checks DESIGN §4.3 verbatim, because DESIGN.md isn't mounted in the test container.
+
+---
+
+## DB-007 — Requirement (DESIGN.md m4, 2026-11-10)
+
+- **Objective:** Record runs in a `runs` table, and give the commands one advisory lock.
+- **Details:**
+  - migration `0007` adds `runs`: `id` (bigint identity), `kind` (`dry_run | sort | watch | reclassify`), `state` (`running | finished | failed`), `started_at`, `finished_at` (null while running), `counts` (jsonb, per node), `error` (a fixed code or null), all with CHECKs;
+  - the ORM model;
+  - `classifier/db/runlock.py` with `try_run_lock(conn) -> bool` and `release_run_lock(conn)` on one fixed key (`pg_try_advisory_lock`).
+- **Constraint:** no path or name in any column. The downgrade drops the table.
+- **Implements:** R-API-6, C-11, §5.
+
+## DB-007 — Confirmed reading
+
+- §5 lists `runs`, and C-11 accepted it. No migration has it yet (the head is `0006`).
+- **DB-007.D1 — a session-level lock with one fixed key** (lead, 2026-11-10, provisional). The key is a module constant, which the tests pin. A transaction-level lock would drop at each per-node commit (PIPE-001.D3).
+
+## DB-007 — Tasks
+
+- [ ] DB-007.1 — Migration `0007` `runs`, the ORM model, `runlock.py` · #207 · Pipeline · acceptance: `tests/db/ledger/test_runs_migration.py`
+
+## DB-007 — Results
+
+---
+
+## DB-008 — Requirement (M3 G1 hardening, 2026-11-10)
+
+- **Objective:** Pin all 18 seeded category descriptions in DB-006.1's test.
+- **Details:** a golden dict of `(axis, name) -> description` that matches DESIGN §4.3's generic text exactly, so a changed seed fails the test.
+- **Constraint:** the test only; the seeds are unchanged.
+- **Implements:** DB-006.D1, §4.3.
+
+## DB-008 — Tasks
+
+- [ ] DB-008.1 — The golden dict in `tests/db/ledger/test_category_description_migration.py` · #217 · Pipeline · acceptance: that file
+
+## DB-008 — Results

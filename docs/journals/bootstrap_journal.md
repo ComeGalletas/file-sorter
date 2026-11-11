@@ -981,3 +981,18 @@ and then (PR #43 review round 2):
     - a probe query string did not appear in `docker logs`.
   - **Status:** DONE for .1; .2 waits on CLI-008.1. **Self-rating:** 9/10, yes. The gap: the end-to-end path through `serve` is only checkable after RUN-019.2.
 - **Privacy:** no host path, no value from `.env`; the DSN is never echoed.
+
+---
+
+## RUN-020 — Requirement (proposal, lead, 2026-11-10; not scheduled)
+
+- **Objective:** Pin `rich` and `typer`, or every runtime dependency, so a rebuilt image can't change test output (TST-014).
+- **Constraint:** it overlaps RUN-004 (the lockfile, human-side). The lead recommends doing both together after M4. Until then, TST-014.D1 keeps the one affected test stable.
+
+---
+
+## RUN-021 — Requirement (human, M4 G0 answer 4, 2026-11-10; human-side)
+
+- **Objective:** Vendor htmx at a pinned 2.x version in `classifier/ui/vendor/htmx.min.js`, with its license and SHA-256.
+- **Constraint:** the host tooling can't fetch from npm or a CDN (RUN-007.D1), so the human's session brings the file in a human-side PR. API-001.4 waits for it. The page loads it from its own origin only.
+- **RUN-021.D1** (lead, provisional; `docs/plans/m4.md`): human-side vendoring as above. **No host tooling or desk downloads it:** neither npm nor a CDN is on RUN-007.D1's list, and `gh` is for metadata only. The human obtains the file themselves. The PR records the version, the upstream release it came from, and its SHA-256. The reviewer checks the vendored file's SHA-256 against the value the PR records; nothing is fetched by a desk or by host tooling.

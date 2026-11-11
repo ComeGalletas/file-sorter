@@ -219,3 +219,21 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Noted:** a replay miss uses `raise ... from None` (QA's replay), so `__cause__` is None and the context is suppressed. The new test asserts that, not `__context__ is None`.
 - **Reviewer / Privacy auditor:** pending (lead).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. The one point is that the "text-like" image is bars, not rendered text, so the old relative text-vs-landscape check stays gpu-only (MOD-002.D5).
+
+---
+
+## MOD-003 — Requirement (DESIGN.md m4, 2026-11-10)
+
+- **Objective:** Let the status API show the loaded model and its VRAM, from Ollama's `/api/ps`.
+- **Details:**
+  - `OllamaClient.loaded_models() -> list[LoadedModel] | None`;
+  - `LoadedModel` is a frozen dataclass with `name: str` and `size_vram: int` (bytes);
+  - any transport, status or parse failure returns `None`, and no exception text is kept.
+- **Constraint:** the existing transport seam and the host check are unchanged. The tests use a fake transport with synthetic JSON, and nothing calls a live Ollama outside the `gpu` tier.
+- **Implements:** R-API-2, R-MOD-1; the human's G0 answer 7.
+
+## MOD-003 — Tasks
+
+- [ ] MOD-003.1 — `loaded_models()` · #209 · ML · acceptance: `tests/unit/models/test_ollama_ps.py`
+
+## MOD-003 — Results

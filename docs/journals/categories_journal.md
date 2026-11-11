@@ -517,7 +517,7 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
   - [x] CLS-004.6.1 — `load_effective_prompt`, `Prompt.addendum`/`addendum_hash`/`effective_version`, 4096-byte cap, `PROMPTS_LOCAL=off`, tests (`225951b`)
   - [x] CLS-004.6.2 — `vlm_classify` loads the effective prompts; `VlmAnswer.prompt_version`
   - [x] CLS-004.6.3 — `prompts/local/*.example.md` placeholders (PR #163, merged as `bbe3909`)
-- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · Pipeline · on the G1 hardening list; carried into M4 (`docs/plans/m4.md`), no issue yet
+- [ ] CLS-004.7 — The node writes `VlmAnswer.prompt_version` to `files.prompt_version` · #219 · Pipeline · on the G1 hardening list; carried into M4 (`docs/plans/m4.md`) · acceptance: `tests/db/graph/test_classify_node.py`
 - [x] CLS-004.8 — Route B′: `prompts/local/<name>.md` replaces the committed system text; front matter and user templates stay committed; effective version keeps the hash; 16384-byte cap; eval wording "local prompts" (CLS-004.D17) · #168 · ML · acceptance: `tests/unit/models/test_prompts.py`
 
 ## CLS-004 — Results
@@ -824,3 +824,21 @@ The contracts between the parallel tasks. Names are the worker's to propose in i
 - **Status:** DONE.
 - **Self-rating:** 9/10, yes; a one-line behavior fix with its regression test. The gap: no test runs a real local file, by design (privacy).
 - **Privacy:** no prompt text, file name or result figure. The diagnosis stays box-only.
+
+---
+
+## CLI-009 — Requirement (M3 G1 hardening, 2026-11-10)
+
+- **Objective:** Plant a secret on the `categories edit --description` path.
+- **Details:**
+  - the plant is a synthetic description;
+  - first prove it is stored;
+  - then assert it is absent from the console output, the error text on a refused value (too long, a control character), and the `__cause__`/`__context__` chain.
+- **Constraint:** tests only, unless the plant finds a leak; a fix then ships in the same PR.
+- **Implements:** CLI-007.D1, DOC-007.D1.
+
+## CLI-009 — Tasks
+
+- [ ] CLI-009.1 — The planted-secret tests in `tests/db/cli/test_categories_cli.py` · #218 · Pipeline · acceptance: that file
+
+## CLI-009 — Results
