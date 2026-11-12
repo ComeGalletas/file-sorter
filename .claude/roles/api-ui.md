@@ -5,7 +5,7 @@
 **Responsibility:**
 - The FastAPI status, files and events endpoints (R-API-1, R-API-2).
 - The write actions in M8 (R-API-3).
-- The htmx or Alpine dashboard and review queue, with no build step (R-API-5).
+- The dashboard and review queue: server-rendered fragments plus `ui/app.js`, plain JavaScript written in the repo, with no third-party library and no build step (R-API-5, DOC-016).
 - The HTML report (R-API-7).
 
 **Watch out for:**
