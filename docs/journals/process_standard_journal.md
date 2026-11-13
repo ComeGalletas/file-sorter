@@ -383,3 +383,41 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 - **Self-rating:** 9/10, yes; C-30 cites R-API-1's new wording, which landed with #221.
 - **Triage:** small. Spec text only.
 - **Privacy:** generic wording only.
+
+---
+
+## DOC-016 — Requirement (human, 2026-11-12)
+
+**Objective:** the M4 UI uses no third-party JavaScript library. The human changed G0 answer 4 from "htmx, vendored" to plain JavaScript written in the repo ("go with option 2", 2026-11-12), after weighing the htmx download, which RUN-007.D1 doesn't allow, against the alternatives.
+
+**Constraint:** human-side PR (RUN-002.D16): DESIGN, `docs/plans/m4.md`'s record of the human's answers, `.claude/roles/api-ui.md` and the RUN-021 journal block. The INDEX row and the `api_journal.md` wording are the lead's (RUN-002.D13). The code change to #241 is the API/UI desk's.
+
+## DOC-016 — Confirmed reading
+
+- **DOC-016.D1:** **the UI is server-rendered fragments plus `classifier/ui/app.js`**, plain JavaScript written in the repo, with no third-party library, no CDN and no build step. `app.js` loads each fragment with `fetch()` and refreshes them on each `/api/events` message. **RUN-021 (vendor htmx) is cancelled**, along with RUN-021.D1, so nothing is downloaded and RUN-007.D1 is unchanged. DESIGN R-API-5 and C-31 follow. (human, 2026-11-12)
+- **DOC-016.D2 (what stays the same):**
+  - the server-rendered fragments and their routes (`/ui/banner`, `/ui/grid`, `/ui/latest`, `/ui/errors`, `/ui/review`);
+  - the D8 thumbnail markup and the single `is_adult` predicate, and the D9 review queue;
+  - API-001.D13's CSP (`script-src 'self'`, no inline script; `connect-src 'self'` covers `fetch` and `EventSource`);
+  - API-001.D3's event stream;
+  - gate 4's criteria (TST-015.D5, D6).
+
+  Only the browser-side loader changes. (the human's session, 2026-11-12)
+- **DOC-016.D3 (the follow-up for #241, API/UI):** API-001.4.3 is replaced by a rework.
+  - **Removed:** the `/ui/vendor/htmx.min.js` route and `VENDOR_HTMX`; the `<script src="/ui/vendor/htmx.min.js">` tag; every `hx-*` attribute.
+  - **Added:** `data-fragment="<route>"` (plus a refresh group) on each section, read by `app.js` on load and on each SSE message.
+  - **The "more" rows:** a same-origin `fetch` of the next page, triggered by an `IntersectionObserver` or a click, replacing the row. No `<form>` or `<button>`, so the write-marker tests hold.
+  - **Tests:** the page's script list is exactly `["/ui/app.js"]`; no `hx-` remains; the D8/D9 markup is unchanged.
+
+  Gate 4 (#230) needs no change unless it references the vendor route. (the human's session, 2026-11-12)
+
+## DOC-016 — Tasks
+
+- [x] DOC-016.1 — DESIGN R-API-5 and C-31, `docs/plans/m4.md` (answer 4, RUN-021.D1, API-001.D3, the work items and order), `.claude/roles/api-ui.md`, the RUN-021 journal block
+
+## DOC-016 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; the code follow-up (DOC-016.D3) is the lead's to schedule on #241.
+- **Triage:** small. Spec and rule text only.
+- **Privacy:** generic wording only.

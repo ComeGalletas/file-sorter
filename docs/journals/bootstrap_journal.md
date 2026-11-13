@@ -1000,6 +1000,7 @@ and then (PR #43 review round 2):
 
 ## RUN-021 — Requirement (human, M4 G0 answer 4, 2026-11-10; human-side)
 
+- **Cancelled** (the human, 2026-11-12; DOC-016): the UI uses plain JavaScript written in the repo, with no third-party library, so nothing is vendored or downloaded. The blocks below are kept as the record.
 - **Objective:** Vendor htmx at a pinned 2.x version in `classifier/ui/vendor/htmx.min.js`, with its license and SHA-256.
 - **Constraint:** the host tooling can't fetch from npm or a CDN (RUN-007.D1), so the human's session brings the file in a human-side PR. API-001.4 waits for it. The page loads it from its own origin only.
 - **RUN-021.D1** (lead, provisional; `docs/plans/m4.md`): human-side vendoring as above. **No host tooling or desk downloads it:** neither npm nor a CDN is on RUN-007.D1's list, and `gh` is for metadata only. The human obtains the file themselves. The PR records the version, the upstream release it came from, and its SHA-256. The reviewer checks the vendored file's SHA-256 against the value the PR records; nothing is fetched by a desk or by host tooling.
