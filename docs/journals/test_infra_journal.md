@@ -754,5 +754,39 @@ references or host paths here. Use hashes.
 ## TST-015 — Tasks
 
 - [ ] TST-015.1 — `scripts/gate_4.py` and its unit tests · #216 · QA · acceptance: `tests/unit/gate/test_gate_4_checks.py` (the real run is `make gate-4`, at G1)
+  - [x] TST-015.1.1 — the pure checks 1–4 and 6, the verdict and `--detail` (short hashes and fixed codes only), with unit tests on synthetic rows; the raw-name skips of TST-015.D4
+  - [x] TST-015.1.2 — check 7 on a synthetic compose text (short and long port syntax, `network_mode: host`), plus the repo's own `docker-compose.yml` · .1.1 was bff2dc3
+  - [x] TST-015.1.3 — the runner (read-only ledger, `create_app`, `/api/files` paging, `/api/status`) and check 5 with `classifier.api.views.is_adult` (API-001.D8 as corrected); db-tier runner test · after #224
+  - [ ] TST-015.1.4 — wire `/ui/review` and the UI HTML (API-001.4, D8, D9) when #214 merges; until then `NOT_AVAILABLE` (the report moved to .1.9)
+  - [ ] TST-015.1.5 — Results
+  - [x] TST-015.1.6 — round 1 on #230 (privacy auditor): each plant proved held before absence; an empty ledger fails criteria 1, 3 and 4 (`NOT_AVAILABLE`); any `<meta http-equiv="refresh">` fails the report; counts must be plain ints; the D4 skip covers the stem plus its extension · .1.2 was 2a7923b, .1.6 was 3e914c7; round 1 item 6: the grid matches API-001.1's `GridCell`, and each cell's `adult` must equal `is_adult(branch)`
+  - [x] TST-015.1.7 — the SSE read (API-001.2: one bounded status frame through the app's `events_max_ticks` seam), `repr=False` on every `Served` content field (round 2 on #230), and a test that a write on the gate's engine fails · .1.3 was e0bc1ce
+  - [x] TST-015.1.8 — criterion 5 cross-checks `/api/files`' `blurred` flag (API-001.3, the 16th field): each ledger row's flag must be a bool equal to `is_adult(branch)` (`BLUR_FLAG`), checked even while the HTML is unavailable · .1.7 was cf81eb1
+  - [x] TST-015.1.9 — criterion 6 on the real report: `render_report` over the whole ledger through API-001.1's views, in one read-only snapshot with the no-call probe; its body joins the no-leak scan; a build failure reads as `NOT_AVAILABLE` · .1.8 was 0fd904a, .1.9 was 6c91469
 
 ## TST-015 — Results
+
+### TST-015.1 (QA, #216, PR #230; interim, at 6c91469)
+
+- **Wired against the real app:**
+  - criterion 1, `/api/files` paged to the empty page;
+  - criterion 2, the `/api/status` counts and grid, with the `adult` flag;
+  - criterion 4, the no-leak scan over the status, every files page, one bounded SSE frame and the report;
+  - criterion 5's `blurred` flag (API-001.3);
+  - criterion 6, the real `render_report`;
+  - criterion 7, the repo's `docker-compose.yml`.
+- **Not wired yet:** criterion 3 (`/ui/review`, API-001.D9) and criterion 5's HTML half (`img.thumb` `data-blur`, API-001.D8) wait for API-001.4 (#214), which waits for htmx (RUN-021).
+  - Their checks are written and unit-tested against the D8 and D9 markup contract, on synthetic HTML.
+  - Until #214 lands they fail as `NOT_AVAILABLE`, and so does criterion 4, which needs the UI bodies. So the gate cannot pass yet, by design.
+- **Tests:**
+  - `tests/unit/gate/test_gate_4_checks.py`: 98 passed (unit, the acceptance test);
+  - `tests/db/gate/test_gate_4_runner.py`: 8 passed (db, synthetic rows through `create_app`);
+  - pre-push: 2830 passed, 48 deselected;
+  - lint: ruff clean.
+  - No `gpu` run: no models or prompts were touched. The real gate (`make gate-4`) is G1, the human's, and was not run.
+- **Privacy:** every plant is proved held (and served, where it applies) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on `LedgerRow`'s name and path fields and on every `Served` content field.
+- **Reviews:** rounds 1–3 on #230. Round 1: the reviewer approved, and the privacy auditor failed the plant-held rule, fixed in .1.6. Rounds 2 and 3: reviewer APPROVE, privacy PASS.
+- **Status:** BLOCKED on API-001.4 (#214) → RUN-021 (vendored htmx). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
+- **Self-rating (interim):** 8/10, proud: yes for what landed. Gaps:
+  - criteria 3 and 5 haven't run against the real UI markup, only against synthetic HTML written to D8 and D9;
+  - the report's own `blurred` cell isn't cross-checked, only the API's.
