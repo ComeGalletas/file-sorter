@@ -753,12 +753,12 @@ references or host paths here. Use hashes.
 
 ## TST-015 — Tasks
 
-- [ ] TST-015.1 — `scripts/gate_4.py` and its unit tests · #216 · QA · acceptance: `tests/unit/gate/test_gate_4_checks.py` (the real run is `make gate-4`, at G1)
+- [x] TST-015.1 — `scripts/gate_4.py` and its unit tests · #216 · QA · acceptance: `tests/unit/gate/test_gate_4_checks.py` (the real run is `make gate-4`, at G1)
   - [x] TST-015.1.1 — the pure checks 1–4 and 6, the verdict and `--detail` (short hashes and fixed codes only), with unit tests on synthetic rows; the raw-name skips of TST-015.D4
   - [x] TST-015.1.2 — check 7 on a synthetic compose text (short and long port syntax, `network_mode: host`), plus the repo's own `docker-compose.yml` · .1.1 was bff2dc3
   - [x] TST-015.1.3 — the runner (read-only ledger, `create_app`, `/api/files` paging, `/api/status`) and check 5 with `classifier.api.views.is_adult` (API-001.D8 as corrected); db-tier runner test · after #224
   - [x] TST-015.1.4 — wire `/ui/review` and the UI HTML (API-001.4, D8, D9) when #214 merges; until then `NOT_AVAILABLE` (the report moved to .1.9). The wiring landed in .1.11; with #241 on `main`, two db tests run the runner on the real UI (no stand-in) and every criterion is ok, and the missing-route negatives cover all seven UI routes · .1.12 was 1f939a9
-  - [ ] TST-015.1.5 — Results
+  - [x] TST-015.1.5 — Results (final, after #241 merged) · .1.4 was 19d68d8
   - [x] TST-015.1.6 — round 1 on #230 (privacy auditor): each plant proved held before absence; an empty ledger fails criteria 1, 3 and 4 (`NOT_AVAILABLE`); any `<meta http-equiv="refresh">` fails the report; counts must be plain ints; the D4 skip covers the stem plus its extension · .1.2 was 2a7923b, .1.6 was 3e914c7; round 1 item 6: the grid matches API-001.1's `GridCell`, and each cell's `adult` must equal `is_adult(branch)`
   - [x] TST-015.1.7 — the SSE read (API-001.2: one bounded status frame through the app's `events_max_ticks` seam), `repr=False` on every `Served` content field (round 2 on #230), and a test that a write on the gate's engine fails · .1.3 was e0bc1ce
   - [x] TST-015.1.8 — criterion 5 cross-checks `/api/files`' `blurred` flag (API-001.3, the 16th field): each ledger row's flag must be a bool equal to `is_adult(branch)` (`BLUR_FLAG`), checked even while the HTML is unavailable · .1.7 was cf81eb1
@@ -787,7 +787,7 @@ references or host paths here. Use hashes.
   - pre-push: 2830 passed, 48 deselected;
   - lint: ruff clean.
   - No `gpu` run: no models or prompts were touched. The real gate (`make gate-4`) is G1, the human's, and was not run.
-- **Privacy:** every plant is proved held (and served, where it applies) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on `LedgerRow`'s name and path fields and on every `Served` content field.
+- **Privacy:** every plant is proved held (and served, where it applies) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on `LedgerRow`'s path, name and category fields (`source_path`, `duplicate_paths`, `original_sanitized`, `format`, `topic`; `branch` joined them in .1.12) and on every `Served` content field.
 - **Reviews:** rounds 1–3 on #230. Round 1: the reviewer approved, and the privacy auditor failed the plant-held rule, fixed in .1.6. Rounds 2 and 3: reviewer APPROVE, privacy PASS.
 - **Status (at 6c91469):** waiting on API-001.4 (#214, its DOC-016.D3 rework). #230 merged at this interim state, and #216 was reopened for the rest (the human's session, 2026-11-12). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
 - **Self-rating (interim):** 8/10, proud: yes for what landed. Gaps:
@@ -806,3 +806,26 @@ references or host paths here. Use hashes.
   - These are the same 133, passing both on `main` (no UI) and with #241's `classifier/` mounted over the test container's (local check only, nothing copied into the tree).
   - With #241's real UI and no stand-in, the runner gives every criterion ok on the synthetic rows. This was a scratch check that isn't committed.
 - **TST-015.1.5, final Results:** after #241 merges, the runner gets a run against the real UI on `main`, and then the final self-rating. RUN-021 (htmx) is cancelled by DOC-016, so nothing here waits on it any more.
+- **Reviews:** PR #247 (.1.10, .1.11) passed the reviewer and the privacy auditor on round 1 and merged. Its review notes became .1.12 and the wording fix above.
+
+### TST-015.1, final (QA, #216, after #241 merged)
+
+- **On the real UI:** with API-001.4 on `main` (#241), the runner runs against its own routes and markup, with no stand-in (.1.4). On the synthetic seed, every criterion is ok:
+  - more than one `/api/files` page;
+  - an adult row that is the newest and isn't queued;
+  - a review row, an unsorted row and an error row;
+  - a row with a planted path, duplicate path and raw name.
+
+  The adult row's real `img.thumb` on `/ui/latest` carries `data-blur="1"`, and `main --detail` exits 0 with the verdict lines only.
+- **Both UI scenarios stay pinned (.1.10):** the UI absent gives criteria 3, 4 and 5 `NOT_AVAILABLE`; the synthetic D8/D9 stand-in keeps its negatives (an unblurred adult thumbnail, a path on a fragment, each of the seven UI routes missing).
+- **Tests:**
+  - `tests/unit/gate/test_gate_4_checks.py`: 114 passed (unit, the acceptance test);
+  - `tests/db/gate/test_gate_4_runner.py`: 24 passed (db);
+  - `make test`: 2912 passed, 48 deselected;
+  - lint: ruff clean.
+  - No `gpu` run: no models or prompts were touched. The real gate (`make gate-4`) is G1's, the human's session, and was not run.
+- **Privacy:** every plant is proved held (in the ledger) and served (no `NOT_SERVED`) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on every `LedgerRow` path, name, category and branch field and on every `Served` content field. The stand-in is test code over synthetic rows only.
+- **Status:** DONE. The gate is ready for G1's whole-folder run.
+- **Self-rating:** 9/10, proud: yes. A fresh read of the final diff and the runs against the real UI. Remaining gaps:
+  - criterion 5's HTML half sees only the adult rows the dashboard shows (the newest 20, plus queued and error rows). Every row is covered through the `/api/files` `blurred` flag instead (TST-015.D7, provisional, for the human);
+  - the report's own adult marking isn't cross-checked against `is_adult`; the report carries no thumbnail (criterion 6), so nothing there can be unblurred.
