@@ -775,7 +775,7 @@ references or host paths here. Use hashes.
   - criterion 5's `blurred` flag (API-001.3);
   - criterion 6, the real `render_report`;
   - criterion 7, the repo's `docker-compose.yml`.
-- **Not wired yet:** criterion 3 (`/ui/review`, API-001.D9) and criterion 5's HTML half (`img.thumb` `data-blur`, API-001.D8) wait for API-001.4 (#214), which waits for htmx (RUN-021).
+- **Not wired yet:** criterion 3 (`/ui/review`, API-001.D9) and criterion 5's HTML half (`img.thumb` `data-blur`, API-001.D8) wait for API-001.4 (#214), now being reworked to plain JavaScript (DOC-016.D3; RUN-021 is cancelled).
   - Their checks are written and unit-tested against the D8 and D9 markup contract, on synthetic HTML.
   - Until #214 lands they fail as `NOT_AVAILABLE`, and so does criterion 4, which needs the UI bodies. So the gate cannot pass yet, by design.
 - **Tests:**
@@ -786,7 +786,7 @@ references or host paths here. Use hashes.
   - No `gpu` run: no models or prompts were touched. The real gate (`make gate-4`) is G1, the human's, and was not run.
 - **Privacy:** every plant is proved held (and served, where it applies) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on `LedgerRow`'s name and path fields and on every `Served` content field.
 - **Reviews:** rounds 1–3 on #230. Round 1: the reviewer approved, and the privacy auditor failed the plant-held rule, fixed in .1.6. Rounds 2 and 3: reviewer APPROVE, privacy PASS.
-- **Status:** BLOCKED on API-001.4 (#214) → RUN-021 (vendored htmx). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
+- **Status:** waiting on API-001.4 (#214, its DOC-016.D3 rework). #230 merged at this interim state, and #216 was reopened for the rest (the human's session, 2026-11-12). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
 - **Self-rating (interim):** 8/10, proud: yes for what landed. Gaps:
   - criteria 3 and 5 haven't run against the real UI markup, only against synthetic HTML written to D8 and D9;
   - the report's own `blurred` cell isn't cross-checked, only the API's.

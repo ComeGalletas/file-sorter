@@ -16,7 +16,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **Details:**
   - `GET /api/status`, `GET /api/events` (SSE) and `GET /api/files?status=&format=&topic=&needs_review=&page=`;
   - a thumbnail route over `.work/thumbs/`;
-  - one `classifier/ui/index.html` with vendored htmx: the dashboard (run banner, topic × format grid split safe vs adult, the latest 20 files, errors) and the review queue (unsorted and `needs_review`, with adult thumbnails blurred by default and click-to-reveal);
+  - one `classifier/ui/index.html` with plain JavaScript in `classifier/ui/app.js` and no third-party library (DOC-016.D1; it first said vendored htmx): the dashboard (run banner, topic × format grid split safe vs adult, the latest 20 files, errors) and the review queue (unsorted and `needs_review`, with adult thumbnails blurred by default and click-to-reveal);
   - `classifier report`'s HTML, built from the same view models.
 - **Constraint:**
   - read-only: no write route, and no deletion ever (R-API-3 is M8; R-API-8);
@@ -33,12 +33,12 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - ING-002 writes `.work/thumbs/<source_hash>.webp` from the sanitized working copy;
   - the ledger has every field the review queue needs (§5), and the cross-check is `review_reason = nsfw_disagreement` (CLS-004.D5, D13);
   - there is no `runs` table yet (DB-007).
-- **The human's G0 answers (2026-11-10):** 1 (the dry run starts from the CLI), 2 (the review fields), 3 (the thumbnails, none in the report), 4 (htmx, vendored), 5 (localhost only, through the proxy) and 7 (VRAM and the model from `/api/ps`, else "n/a"). They are recorded in `docs/plans/m4.md`.
+- **The human's G0 answers (2026-11-10):** 1 (the dry run starts from the CLI), 2 (the review fields), 3 (the thumbnails, none in the report), 4 (plain JavaScript, no library: the human changed it from vendored htmx on 2026-11-12, DOC-016), 5 (localhost only, through the proxy) and 7 (VRAM and the model from `/api/ps`, else "n/a"). They are recorded in `docs/plans/m4.md`.
 - **API-001.D1 — "latest", not "filed"** (lead, 2026-11-10, provisional): in a dry run the dashboard lists the latest 20 rows by `updated_at`. The label becomes "filed" in M7.
 - **API-001.D2 — errors with no retry** (lead, provisional): a row shows the short hash, the status and the fixed error code. Retry is M8.
 - **API-001.D3 — the SSE content** (lead, provisional):
   - the status JSON whenever it changes, checked every 2 s, plus a keep-alive comment;
-  - a few lines of `EventSource` script make htmx refresh its fragments, so no SSE extension is vendored.
+  - `app.js` listens with `EventSource` and re-fetches each fragment on every message (DOC-016.D1; it first said htmx refreshes the fragments).
 - **API-001.D4 — HTML escaping** (lead, provisional): one helper over `html.escape` in `classifier/ui/`, with no new dependency.
 - **API-001.D5 — paging** (lead, provisional):
   - 50 per page, newest `updated_at` first, `page` from 1;
@@ -67,7 +67,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **`classifier/ui/`:**
   - `index.html`;
   - the escaping helper and the fragment renderers;
-  - `vendor/htmx.min.js` (RUN-021);
+  - `app.js`: `fetch()` of each `data-fragment` section, on load and on each SSE message, plus the click-to-reveal toggle (DOC-016.D3; RUN-021's vendored htmx is cancelled);
   - the blur: CSS `filter: blur()` on adult thumbnails by default, and a click toggles that one image.
 - **`classifier/api/report.py`:** `render_report(status, files) -> str`, with inline CSS, no script needed, no thumbnails and no external reference.
 - **Tests:** the `db` tier with a throwaway migrated schema and synthetic rows, through FastAPI's `TestClient`. The privacy plants are proved served before absence is asserted (M4 checklist 11–15).
