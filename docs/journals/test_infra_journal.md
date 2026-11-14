@@ -750,6 +750,7 @@ references or host paths here. Use hashes.
 - **TST-015.D1 — verdicts only** (lead, 2026-11-10, provisional). Nothing about the folder is published, in the spirit of TST-008.D1.
 - **TST-015.D2 — the `make gate-4` rule is human-side**, in RUN-019 (RUN-019.D3), like TST-013's `gate-3` rule.
 - **TST-015.D3 — what `--detail` may print** (lead, 2026-11-10; the privacy auditor's finding on #220): short hashes and fixed codes only (DOC-007.D1, ING-001.D2).
+- **TST-015.D7 — criterion 5's two halves** (lead, 2026-11-14, provisional; on #216): the HTML half checks every adult thumbnail served on any UI fragment (`/ui/latest`, the review and errors pages), with `NO_ADULT_THUMB` as the guard when adult rows exist but none is served. "Every adult row is blurred" rests on the flag half: `/api/files`' `blurred` must equal `is_adult` for every row, and the fragments render `data-blur` from that field. This reads the criterion; it doesn't change it.
 
 ## TST-015 — Tasks
 
