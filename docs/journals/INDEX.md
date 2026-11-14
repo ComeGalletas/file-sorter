@@ -97,17 +97,17 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | DOC-014 | CLAUDE.md "Current phase" after `m3-approved` | DOC | process | done (human-side) | m4 | PR #205 | [process_standard_journal.md](process_standard_journal.md) | `doc-014-claude-current-phase` | 2026-11-10 |
 | DOC-015 | DESIGN §13 C-30 to C-32: M4's G0 deviations (R-API-1 through the proxy, R-API-5, R-API-6) | DOC, API | process | done (human-side) | m4 | PR #223 | [process_standard_journal.md](process_standard_journal.md) | `doc-015-design-m4-deviations` | 2026-11-10 |
 | DOC-016 | The M4 UI uses plain JavaScript, no htmx: DESIGN R-API-5, C-31; RUN-021 cancelled | DOC, API, RUN | process | done (human-side) | m4 | PR #243 | [process_standard_journal.md](process_standard_journal.md) | `doc-016-ui-plain-js` | 2026-11-12 |
-| DOC-017 | Remove the handle from DESIGN.md's header (public repo) | DOC | process | proposed (human-side) | m4 | — | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-14 |
+| DOC-017 | Remove the handle from DESIGN.md's header (public repo) | DOC | process | done (human-side, PR #244) | m4 | PR #244 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-14 |
 | DB-007 | Migration `0007`: the `runs` table and the run advisory lock | DB, PIPE, API | feature | done (PR #226) | m4 | #207 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
 | PIPE-002 | `dry-run` records its run and holds the run lock | PIPE, DB | feature | done (PRs #231, #239) | m4 | #208, #232 | [pipeline_journal.md](pipeline_journal.md) | — | 2026-11-10 |
 | MOD-003 | The Ollama client reads `/api/ps` (loaded model, VRAM) | MOD, API | feature | done (PR #228) | m4 | #209 | [models_journal.md](models_journal.md) | — | 2026-11-10 |
-| API-001 | The read-only API, SSE, thumbnails, the dashboard and review queue, the HTML report | API, UI | feature | in progress (.1, .2, .3, .5 merged: PRs #224, #233, #236, #235; .4 is PR #241, reworked to plain JavaScript per DOC-016.D3) | m4 | #210, #211, #212, #214, #213 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
+| API-001 | The read-only API, SSE, thumbnails, the dashboard and review queue, the HTML report | API, UI | feature | done (PRs #224, #233, #236, #235, #241) | m4 | #210, #211, #212, #214, #213 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
 | CLI-008 | `classifier serve` and `classifier report` | CLI, API | feature | done (PRs #237, #240) | m4 | #215, #234 | [api_journal.md](api_journal.md) | — | 2026-11-10 |
-| TST-015 | Gate 4: automated checks on the real dry run | TST, API | feature | in progress (PR #230 merged .1.1–.1.3 and .1.5–.1.9; .1.4, the UI wiring, and the final Results remain on #216, reopened) | m4 | #216 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-10 |
+| TST-015 | Gate 4: automated checks on the real dry run | TST, API | feature | done (PRs #230, #247, #248) | m4 | #216 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-10 |
 | DB-008 | M3 hardening: pin the 18 seeded category descriptions in the migration test | DB, TST | refactor | done (PR #225) | m4 | #217 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
 | CLI-009 | M3 hardening: a planted secret on `categories edit --description` | CLI, TST | refactor | done (PR #227) | m4 | #218 | [categories_journal.md](categories_journal.md) | — | 2026-11-10 |
 | RUN-019 | The localhost-only UI proxy, `app` serving, the `gate-4` rule | RUN, API | feature | done (human-side, PRs #221, #238) | m4 | — | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-11-10 |
-| RUN-020 | Pin `rich`/`typer` or all runtime dependencies (TST-014) | RUN, TST | refactor | proposed (human-side; the human's session, 2026-11-14, if time allows) | — | — | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-11-10 |
+| RUN-020 | Pin `rich`/`typer` or all runtime dependencies (TST-014) | RUN, TST | refactor | done (human-side, PR #246) | — | PR #246 | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-11-10 |
 | RUN-021 | Vendor htmx at a pinned version | RUN, UI | feature | cancelled (the human, 2026-11-12: plain JavaScript, no htmx; DOC-016) | m4 | — | [bootstrap_journal.md](bootstrap_journal.md) | — | 2026-11-10 |
 
 ## Plans and designs

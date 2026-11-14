@@ -56,6 +56,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **API-001.D11 — SSE on failure** (lead, on #211): one fixed `unavailable` event per transition, and the stream stays open.
 - **API-001.D12 — one fixed 404** (lead, on #212): every refusal on `/thumbs/` (malformed, unknown, not regular, a link, too big, any `OSError`) is the same `{"detail": "not found"}`.
 - **API-001.D13 — the UI's CSP** (lead, on #214): `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, plus `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`. The page has no inline script; the few lines of `EventSource` and click-to-reveal live in a served `classifier/ui/app.js`.
+- **API-001.D14 — the "more" rows** (lead, 2026-11-14, provisional; on #214): the next page loads when the "more" row scrolls into view (`IntersectionObserver`), or on a click on its link as a fallback. The fetched rows replace the row. There is no `<form>` or `<button>`, and only one load per row is in flight.
+- **API-001.D15 — two refresh groups** (lead, 2026-11-14, provisional; on #214): the banner, grid and latest rows refresh on every status frame. Errors and the review queue refresh only when the run changes, so a thumbnail revealed in the queue isn't re-blurred while the human looks at it.
 
 ## API-001 — Plan
 
