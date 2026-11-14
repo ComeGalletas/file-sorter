@@ -92,6 +92,14 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.3.2 — `GET /thumbs/{source_hash}`: ledger-hash-only paths, non-regular files and symlinks refused, one fixed 404 for every refusal (API-001.D12) · 20f8ed0
   - [x] API-001.3.3 — #236 round 1: an `OSError` from `os.close` is a refusal too (None, never an escape), tested with a plant through the reader and the route; the field-count comment in `views.py` says 16 · (this commit)
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
+  - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests · 381cd13
+  - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers) · d701b0b
+  - ~~API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)~~ dropped: replaced by the plain-JavaScript rework, API-001.4.5 to .4.8 (DOC-016.D1, D3; RUN-021 is cancelled)
+  - [x] API-001.4.4 — round 1 on #241: the review row's full cell run asserted by position, and the D13 CSP asserted as a typed literal
+  - [x] API-001.4.5 — DOC-016.D3: the `/ui/vendor/htmx.min.js` route and `VENDOR_HTMX`, the htmx `<script>` tag and every `hx-*` attribute removed; the "more" row carries `data-more` and a link; tests: the page's script list is exactly `["/ui/app.js"]`, no `hx-` or `htmx` in any served response, the old route is the fixed 404 · cedecdf
+  - [x] API-001.4.6 — DOC-016.D3, API-001.D15: each section carries `data-fragment="<route>"` and `data-group="refresh|refresh-queue"`; `app.js` loads every fragment with a same-origin `fetch()` (`credentials: "same-origin"`, `redirect: "error"`, a path with one leading slash only), refreshes `refresh` on every status frame and `refresh-queue` on a run change, never lets an older reply overwrite a newer one, and leaves a section as it is on a failed fetch; test: the five routes and groups, each a GET with the D13 CSP · d0b9304
+  - [x] API-001.4.7 — API-001.D14 (provisional): a "more" row loads the next page when it scrolls into view (`IntersectionObserver`) or is clicked (the fallback; the link's `#` never navigates), and the fetched rows replace it; one load per row at a time, a failed load leaves the row for a retry, a refreshed section stops observing its old rows; tests: the row's same-origin `data-more` and link markup, no write marker on a page that ends with one, the loader's markers in `app.js` · eee90ee
+  - [x] API-001.4.8 — DOC-016.D3's tests, as they landed with .4.5 to .4.7 (only the htmx assertions were removed, so the D8/D9 checks are unchanged), and the Results for the rework · 8fef089
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
   - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
@@ -145,6 +153,27 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `make test` (unit + db + integration): 2612 passed, 48 deselected; `make lint` clean.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. Pass 1 found a gap (no test for a row with no sanitized name yet), fixed in pass 2. The remaining point: the report holds every row in one string, so a very large ledger costs memory in CLI-008.1; the signature returns `str`, so streaming would be a contract change.
+
+### API-001.4 (#214)
+
+- **Decision applied, API-001.D13 (lead, #214):** the page's script (the `EventSource` refresh and click-to-reveal) is the served `classifier/ui/app.js`, never inline. Every UI response carries a CSP that allows only the page's own origin and no inline script (`default-src 'none'; script-src 'self'; …; form-action 'none'; frame-ancestors 'none'`), plus `no-referrer`, `nosniff` and `no-store`.
+- **Also applied:** the router is in `classifier/ui/routes.py`, included by `create_app` (lead, #214, answer 1). Errors are 50 per page with `?page=N` (answer 2). The review queue and errors refresh only when the run's id or state changes, not on every status frame, so a revealed thumbnail there isn't re-blurred every 2 s.
+- **Tests:**
+  - acceptance `tests/db/api/test_ui.py`: 15 passed (14, plus the D13 literal from API-001.4.4). Mutating the blur flag or the queue predicate fails its test;
+  - `tests/unit/ui/test_fragments.py`: 13 passed;
+  - `make test` (unit + db + integration): 2751 passed, 48 deselected; `make lint` clean.
+- **First status:** BLOCKED on RUN-021 for API-001.4.3, which DOC-016 then replaced.
+- **The rework, DOC-016.D3 (API-001.4.5 to .4.7):** htmx is gone (the vendor route, its script tag, every `hx-*`). `app.js` is plain JavaScript: it loads each `data-fragment` with a same-origin `fetch()`, refreshes the two groups of API-001.D15 from `/api/events`, and loads the "more" rows of API-001.D14 on scroll (`IntersectionObserver`) or on a click. The D8/D9 markup, `is_adult`, the D13 CSP and click-to-reveal are unchanged: the only test lines removed were the htmx assertions.
+- **Tests (the rework):**
+  - acceptance `tests/db/api/test_ui.py`: 17 passed (15, plus the htmx-free check and the fragment and group check). The page's script list is exactly `["/ui/app.js"]`; no `hx-` or `htmx` appears in any served response; the old vendor route is the fixed 404; a page that ends with a "more" row has no write marker;
+  - `tests/unit/ui` + `tests/unit/api` + `tests/db/api`: 166 passed; `make lint` clean;
+  - `node --check` passes on `app.js` (the host's own Node, which agent-office already needs; nothing installed), and the same-origin check, taken from `app.js` itself, accepts `/ui/review?page=2` and refuses `//host`, a backslash, `http:`, a relative path and the empty string;
+  - `make test` before #247: 2872 passed, 2 failed (the gate 4 runner's two tests, which asserted that the UI hadn't landed; the same with the pre-rework UI), 48 deselected. After merging `main` with #247 (TST-015.1.10, .1.11): the pre-push run's counts are in the PR body.
+- **Status:** DONE.
+  - The push waited on QA's gate 4 runner tests, reported on #241 and #214. #247 fixed them (the runner tests build the UI present or absent explicitly) and criterion 5 (it now reads `/ui/latest` too).
+- **Self-rating:** 8/10, proud: yes. The gaps:
+  - `app.js` still has no behaviour test in a browser or DOM (the image has no JS runtime). Its contract is pinned from the Python side by markers, and checked with `node --check`;
+  - the latest rows refresh on every status frame, so a thumbnail revealed there blurs again within 2 s while a run is running (API-001.D15 as written; it errs toward blurred).
 
 ---
 

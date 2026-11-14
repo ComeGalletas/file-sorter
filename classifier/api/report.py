@@ -99,7 +99,7 @@ def _run_section(run: RunView | None, imgs_per_min: float | None) -> str:
     return out
 
 
-def _status_section(status: StatusView) -> str:
+def status_section(status: StatusView) -> str:
     out = _run_section(status.run, status.imgs_per_min)
     out += "<h2>Files by status</h2>\n" + _kv_table(sorted(status.counts_by_status.items()))
     out += "<h2>Loaded models</h2>\n"
@@ -147,7 +147,7 @@ def _grid_table(title: str, cells: list[GridCell]) -> str:
     return out + f"<table>{head}{body}</table>\n"
 
 
-def _grid_section(grid: list[GridCell]) -> str:
+def grid_section(grid: list[GridCell]) -> str:
     adult = [c for c in grid if c.adult]
     unclassified = [c for c in grid if not c.adult and c.branch is None]
     safe = [c for c in grid if not c.adult and c.branch is not None]
@@ -182,7 +182,7 @@ def _file_row(r: FileRow) -> str:
 
 def render_report(status: StatusView, files: Iterable[FileRow]) -> str:
     """The whole report as one HTML string. `files` is consumed once, in its own order."""
-    parts = [_HEAD, _status_section(status), _grid_section(status.grid)]
+    parts = [_HEAD, status_section(status), grid_section(status.grid)]
     parts.append("<h2>Files</h2>\n<table>\n<tr>")
     parts.append("".join(f"<th>{esc(h)}</th>" for h in _ROW_HEADERS))
     parts.append("</tr>\n")

@@ -37,6 +37,7 @@ from classifier.api.views import (
 from classifier.config import Config
 from classifier.db.models import File, FileStatus
 from classifier.db.url import to_sqlalchemy_url
+from classifier.ui.routes import ui_router
 
 INVALID_QUERY = "invalid query"  # API-001.D5: fixed text, never the input echoed back
 NOT_FOUND = "not found"  # API-001.D12: every 404, whatever was refused
@@ -239,6 +240,7 @@ def create_app(
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         return Response(content=data, media_type=THUMB_MEDIA_TYPE, headers=THUMB_HEADERS)
 
+    app.include_router(ui_router(read=_read, guard=guarded, status=_status_view))  # API-001.4
     app.state.engine = engine
     app.state.probe = probe
     # API-001.D3, D10. Tests swap the sleep and bound the ticks; production never does.
