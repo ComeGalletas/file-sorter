@@ -84,8 +84,11 @@ def test_full_page_ends_with_a_loader_for_the_next() -> None:
     rows = [_row(i) for i in range(PER_PAGE)]
     out = fragments.review(rows, 4)
     assert out.count("<tr data-hash=") == PER_PAGE
-    assert 'hx-get="/ui/review?page=5" hx-trigger="revealed"' in out
-    assert 'hx-get="/ui/errors?page=2"' in fragments.errors(rows, 1)
+    assert out.endswith(
+        '<tr class="more" data-more="/ui/review?page=5">'
+        f'<td colspan="{len(fragments.REVIEW_HEADERS)}"><a href="#">more</a></td></tr>\n'
+    )
+    assert '<tr class="more" data-more="/ui/errors?page=2">' in fragments.errors(rows, 1)
 
 
 def test_empty_page_is_empty() -> None:

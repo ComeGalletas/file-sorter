@@ -18,30 +18,29 @@ tr.adult td{background:var(--adult)}
 img.thumb{width:96px;height:96px;object-fit:cover;cursor:pointer;display:block}
 img.thumb[data-blur="1"]{filter:blur(16px)}
 </style>
-<script src="/ui/vendor/htmx.min.js" defer></script>
 <script src="/ui/app.js" defer></script>
 </head>
 <body>
 <h1>file-sorter</h1>
 <p>Read-only. Adult thumbnails are blurred; click one to reveal it.</p>
 
-<section id="banner" hx-get="/ui/banner" hx-trigger="load, refresh from:body"></section>
+<section id="banner"></section>
 
-<section id="grid" hx-get="/ui/grid" hx-trigger="load, refresh from:body"></section>
+<section id="grid"></section>
 
 <h2>Latest</h2>
-<div id="latest" class="scroll" hx-get="/ui/latest" hx-trigger="load, refresh from:body"></div>
+<div id="latest" class="scroll"></div>
 
 <h2>Errors</h2>
 <div class="scroll"><table>
 <thead><tr><th>hash</th><th>status</th><th>error</th><th>updated</th></tr></thead>
-<tbody id="errors" hx-get="/ui/errors?page=1" hx-trigger="load, refresh-queue from:body"></tbody>
+<tbody id="errors"></tbody>
 </table></div>
 
 <h2>Review queue</h2>
 <div class="scroll"><table>
 <thead><tr><th></th><th>hash</th><th>sanitized name</th><th>format</th><th>topic</th><th>NSFW level</th><th>traces</th><th>cross-check disagrees</th><th>review reason</th></tr></thead>
-<tbody id="review" hx-get="/ui/review?page=1" hx-trigger="load, refresh-queue from:body"></tbody>
+<tbody id="review"></tbody>
 </table></div>
 </body>
 </html>

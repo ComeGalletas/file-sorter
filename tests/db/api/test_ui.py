@@ -233,7 +233,7 @@ def test_review_queue_pages_newest_first(client, seed, tag) -> None:
     page1 = _get(client, "/ui/review?page=1").text
     served = re.findall(r'<tr data-hash="[0-9a-f]{8}" data-source-hash="([0-9a-f]{64})"', page1)
     assert served == hashes[:PER_PAGE]
-    assert 'hx-get="/ui/review?page=2"' in page1
+    assert '<tr class="more" data-more="/ui/review?page=2">' in page1
     page2 = _get(client, "/ui/review?page=2").text
     assert re.findall(r'data-source-hash="([0-9a-f]{64})"', page2)[0] == hashes[PER_PAGE]
     assert _get(client, "/ui/review?page=100000").text == ""  # past the end: empty
@@ -277,7 +277,7 @@ def test_no_outbound_reference(client, seed, tag) -> None:
     assert "http:" not in js and "https:" not in js
     assert not re.search(r"""["'(`]\s*//""", js)  # no protocol-relative URL in a literal
     srcs = re.findall(r'(?:src|href)="([^"]*)"', _get(client, "/").text)
-    assert srcs == ["/ui/vendor/htmx.min.js", "/ui/app.js"]
+    assert srcs == ["/ui/app.js"]  # DOC-016.D3: the only script, no third-party library
 
 
 def test_ui_is_read_only(client, seed, tag) -> None:
@@ -289,6 +289,17 @@ def test_ui_is_read_only(client, seed, tag) -> None:
     for path in FRAGMENTS + STATIC:
         for method in ("POST", "PUT", "PATCH", "DELETE"):
             assert client.request(method, path).status_code == 405, (method, path)
+
+
+def test_no_htmx_is_served(client, seed, tag) -> None:
+    """DOC-016.D3: no hx- attribute or htmx reference anywhere, and no vendor route."""
+    seed(topic=tag, needs_review=True, review_reason="unsorted")
+    for path in FRAGMENTS + STATIC:
+        lowered = _get(client, path).text.lower()
+        assert "hx-" not in lowered and "htmx" not in lowered, path
+    response = client.get("/ui/vendor/htmx.min.js")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "not found"}
 
 
 def test_csp_is_the_d13_literal(client) -> None:

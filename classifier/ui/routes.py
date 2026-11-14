@@ -3,8 +3,8 @@
 `create_app` includes `ui_router(...)`, handing it its read-only connection runner, its
 fixed-text guard and its status builder, so this module never imports `classifier.api.app`.
 
-- `/` is the static dashboard; `/ui/app.js` and the vendored `/ui/vendor/htmx.min.js`
-  (RUN-021) are served from the package, never a CDN (m4 item 14).
+- `/` is the static dashboard and `/ui/app.js` its only script, plain JavaScript served
+  from the package, with no third-party library and no CDN (m4 item 14, DOC-016.D1).
 - The fragments: `/ui/banner`, `/ui/grid`, `/ui/latest`, `/ui/errors?page=N` (API-001.D2)
   and `/ui/review?page=N` (API-001.D9). A bad `page` gets the app's fixed 422.
 - Every response carries a CSP that allows only the page's own origin and no inline script
@@ -25,7 +25,6 @@ from classifier.ui import fragments, queries
 UI_DIR = Path(__file__).resolve().parent
 INDEX = UI_DIR / "index.html"
 APP_JS = UI_DIR / "app.js"
-VENDOR_HTMX = UI_DIR / "vendor" / "htmx.min.js"  # RUN-021, committed by the human's session
 NOT_FOUND = "not found"  # the app's handler gives every 404 this body (API-001.D12)
 MAX_PAGE = 1_000_000  # the same bound as classifier.api.app.MAX_PAGE (pinned by a test)
 
@@ -53,7 +52,7 @@ def _html(body: str) -> HTMLResponse:
 
 
 def _static(path: Path, media_type: str) -> Response:
-    """A packaged file, or the fixed 404 when it isn't there (htmx before RUN-021)."""
+    """A packaged file, or the fixed 404 when it isn't there."""
     if not path.is_file():
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     return Response(content=path.read_bytes(), media_type=media_type, headers=UI_HEADERS)
@@ -69,10 +68,6 @@ def ui_router(*, read: Read, guard: Guard, status: Callable[[], StatusView]) -> 
     @router.get("/ui/app.js")
     def app_js() -> Response:
         return _static(APP_JS, JS_MEDIA_TYPE)
-
-    @router.get("/ui/vendor/htmx.min.js")
-    def htmx_js() -> Response:
-        return _static(VENDOR_HTMX, JS_MEDIA_TYPE)
 
     @router.get("/ui/banner", response_class=HTMLResponse)
     def banner() -> HTMLResponse:

@@ -94,8 +94,9 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - [ ] API-001.4 — `index.html`, the dashboard and the review queue, the fragments, the escaping helper · #214 · API/UI · acceptance: `tests/db/api/test_ui.py`
   - [x] API-001.4.1 — `classifier/ui/{queries,fragments,routes}.py`, `index.html`, `app.js` (API-001.D13), the one-line include in `create_app`; unit tests · 381cd13
   - [x] API-001.4.2 — the db acceptance test `tests/db/api/test_ui.py` (plants, escaping, D8, D9, no outbound reference, read-only, headers) · d701b0b
-  - [ ] API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)
+  - ~~API-001.4.3 — the vendored htmx route's test, once RUN-021 is on `main` (nothing stubbed before then)~~ dropped: replaced by the plain-JavaScript rework, API-001.4.5 to .4.8 (DOC-016.D1, D3; RUN-021 is cancelled)
   - [x] API-001.4.4 — round 1 on #241: the review row's full cell run asserted by position, and the D13 CSP asserted as a typed literal
+  - [x] API-001.4.5 — DOC-016.D3: the `/ui/vendor/htmx.min.js` route and `VENDOR_HTMX`, the htmx `<script>` tag and every `hx-*` attribute removed; the "more" row carries `data-more` and a link; tests: the page's script list is exactly `["/ui/app.js"]`, no `hx-` or `htmx` in any served response, the old route is the fixed 404 · (this commit)
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
   - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190

@@ -46,12 +46,16 @@ def _tds(values: Sequence[object]) -> str:
 
 
 def _more(route: str, page: int, rows: Sequence[FileRow], colspan: int) -> str:
-    """A full page ends with a row that loads the next page when scrolled into view."""
+    """A full page ends with a row that loads the next page (API-001.D14).
+
+    `app.js` fetches `data-more` (same origin) when the row scrolls into view or is clicked,
+    and puts the rows it gets in this row's place. A link, not a form or button (R-API-8).
+    """
     if len(rows) < PER_PAGE:
         return ""
     return (
-        f'<tr class="more" hx-get="{route}?page={page + 1}" hx-trigger="revealed" '
-        f'hx-swap="outerHTML"><td colspan="{colspan}">more</td></tr>\n'
+        f'<tr class="more" data-more="{route}?page={page + 1}">'
+        f'<td colspan="{colspan}"><a href="#">more</a></td></tr>\n'
     )
 
 

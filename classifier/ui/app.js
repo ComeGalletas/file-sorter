@@ -11,9 +11,8 @@
   var lastRun = null;
 
   function fire(name) {
-    if (window.htmx) {
-      window.htmx.trigger(document.body, name);
-    }
+    // DOC-016.D1: no library. The fetch() loader for each data-group lands in API-001.4.6.
+    return name;
   }
 
   var source = new EventSource("/api/events");
