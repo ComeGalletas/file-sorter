@@ -46,6 +46,16 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - a bad value gets a 422 with fixed text.
 - **API-001.D6 — the report's default path** (lead, provisional): `/results/reports/report-<UTC timestamp>.html`, opened exclusively; `--out` overrides it.
 - **API-001.D7 — imgs/min** (lead, provisional): the rows whose `updated_at` falls inside the current (or last) run's window, divided by its elapsed minutes.
+- **API-001.D8 — thumbnail markup and the adult predicate** (lead, 2026-11-10, on #214 and #216; **corrected** the same night, as the human's session pointed out).
+  - Every thumbnail in served HTML is `<img class="thumb" src="/thumbs/<source_hash>" data-hash="<short_hash>" data-blur="1|0" alt="">`, with no `title`.
+  - `data-blur="1"` is set server-side by default for adult rows. The click-to-reveal toggles one image in the browser and is never persisted.
+  - "Adult" is **one predicate**: `classifier.api.views.is_adult(branch)` against `ADULT_BRANCH`, the ledger's `branch = 'nsfw'` (R-CLS-1), pinned by a test to `classify_rules.branch_for_level`. The UI, the grid's split (`GridCell.adult`), the report and gate 4 all use it, and never retype the string. The first wording keyed on `'adult'`, a value the ledger never holds, which would have left every real adult thumbnail unblurred.
+  - `FileRow.blurred` (the 16th field, API-001.3) carries it.
+- **API-001.D9 — the review queue route** (lead, on #214 and #216). `GET /ui/review?page=N`, 50 per page, newest first. It returns one `<tr data-hash data-source-hash>` per queued row: `needs_review`, or the `unsorted` fallback format (imported from the classify rules). An empty page is the end.
+- **API-001.D10 — SSE keep-alive** (lead, on #211): a comment after 15 s with no frame.
+- **API-001.D11 — SSE on failure** (lead, on #211): one fixed `unavailable` event per transition, and the stream stays open.
+- **API-001.D12 — one fixed 404** (lead, on #212): every refusal on `/thumbs/` (malformed, unknown, not regular, a link, too big, any `OSError`) is the same `{"detail": "not found"}`.
+- **API-001.D13 — the UI's CSP** (lead, on #214): `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, plus `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff`. The page has no inline script; the few lines of `EventSource` and click-to-reveal live in a served `classifier/ui/app.js`.
 
 ## API-001 — Plan
 
@@ -165,9 +175,16 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 - **Constraint:** both are thin wrappers, with no logic beyond config and file handling. Errors are fixed text and unchained, and `report` never overwrites a file.
 - **Implements:** R-API-1, R-API-7, §7.
 
+## CLI-008 — Confirmed reading
+
+- **CLI-008.D1 — the report makes no Ollama call** (lead, on #215): a static file depends on nothing live, so its models section is "n/a".
+- **The split** (lead, on #215): CLI-008.1 is `serve` only (#215), so RUN-019.2 could land early. `report` is CLI-008.2 (#234).
+
 ## CLI-008 — Tasks
 
-- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234)
+- [x] CLI-008.1 — `serve` and `report` · #215 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the lead split it on #215: `serve` only; `report` is CLI-008.2, #234) (`65d4435`; PR #237, merged as `4eb347b`)
+- [x] CLI-008.2 — `report [--out]` · #234 · Pipeline · acceptance: `tests/db/cli/test_serve_report_cli.py` (the report cases) (`5494aaa`; PR #240, merged as `6c017d5`)
+  - [x] CLI-008.2.1 — Round 1 on PR #240: a fixed `ConfigError` text in `report` and `serve`, a broad catch around the render, and the reviewer's test gaps (`4102537`)
 
 ## CLI-008 — Results
 
@@ -191,3 +208,45 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `make test`: 2636 passed, 48 deselected;
   - `make lint`: clean.
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: while `serve` runs, any ERROR on `uvicorn.error` is dropped, not only the bind message. A protocol-level error's detail is then invisible on the box console too. This trades local diagnostics for never echoing OS or exception text. Request handling itself is guarded in `create_app`, so the API's own errors never reach uvicorn.
+
+### CLI-008.2 (#234, Pipeline): `report`
+
+- **What:** `classifier/cli/report.py`, registered as `classifier report [--out PATH] [--config]`.
+  - One read-only, repeatable-read transaction (`read_only_engine`) builds `build_status` and every `file_row` from `rows_query(FileFilters())`. `render_report` (API-001.5) turns them into HTML, encoded UTF-8 (strict) in memory before any file is created.
+  - **CLI-008.D1 (lead):** no Ollama probe, so the models section stays "n/a".
+- **Where it writes:**
+  - by default, `results_root/reports/report-<UTC %Y%m%dT%H%M%SZ>.html` (API-001.D6), opened `"xb"`, with `-1`, `-2` on a same-second clash, like the dry-run CSV;
+  - with `--out`, opened `"xb"`, so an existing file is refused.
+
+  It prints `report written: <file name>`, never a folder.
+- **Errors:** fixed text, unchained, and none echoes a value.
+  - an existing `--out` exits 2 and leaves the file unchanged;
+  - a write failure, including a file where `reports/` goes, exits 1 with `error: could not write the report`. The first test run caught that `mkdir`'s `FileExistsError` was being reported as the `--out` message, and the handling was fixed;
+  - a database error exits 1 without the DSN;
+  - a missing DSN exits 2 with `load_config`'s fixed text.
+- **Tests:**
+  - acceptance `tests/db/cli/test_serve_report_cli.py`: 20 passed, 7 of them `report` cases. They cover:
+    - a planted made-up name in `source_path`, `duplicate_paths`, `proposed_path` and `caption`, proved held in the ledger first; then the sanitized name and the short hashes proved served in the HTML; and only then the plant, `/source/`, `/results/` and a live `<script>` asserted absent, with the escaped form present and "n/a" for the models;
+    - no Ollama client is built;
+    - the UTC-stamp name, and the `-1` on a clash, with the first file unchanged;
+    - `--out` new and existing;
+    - an unwritable folder;
+    - a database error without the DSN;
+    - a missing DSN;
+  - `make test`: 2731 passed, 48 deselected;
+  - `make lint`: clean.
+- **Status:** DONE. **Self-rating:** 9/10, proud: yes. Gap: a write that fails after the file was created (a full disk) leaves the partial file in place, as the dry-run CSV does, because deleting is `fileops/delete.py`'s alone. A re-run writes under the next free name.
+- **CLI-008.2.1 (round 1 on PR #240; the privacy auditor's FAIL):**
+  - **The config path.** `report` and `serve` echoed `load_config`'s `ConfigError` text, which can carry the `--config` path. Both now print the fixed `error: the config could not be loaded; check the config file and DB_DSN` (the same text as `categories.py`), and a missing DSN gives the same line. Every `typer.Exit` is raised outside its `except`, so the errors are unchained (`__cause__` and `__context__` both None).
+  - **The render:** any exception from it becomes the fixed database text.
+  - **New tests:**
+    - for each command, a plant in the `--config` path, first proved present in the raw `ConfigError` text, then shown absent from the output;
+    - the snapshot is pinned, by reading `transaction_isolation` and `transaction_read_only` inside the render: `repeatable read` and `on`;
+    - unchained `Exit`s on the config, database, write and `--out`-exists paths, with the commands called directly;
+    - a render failure with a planted message gives fixed text and no folder;
+    - an encode failure (a lone surrogate) leaves no file and no `reports/` folder, and with `--out` no file;
+    - the written report has no `<img`, `http:`, `https:`, `="//`, `src=`, `url(` or `/thumbs/`.
+
+      A bare `http` matches the CSP's `<meta http-equiv>` from API-001.5, which is no URL, so the URL forms are checked instead, and the CSP meta is asserted present.
+  - On the round-1 code, the planted-path, no-DSN and broad-catch tests fail (5 tests, checked).
+  - Results: acceptance 27 passed; `make test` 2738 passed, 48 deselected; `make lint` clean.
