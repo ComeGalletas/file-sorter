@@ -233,7 +233,12 @@ def test_review_queue_pages_newest_first(client, seed, tag) -> None:
     page1 = _get(client, "/ui/review?page=1").text
     served = re.findall(r'<tr data-hash="[0-9a-f]{8}" data-source-hash="([0-9a-f]{64})"', page1)
     assert served == hashes[:PER_PAGE]
-    assert '<tr class="more" data-more="/ui/review?page=2">' in page1
+    # API-001.D14: the last row loads page 2, through a same-origin path and a link only.
+    more = re.findall(r'<tr class="more" data-more="([^"]*)">(.*?)</tr>', page1)
+    assert more == [("/ui/review?page=2", '<td colspan="9"><a href="#">more</a></td>')]
+    assert page1.endswith("</tr>\n") and page1.count('class="more"') == 1
+    for marker in WRITE_MARKERS:
+        assert marker not in page1.lower(), marker  # the more row is no form or button
     page2 = _get(client, "/ui/review?page=2").text
     assert re.findall(r'data-source-hash="([0-9a-f]{64})"', page2)[0] == hashes[PER_PAGE]
     assert _get(client, "/ui/review?page=100000").text == ""  # past the end: empty
@@ -330,6 +335,11 @@ def test_the_page_names_each_fragment_and_its_group(client) -> None:
         'addEventListener("status"',
         'credentials: "same-origin"',
         'redirect: "error"',
+        # API-001.D14: the "more" rows, on scrolling into view or a click.
+        "new IntersectionObserver(",
+        '"tr.more[data-more]"',
+        'getAttribute("data-more")',
+        "event.preventDefault()",
     ):
         assert marker in js, marker
 
