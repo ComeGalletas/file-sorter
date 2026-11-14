@@ -99,7 +99,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - [x] API-001.4.5 — DOC-016.D3: the `/ui/vendor/htmx.min.js` route and `VENDOR_HTMX`, the htmx `<script>` tag and every `hx-*` attribute removed; the "more" row carries `data-more` and a link; tests: the page's script list is exactly `["/ui/app.js"]`, no `hx-` or `htmx` in any served response, the old route is the fixed 404 · cedecdf
   - [x] API-001.4.6 — DOC-016.D3, API-001.D15: each section carries `data-fragment="<route>"` and `data-group="refresh|refresh-queue"`; `app.js` loads every fragment with a same-origin `fetch()` (`credentials: "same-origin"`, `redirect: "error"`, a path with one leading slash only), refreshes `refresh` on every status frame and `refresh-queue` on a run change, never lets an older reply overwrite a newer one, and leaves a section as it is on a failed fetch; test: the five routes and groups, each a GET with the D13 CSP · d0b9304
   - [x] API-001.4.7 — API-001.D14 (provisional): a "more" row loads the next page when it scrolls into view (`IntersectionObserver`) or is clicked (the fallback; the link's `#` never navigates), and the fetched rows replace it; one load per row at a time, a failed load leaves the row for a retry, a refreshed section stops observing its old rows; tests: the row's same-origin `data-more` and link markup, no write marker on a page that ends with one, the loader's markers in `app.js` · eee90ee
-  - [x] API-001.4.8 — DOC-016.D3's tests, as they landed with .4.5 to .4.7 (only the htmx assertions were removed, so the D8/D9 checks are unchanged), and the Results for the rework · (this commit)
+  - [x] API-001.4.8 — DOC-016.D3's tests, as they landed with .4.5 to .4.7 (only the htmx assertions were removed, so the D8/D9 checks are unchanged), and the Results for the rework · 8fef089
 - [ ] API-001.5 — `render_report` · #213 · API/UI · acceptance: `tests/db/api/test_report.py`
   - [x] API-001.5.1 — `classifier/ui/html.py:esc`, the one escaping helper (API-001.D4), with its unit tests · 8fdc9b2
   - [x] API-001.5.2 — `classifier/api/report.py:render_report`; null-branch grid cells get their own "not classified" table, no timestamp (lead, #213) · 34f5190
@@ -168,14 +168,12 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - acceptance `tests/db/api/test_ui.py`: 17 passed (15, plus the htmx-free check and the fragment and group check). The page's script list is exactly `["/ui/app.js"]`; no `hx-` or `htmx` appears in any served response; the old vendor route is the fixed 404; a page that ends with a "more" row has no write marker;
   - `tests/unit/ui` + `tests/unit/api` + `tests/db/api`: 166 passed; `make lint` clean;
   - `node --check` passes on `app.js` (the host's own Node, which agent-office already needs; nothing installed), and the same-origin check, taken from `app.js` itself, accepts `/ui/review?page=2` and refuses `//host`, a backslash, `http:`, a relative path and the empty string;
-  - `make test`: 2872 passed, 2 failed (the gate 4 runner's two tests, Concern 1), 48 deselected.
-- **Status:** DONE_WITH_CONCERNS.
-  - **Concern 1 (high, blocks the push):** `tests/db/gate/test_gate_4_runner.py` (QA, #230) asserts that the UI hasn't landed: criteria 3 to 5 should be `NOT_AVAILABLE`. On this branch, criteria 3 and 4 are now ok and 5 fails, so 2 tests fail. They fail just the same with this branch's pre-rework `classifier/ui/`. Reported on #241; the fix is QA's.
-  - **Concern 2 (medium, gate design, QA):** gate 4's criterion 5 reads `/` and the `/ui/review` pages. `/` is a shell that holds no thumbnails, so an adult row that isn't in the review queue is never seen, and the gate reports `NO_ADULT_THUMB`. The proposed follow-up: the gate also reads `/ui/latest`.
+  - `make test` before #247: 2872 passed, 2 failed (the gate 4 runner's two tests, which asserted that the UI hadn't landed; the same with the pre-rework UI), 48 deselected. After merging `main` with #247 (TST-015.1.10, .1.11): the pre-push run's counts are in the PR body.
+- **Status:** DONE.
+  - The push waited on QA's gate 4 runner tests, reported on #241 and #214. #247 fixed them (the runner tests build the UI present or absent explicitly) and criterion 5 (it now reads `/ui/latest` too).
 - **Self-rating:** 8/10, proud: yes. The gaps:
   - `app.js` still has no behaviour test in a browser or DOM (the image has no JS runtime). Its contract is pinned from the Python side by markers, and checked with `node --check`;
-  - the latest rows refresh on every status frame, so a thumbnail revealed there blurs again within 2 s while a run is running (API-001.D15 as written; it errs toward blurred);
-  - the push waits on Concern 1.
+  - the latest rows refresh on every status frame, so a thumbnail revealed there blurs again within 2 s while a run is running (API-001.D15 as written; it errs toward blurred).
 
 ---
 
