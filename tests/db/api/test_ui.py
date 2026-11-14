@@ -302,6 +302,38 @@ def test_no_htmx_is_served(client, seed, tag) -> None:
     assert response.json() == {"detail": "not found"}
 
 
+def test_the_page_names_each_fragment_and_its_group(client) -> None:
+    """DOC-016.D3, API-001.D15: the five fragments, each a same-origin GET route, in two
+    refresh groups; `app.js` loads every `data-fragment` and refreshes by group."""
+    page = _get(client, "/").text
+    sections = re.findall(r'data-fragment="([^"]*)" data-group="([^"]*)"', page)
+    assert page.count("data-fragment=") == len(sections)  # every one carries a group
+    assert sorted(sections) == sorted(
+        [
+            ("/ui/banner", "refresh"),
+            ("/ui/grid", "refresh"),
+            ("/ui/latest", "refresh"),
+            ("/ui/errors?page=1", "refresh-queue"),
+            ("/ui/review?page=1", "refresh-queue"),
+        ]
+    )
+    assert tuple(route for route, _ in sections) == FRAGMENTS
+    for route, _ in sections:
+        response = _get(client, route)
+        assert response.headers["content-security-policy"] == CSP, route
+    js = _get(client, "/ui/app.js").text
+    for marker in (
+        '"[data-fragment]"',
+        'getAttribute("data-fragment")',
+        'refresh("refresh")',
+        'refresh("refresh-queue")',
+        'addEventListener("status"',
+        'credentials: "same-origin"',
+        'redirect: "error"',
+    ):
+        assert marker in js, marker
+
+
 def test_csp_is_the_d13_literal(client) -> None:
     """API-001.D13, typed out here so a change to `routes.CSP` can't pass unnoticed."""
     want = (
