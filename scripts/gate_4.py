@@ -92,7 +92,7 @@ class LedgerRow:
     source_hash: str
     short_hash: str
     status: str
-    branch: str | None
+    branch: str | None = field(repr=False)  # a classification value: kept out like the rest
     needs_review: bool
     format: str | None = field(repr=False)  # a category name
     topic: str | None = field(repr=False)  # a category name

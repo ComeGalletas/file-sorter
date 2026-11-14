@@ -324,6 +324,7 @@ def test_detail_leaves_out_the_planted_path_and_name_of_a_failing_row() -> None:
 def test_ledger_row_repr_hides_paths_and_names() -> None:
     planted = row(
         13,
+        branch="Qorvex-Branch-Plant",
         format="Qorvex-Format-Plant",
         topic="Zhyndel-Topic-Plant",
         source_path=PLANT_PATH,
@@ -331,6 +332,7 @@ def test_ledger_row_repr_hides_paths_and_names() -> None:
         original_sanitized="Vruthmar-Sanitized-Plant",
     )
     # Each plant is on the instance before its absence from the repr is asserted.
+    assert planted.branch == "Qorvex-Branch-Plant"
     assert planted.format == "Qorvex-Format-Plant"
     assert planted.topic == "Zhyndel-Topic-Plant"
     assert planted.source_path == PLANT_PATH
@@ -338,6 +340,7 @@ def test_ledger_row_repr_hides_paths_and_names() -> None:
     assert planted.original_sanitized == "Vruthmar-Sanitized-Plant"
     for text in (repr(planted), str(planted)):
         for secret in (
+            "Qorvex-Branch-Plant",
             "Qorvex-Format-Plant",
             "Zhyndel-Topic-Plant",
             PLANT_DIR,
@@ -346,7 +349,14 @@ def test_ledger_row_repr_hides_paths_and_names() -> None:
             assert secret not in text
         assert planted.short_hash in text
     hidden = {f.name for f in dataclasses.fields(planted) if not f.repr}
-    assert hidden == {"format", "topic", "source_path", "duplicate_paths", "original_sanitized"}
+    assert hidden == {
+        "branch",
+        "format",
+        "topic",
+        "source_path",
+        "duplicate_paths",
+        "original_sanitized",
+    }
 
 
 # --- 6. report ------------------------------------------------------------------------------

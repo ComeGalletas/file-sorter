@@ -8,8 +8,8 @@ The UI scenarios are built explicitly, so these tests hold whether or not the re
 (API-001.4) is on `main` (TST-015.1.10). The `ui` fixture wraps `create_app` and first strips
 every UI route (`/` and `/ui/*`), then either serves nothing there (the UI absent: criteria 3,
 4 and 5 must be `NOT_AVAILABLE`, never pass) or mounts `StandIn`, a minimal synthetic router
-that serves the API-001.D8/D9 markup from the ledger's own views. The real UI's own run is
-TST-015.1.5's, once API-001.4 merges.
+that serves the API-001.D8/D9 markup from the ledger's own views. Tests without the fixture
+run against API-001.4's real routes on `main` (TST-015.1.4).
 """
 
 import hashlib
@@ -290,7 +290,10 @@ def test_with_the_ui_a_path_on_any_fragment_fails(migrated_db, seed, ui, route: 
     assert not any(code is Code.NOT_SERVED for _, code in issues)
 
 
-@pytest.mark.parametrize("route", ["/", "/ui/banner", "/ui/latest", "/ui/review"])
+@pytest.mark.parametrize(
+    "route",
+    ["/", "/ui/app.js", "/ui/banner", "/ui/grid", "/ui/latest", "/ui/errors", "/ui/review"],
+)
 def test_with_a_ui_route_missing_criterion_4_is_not_available(
     migrated_db, seed, ui, route: str
 ) -> None:
@@ -298,8 +301,40 @@ def test_with_a_ui_route_missing_criterion_4_is_not_available(
     _seed_folder(seed)
     findings = _run(migrated_db)
     assert findings[4].issues == NOT_AVAILABLE
-    if route in ("/ui/latest", "/ui/review"):
+    if route in ("/ui/latest", "/ui/errors", "/ui/review"):
         assert findings[5].issues == NOT_AVAILABLE
+
+
+# --- the real UI (API-001.4 on main; TST-015.1.4) ---------------------------------------------
+
+
+def test_the_real_ui_passes_every_criterion(migrated_db, seed) -> None:
+    """No `ui` fixture: `create_app` serves API-001.4's own routes and markup."""
+    _, planted = _seed_folder(seed)
+    ledger, served = gate_4.serve(migrated_db, read_only_engine(migrated_db))
+    [adult] = [r for r in ledger if r.branch == ADULT_BRANCH]
+    assert not gate_4.queued(adult)  # not queued: only the real latest fragment shows it
+    assert served.html is not None and all(served.bodies[s] is not None for s in gate_4.SOURCES)
+    thumbs = [
+        attrs
+        for page in served.html
+        for tag, attrs in gate_4._tags(page)
+        if tag == "img" and attrs.get("data-hash") == adult.short_hash
+    ]
+    assert thumbs and all(a.get("data-blur") == "1" for a in thumbs)  # D8, by default
+    assert any(planted[:8] in (served.bodies[s] or "") for s in ("files", "report"))
+    findings = gate_4.evaluate(ledger, served, gate_4.read_compose())
+    for finding in findings:
+        assert finding.passed, (finding.criterion, finding.issues)
+
+
+def test_main_detail_with_the_real_ui_passes(
+    migrated_db, seed, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _seed_folder(seed)
+    code, lines = _main_detail(migrated_db, monkeypatch, capsys)
+    assert code == 0, lines
+    assert lines[-1] == "gate 4 PASS" and len(lines) == len(gate_4.CRITERIA) + 1  # no detail
 
 
 def test_the_report_holds_every_row_and_no_plant(migrated_db, seed) -> None:
