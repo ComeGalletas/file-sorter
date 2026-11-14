@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from classifier.api.views import ADULT_BRANCH, is_adult
+from classifier.api.views import ADULT_BRANCH, PER_PAGE, is_adult
 
 SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "gate_4.py"
 _spec = importlib.util.spec_from_file_location("gate_4_checks", SCRIPT)
@@ -432,7 +432,11 @@ def test_the_gate_probe_makes_no_model_call() -> None:
 
 
 def test_the_gate_names_every_scanned_source() -> None:
-    assert gate_4.SOURCES == ("status", "files", "review", "ui", "events", "report")
+    ui = ("ui", "app_js", "banner", "grid", "latest", "errors", "review")
+    assert gate_4.SOURCES == ("status", "files", "events", "report", *ui)
+    routes = ("/", "/ui/app.js", "/ui/banner", "/ui/grid", "/ui/latest")
+    assert tuple(gate_4.UI_ROUTES.values()) == routes
+    assert (gate_4.ERRORS_ROUTE, gate_4.REVIEW_ROUTE) == ("/ui/errors", "/ui/review")
 
 
 # --- 5. blur --------------------------------------------------------------------------------
@@ -665,3 +669,131 @@ def test_served_repr_hides_every_content_field() -> None:
     assert served.report == plant and plant in str(served.status) and served.bodies["ui"] == plant
     assert plant not in repr(served) and plant not in str(served)
     assert all(not f.repr for f in dataclasses.fields(served))
+
+
+# --- the runner's UI read (TST-015.1.11) ------------------------------------------------------
+
+
+class UIResponse:
+    def __init__(self, status_code: int, text: str, payload=None) -> None:
+        self.status_code = status_code
+        self.text = text
+        self.headers = {"x-qorvex": "1"}
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+class FakeUI:
+    """A fake app: `pages` maps a route to its body, or to a list of bodies (one per page);
+    a missing route is a 404. `/api/status`, `/api/files` and `/api/events` are fixed."""
+
+    def __init__(self, ledger, pages: dict) -> None:
+        self.ledger = ledger
+        self.pages = pages
+
+    def get(self, path: str, params=None) -> UIResponse:
+        page = (params or {}).get("page", 1)
+        if path == "/api/status":
+            return UIResponse(200, "{}", status_of(self.ledger))
+        if path == "/api/files":
+            rows = [
+                {"source_hash": r.source_hash, "blurred": is_adult(r.branch)} for r in self.ledger
+            ]
+            body = {"rows": rows if page == 1 else []}
+            return UIResponse(200, str(body), body)
+        if path == "/api/events":
+            return UIResponse(200, "event: status\ndata: 0\n\n")
+        if path not in self.pages:
+            return UIResponse(404, "not found")
+        body = self.pages[path]
+        if isinstance(body, list):
+            body = body[page - 1] if page <= len(body) else ""
+        return UIResponse(200, body)
+
+
+def tr(r, thumb_html: str = "", queued: bool = False) -> str:
+    source = f' data-source-hash="{r.source_hash}"' if queued else ""
+    return f'<tr data-hash="{r.short_hash}"{source}><td>{thumb_html}</td></tr>'
+
+
+def ui_pages(latest: str, review: list[str], errors: list[str] | None = None) -> dict:
+    return {
+        "/": '<section data-fragment="/ui/latest"></section>',
+        "/ui/app.js": "// qorvex",
+        "/ui/banner": "<p>banner</p>",
+        "/ui/grid": "<table></table>",
+        "/ui/latest": latest,
+        "/ui/errors": errors or [],
+        "/ui/review": review,
+    }
+
+
+QUEUED = row(23, needs_review=True)
+UI_ROUTE_LIST = ["/", "/ui/app.js", "/ui/banner", "/ui/grid", "/ui/latest", "/ui/errors"]
+
+
+def test_collect_reads_an_adult_thumbnail_only_on_latest() -> None:
+    # The adult row isn't queued: only `/ui/latest` shows it (the NO_ADULT_THUMB miss, #214).
+    ledger = [ADULT, SAFE, QUEUED]
+    pages = ui_pages(
+        latest=tr(ADULT, thumb(ADULT, "1")) + tr(SAFE, thumb(SAFE, "0")),
+        review=[tr(QUEUED, thumb(QUEUED, "0"), queued=True)],
+    )
+    served = gate_4.collect(FakeUI(ledger, pages), len(ledger))
+    assert served.html is not None
+    assert any(f'data-hash="{ADULT.short_hash}"' in page for page in served.html)
+    assert served.queue == [QUEUED.source_hash]
+    assert gate_4.check_blur(ledger, served.html, served.blurred).passed
+    assert gate_4.check_review_queue(ledger, served.queue).passed
+    assert set(served.bodies) == set(gate_4.SOURCES)
+    assert all(served.bodies[s] is not None for s in gate_4.SOURCES if s != "report")
+    for source in ("ui", "latest", "review", "errors"):  # headers are scanned too
+        assert "x-qorvex: 1" in (served.bodies[source] or ""), source
+
+
+def test_collect_flags_an_unblurred_adult_thumbnail_on_latest() -> None:
+    ledger = [ADULT, SAFE]
+    pages = ui_pages(latest=tr(ADULT, thumb(ADULT, "0")), review=[])
+    served = gate_4.collect(FakeUI(ledger, pages), len(ledger))
+    finding = gate_4.check_blur(ledger, served.html, served.blurred)
+    assert finding.issues == ((ADULT.short_hash, Code.NOT_BLURRED),)
+
+
+def test_collect_reads_every_review_and_errors_page() -> None:
+    ledger = [ADULT, QUEUED, SAFE]
+    pages = ui_pages(
+        latest="",
+        review=[tr(QUEUED, thumb(QUEUED, "0"), True), tr(ADULT, thumb(ADULT, "1"), True)],
+        errors=[tr(SAFE), tr(SAFE)],
+    )
+    # One row per page here, so the page bound is set as for a ledger past one full page.
+    served = gate_4.collect(FakeUI(ledger, pages), PER_PAGE + 1)
+    assert served.queue == [QUEUED.source_hash, ADULT.source_hash]  # page 2 is read too
+    assert served.html is not None and len(served.html) == 1 + 3 + 3  # latest; 2 pages + end, x2
+    assert gate_4.check_blur(ledger, served.html, served.blurred).passed
+
+
+@pytest.mark.parametrize("missing", [*UI_ROUTE_LIST, "/ui/review"])
+def test_collect_with_a_ui_route_missing_never_passes_criterion_4(missing: str) -> None:
+    ledger = [ADULT, SAFE]
+    pages = ui_pages(latest=tr(ADULT, thumb(ADULT, "1")), review=[])
+    del pages[missing]
+    served = gate_4.collect(FakeUI(ledger, pages), len(ledger))
+    finding = gate_4.check_no_leak(ledger, served.bodies)
+    assert ("-", Code.NOT_AVAILABLE) in finding.issues and not finding.passed
+    if missing in ("/ui/latest", "/ui/errors", "/ui/review"):
+        blur = gate_4.check_blur(ledger, served.html, served.blurred)
+        assert ("-", Code.NOT_AVAILABLE) in blur.issues
+
+
+@pytest.mark.parametrize("route", UI_ROUTE_LIST)
+def test_collect_scans_a_plant_on_any_ui_route(route: str) -> None:
+    assert PLANTED.source_path == PLANT_PATH  # the plant is held
+    pages = ui_pages(latest=tr(PLANTED), review=[])
+    leak = f"<p>{PLANT_PATH}</p>"
+    pages[route] = [leak] if isinstance(pages[route], list) else leak
+    served = gate_4.collect(FakeUI([PLANTED], pages), 1)
+    finding = gate_4.check_no_leak([PLANTED], served.bodies)
+    assert (PLANTED.short_hash, Code.LEAK_PATH) in finding.issues
