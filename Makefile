@@ -40,8 +40,9 @@ build: ## Build the app/test image
 # The torch step's wheels (torch, triton, nvidia-*) are pinned by TORCH_VERSION instead. Nothing is
 # downloaded here; review the diff and commit it on purpose.
 constraints: ## Regenerate constraints.txt from the built image (RUN-020)
+	@test -f constraints.txt || { echo "constraints.txt is missing: restore it from git first" >&2; exit 1; }
 	@{ sed -n '1,/^# Regenerate/p' constraints.txt; \
-	   docker run --rm file-sorter-app:dev pip freeze --exclude-editable | tr -d '\r' \
+	   $(COMPOSE) --profile test run --rm --no-deps -T test pip freeze --exclude-editable | tr -d '\r' \
 	     | grep -v -i -E '^(torch|triton|nvidia-)' | LC_ALL=C sort -f; } > constraints.txt.new \
 	 && mv constraints.txt.new constraints.txt
 

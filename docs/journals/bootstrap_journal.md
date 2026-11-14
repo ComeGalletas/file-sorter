@@ -1013,9 +1013,14 @@ and then (PR #43 review round 2):
 
 ## RUN-020 — Results
 
-- **Tests:** `tests/unit/runtime/test_constraints.py` passes 4: every line is an exact pin, every declared dependency is pinned, the torch-step wheels are left out, and the Dockerfile installs with the file. `make lint` is clean.
+- **Tests:** `tests/unit/runtime/test_constraints.py` passes 6: every line is an exact pin, every declared dependency is pinned, the torch-step wheels are left out, and the Dockerfile installs with the file. `make lint` is clean.
 - **Rebuild check:** a separately tagged build (`file-sorter-app:run020`, so the desks' shared image is untouched) resolved **exactly** the pinned set (`pip freeze` diff empty), so the rebuilt image behaves as the current one.
-- **Status:** DONE. **Self-rating:** 9/10, yes. The gap: no hashes (`--require-hashes`); that stays with RUN-004.
+- **Review round 1 (`Reviewed at 142bf9c`):**
+  - **The blocker:** `constraints.txt` was never committed. `.gitignore`'s exception had an inline comment, and gitignore has none, so the pattern didn't match. The comment is now on its own line, the file is committed and confirmed in the commit, and other root `*.txt` files stay ignored.
+  - **Added tests:** `rich`, `typer` and `click` are pinned (TST-014), and no line is a path, URL, `-e` or `@` reference.
+  - **`make constraints`:** freezes through `$(COMPOSE) --profile test run --no-deps test`, with no hard-coded image tag, and fails with fixed text if `constraints.txt` is missing. It reproduced the committed file exactly.
+  - **The torch step:** torch's own dependencies (`cuda-bindings`, `cuda-pathfinder`, `cuda-toolkit`, `filelock`, `sympy`, `networkx`, `Jinja2`, `fsspec`, `typing_extensions`, `setuptools`) are pinned at the versions the torch step installed. A future `TORCH_VERSION` bump that needs other versions makes the `-c` install fail loudly, so it forces a `make constraints` PR instead of drifting silently.
+- **Status:** DONE. **Self-rating:** 8/10, yes. The gaps: no hashes (`--require-hashes`), which stays with RUN-004; and round 1 caught a file I hadn't committed.
 - **Privacy:** package names and versions only.
 
 ---

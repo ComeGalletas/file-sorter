@@ -43,6 +43,20 @@ def test_every_declared_dependency_is_pinned() -> None:
     assert not missing, f"declared but not pinned: {missing}"
 
 
+def test_the_packages_behind_tst_014_are_pinned() -> None:
+    # TST-014: a rebuild pulled newer rich and typer and changed the CLI's help output.
+    assert {"rich", "typer", "click"} <= set(pins())
+
+
+def test_no_line_installs_from_a_path_url_or_editable() -> None:
+    for line in (REPO / "constraints.txt").read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        assert not text.startswith(("-", "/", ".")), text
+        assert "://" not in text and "@" not in text, text
+
+
 def test_the_torch_step_wheels_are_left_to_torch_version() -> None:
     assert not [n for n in pins() if n in {"torch", "triton"} or n.startswith("nvidia-")]
 
