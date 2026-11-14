@@ -1,6 +1,6 @@
 # DESIGN.md — Image Classification Bot (MVP)
 
-Status: **confirmed** — every §13 change reviewed by the human on 2026-10-05; §14 open questions remain · Oct 5, 2026 · @JP
+Status: **confirmed** — every §13 change reviewed by the human on 2026-10-05; §14 open questions remain · Oct 5, 2026
 Source: `docs/PLAN.md`, a copy of `Design Plan — Image Classification Bot (MVP).md`. The original is archived at the workspace root, `file-sorter-full\`.
 
 **How to use this file.** `docs/PLAN.md` is the narrative and rationale. This file is the normative spec: what to build, in what order, and how it is tested. Requirement IDs (`R-SAN-3`) are cited in issues, plans and acceptance tests. Where this file and the plan disagree, this file wins **once its status line says `confirmed`**; every deviation is listed in §13.

@@ -2,7 +2,7 @@
 
 > **Historical.** This is the original plan from 2026-10-05. [DESIGN.md](../DESIGN.md) supersedes it, and §13 lists every reconciliation (for example, classification moved from SigLIP to a local VLM in C-25).
 
-Oct 5, 2026 · @JP
+Oct 5, 2026
 
 ## Brief for the implementing agent
 
