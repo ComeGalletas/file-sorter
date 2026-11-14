@@ -763,6 +763,8 @@ references or host paths here. Use hashes.
   - [x] TST-015.1.7 — the SSE read (API-001.2: one bounded status frame through the app's `events_max_ticks` seam), `repr=False` on every `Served` content field (round 2 on #230), and a test that a write on the gate's engine fails · .1.3 was e0bc1ce
   - [x] TST-015.1.8 — criterion 5 cross-checks `/api/files`' `blurred` flag (API-001.3, the 16th field): each ledger row's flag must be a bool equal to `is_adult(branch)` (`BLUR_FLAG`), checked even while the HTML is unavailable · .1.7 was cf81eb1
   - [x] TST-015.1.9 — criterion 6 on the real report: `render_report` over the whole ledger through API-001.1's views, in one read-only snapshot with the no-call probe; its body joins the no-leak scan; a build failure reads as `NOT_AVAILABLE` · .1.8 was 0fd904a, .1.9 was 6c91469
+  - [ ] TST-015.1.10 — the runner tests build both UI scenarios explicitly: the UI routes taken out (criteria 3, 4 and 5 `NOT_AVAILABLE`), or a synthetic D8/D9 stand-in (every criterion ok), so they pass before and after API-001.4 merges (#214: they blocked #241's push); negatives for an unblurred adult thumbnail, a path on a fragment and a missing route
+  - [x] TST-015.1.11 — criterion 5 reads `/ui/latest` and every review and errors page, not the `/` shell (the `NO_ADULT_THUMB` miss on #214); criterion 4 scans every UI route's headers and body (`/`, `/ui/app.js`, banner, grid, latest, errors and review, paged), and a route not served fails it `NOT_AVAILABLE`; TST-015.D7 (lead on #216, provisional): the HTML half checks every adult thumbnail served, and the `/api/files` flag half covers every row
 
 ## TST-015 — Results
 

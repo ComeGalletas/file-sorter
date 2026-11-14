@@ -10,7 +10,9 @@ The gate reads the app database's ledger read-only (`APP_DB_DSN`, as TST-013 doe
   4. no response, fragment, SSE event or report carries any row's `source_path`, any
      `duplicate_paths` entry, or the raw file name taken from them. Compared in memory only,
      and only after each row is proved served (its short hash appears in some body);
-  5. every adult row's `img.thumb` carries `data-blur="1"` in the served HTML (API-001.D8);
+  5. every adult `img.thumb` on any served fragment (latest, review, errors) carries
+     `data-blur="1"` (API-001.D8), and `/api/files`' `blurred` flag equals `is_adult` on
+     every row (API-001.3; TST-015.D7: the dashboard shows only the newest rows);
   6. the report is self-contained: no external reference and no thumbnail (m4 answer 3);
   7. `docker-compose.yml` publishes only `127.0.0.1` ports (R-RUN-1).
 
@@ -469,7 +471,17 @@ NO_APP_DSN = (
     "`make gate-4` from the main checkout."
 )
 LEDGER_FAILED = "the app database's ledger could not be read"
-SOURCES = ("status", "files", "review", "ui", "events", "report")
+# The UI's single-page routes (API-001.4), by their `bodies` source label; two more are paged.
+UI_ROUTES = {
+    "ui": "/",
+    "app_js": "/ui/app.js",
+    "banner": "/ui/banner",
+    "grid": "/ui/grid",
+    "latest": "/ui/latest",
+}
+ERRORS_ROUTE = "/ui/errors"  # API-001.D2, paged
+REVIEW_ROUTE = "/ui/review"  # API-001.D9, paged
+SOURCES = ("status", "files", "events", "report", *UI_ROUTES, "errors", "review")
 
 
 class GateSetupError(Exception):
@@ -593,20 +605,21 @@ def _files(client: Any, rows: int) -> FilesRead:
     return None, None, None  # never reached an empty page: paging is broken
 
 
-def _review(client: Any, rows: int) -> tuple[list[str] | None, list[str] | None]:
-    """Every queued `data-source-hash` from `/ui/review`, paging to an empty page (API-001.D9)."""
-    queue: list[str] = []
+def _paged(client: Any, route: str, rows: int) -> tuple[list[str] | None, list[str] | None]:
+    """Every `data-source-hash` of `route`'s `<tr data-hash>` rows, and each page's headers and
+    body, paging until a page has no such row (API-001.D2, D9). A non-200 is None, None."""
+    entries: list[str] = []
     pages: list[str] = []
     for page in range(1, _max_pages(rows) + 1):
-        response = client.get("/ui/review", params={"page": page})
+        response = client.get(route, params={"page": page})
         if response.status_code != 200:
-            return None, None  # a 404 on page 1: API-001.4 hasn't landed
-        pages.append(response.text)
-        entries = queue_entries([response.text])
-        if not entries:
-            return queue, pages
-        queue += entries
-    return None, None
+            return None, None  # a 404 on page 1: the UI isn't served
+        pages.append(_text(response))
+        found = queue_entries([response.text])
+        if not found:
+            return entries, pages
+        entries += found
+    return None, None  # never reached an empty page: paging is broken
 
 
 STATUS_FRAME = "event: status\n"
@@ -626,25 +639,45 @@ async def _no_sleep(_seconds: float) -> None:
 
 
 def _page(client: Any, path: str) -> str | None:
+    """One UI route's headers and body, or None when it isn't served."""
     response = client.get(path)
-    return response.text if response.status_code == 200 else None
+    return _text(response) if response.status_code == 200 else None
+
+
+def _joined(pages: Sequence[str] | None) -> str | None:
+    return None if pages is None else "\n".join(pages)
 
 
 def collect(client: Any, rows: int) -> Served:
-    """Everything the gate reads from the app, in-process; `serve` adds the report."""
+    """Everything the gate reads from the app, in-process; `serve` adds the report.
+
+    The UI is read through its fixed routes (API-001.4: the page, its script and every
+    fragment, the paged ones to the end), each into its own `bodies` source for check 4; any
+    route not served makes its source None, so check 4 can't pass. Check 5's HTML is every
+    fragment that carries thumbnails: `/ui/latest` (the newest rows, API-001.D1) and every
+    review and errors page (`/` is a shell and holds none). A row that is neither recent nor
+    queued has no thumbnail on any fragment; the `/api/files` `blurred` flag, checked on every
+    row, covers it (TST-015.D7)."""
     status_response = client.get("/api/status")
     status = status_response.json() if status_response.status_code == 200 else None
     files, files_text, flags = _files(client, rows)
-    queue, review_pages = _review(client, rows)
-    ui = _page(client, "/")
-    html_pages = None if ui is None or review_pages is None else [ui, *review_pages]
+    queue, review_pages = _paged(client, REVIEW_ROUTE, rows)
+    _, error_pages = _paged(client, ERRORS_ROUTE, rows)
+    ui = {source: _page(client, route) for source, route in UI_ROUTES.items()}
+    latest = ui["latest"]
+    html_pages = (
+        None
+        if latest is None or review_pages is None or error_pages is None
+        else [latest, *review_pages, *error_pages]
+    )
     bodies: dict[str, str | None] = {
         "status": _text(status_response) if status is not None else None,
         "files": files_text,
-        "review": "\n".join(review_pages) if review_pages is not None else None,
-        "ui": ui,
         "events": _events(client),
         "report": None,  # filled by `serve`, from the ledger (API-001.5)
+        **ui,
+        "errors": _joined(error_pages),
+        "review": _joined(review_pages),
     }
     return Served(
         files=files,
