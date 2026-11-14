@@ -432,15 +432,20 @@ and then (the plan's merged version, PR #104 rounds 2 and 3, added three items a
 
 ## DOC-017 — Confirmed reading
 
-- **DOC-017.D1:** the "@JP" handle is removed from DESIGN.md's status line and from `docs/PLAN.md`'s date line. Git history keeps the old text: rewriting public history would need a force-push, which the rules forbid, so that stays as it is unless the human decides otherwise. (human, 2026-11-14)
+- **DOC-017.D1:** the personal handle is removed from DESIGN.md's status line and from `docs/PLAN.md`'s date line. Git history keeps the old text: rewriting public history would need a force-push, which the rules forbid, so that stays as it is unless the human decides otherwise. (human, 2026-11-14)
+
+## DOC-017 — Plan
+
+Remove the handle from the two lines that carry it, and quote it nowhere.
 
 ## DOC-017 — Tasks
 
 - [x] DOC-017.1 — DESIGN.md line 3 and `docs/PLAN.md` line 5
+- [x] DOC-017.2 — Review round 1: this block no longer quotes the handle
 
 ## DOC-017 — Results
 
 - **Status:** DONE.
-- **Self-rating:** 10/10, yes; `git grep "@JP"` finds nothing.
+- **Self-rating:** 9/10, yes; a search of the current files finds the handle nowhere. Round 1 caught that this block first quoted it, which is now fixed.
 - **Triage:** small. Two lines.
 - **Privacy:** removes a personal handle; nothing added.
