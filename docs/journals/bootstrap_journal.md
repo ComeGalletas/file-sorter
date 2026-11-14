@@ -995,6 +995,33 @@ and then (PR #43 review round 2):
 
 - **Objective:** Pin `rich` and `typer`, or every runtime dependency, so a rebuilt image can't change test output (TST-014).
 - **Constraint:** it overlaps RUN-004 (the lockfile, human-side). The lead recommends doing both together after M4. Until then, TST-014.D1 keeps the one affected test stable.
+- **Scheduled by the human (2026-11-14, session decision 6), built by the human's session as a constraints file.** It covers RUN-004's intent for the PyPI part. A full hashed lockfile across the torch index stays RUN-004.
+
+## RUN-020 — Confirmed reading
+
+- **RUN-020.D1:** **`constraints.txt` pins every package the app image resolves**, exactly as the image built on 2026-11-10 (the one the default tiers pass on) resolved them.
+  - The Dockerfile installs with `pip install -c constraints.txt -e ".[dev]"`.
+  - torch, triton and the `nvidia-*` wheels stay pinned by the torch step's `TORCH_VERSION`, so they're left out.
+  - `make constraints` regenerates the file from the built image, keeping its header, and downloads nothing; a regeneration is committed on purpose, in its own PR.
+  - `.gitignore`'s root `/*.txt` rule (RUN-018.D1) gains `!/constraints.txt`, and `.dockerignore`'s whitelist gains `constraints.txt`. Both used to block the file.
+
+  (human, 2026-11-14)
+
+## RUN-020 — Tasks
+
+- [x] RUN-020.1 — `constraints.txt`, the Dockerfile's `-c`, `make constraints`, the two ignore exceptions, and `tests/unit/runtime/test_constraints.py` · the human's session · acceptance: `tests/unit/runtime/test_constraints.py`
+
+## RUN-020 — Results
+
+- **Tests:** `tests/unit/runtime/test_constraints.py` passes 6: every line is an exact pin, every declared dependency is pinned, the torch-step wheels are left out, and the Dockerfile installs with the file. `make lint` is clean.
+- **Rebuild check:** a separately tagged build (`file-sorter-app:run020`, so the desks' shared image is untouched) resolved **exactly** the pinned set (`pip freeze` diff empty), so the rebuilt image behaves as the current one.
+- **Review round 1 (`Reviewed at 142bf9c`):**
+  - **The blocker:** `constraints.txt` was never committed. `.gitignore`'s exception had an inline comment, and gitignore has none, so the pattern didn't match. The comment is now on its own line, the file is committed and confirmed in the commit, and other root `*.txt` files stay ignored.
+  - **Added tests:** `rich`, `typer` and `click` are pinned (TST-014), and no line is a path, URL, `-e` or `@` reference.
+  - **`make constraints`:** freezes through `$(COMPOSE) --profile test run --no-deps test`, with no hard-coded image tag, and fails with fixed text if `constraints.txt` is missing. It reproduced the committed file exactly.
+  - **The torch step:** torch's own dependencies (`cuda-bindings`, `cuda-pathfinder`, `cuda-toolkit`, `filelock`, `sympy`, `networkx`, `Jinja2`, `fsspec`, `typing_extensions`, `setuptools`) are pinned at the versions the torch step installed. A future `TORCH_VERSION` bump that needs other versions makes the `-c` install fail loudly, so it forces a `make constraints` PR instead of drifting silently.
+- **Status:** DONE. **Self-rating:** 8/10, yes. The gaps: no hashes (`--require-hashes`), which stays with RUN-004; and round 1 caught a file I hadn't committed.
+- **Privacy:** package names and versions only.
 
 ---
 
