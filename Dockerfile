@@ -27,9 +27,10 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md constraints.txt ./
 COPY classifier ./classifier
 # Editable: in compose the repo is bind-mounted over /app, so code changes need no rebuild.
-RUN pip install -e ".[dev]"
+# RUN-020: every resolved package is pinned by constraints.txt, so a rebuild resolves the same set.
+RUN pip install -c constraints.txt -e ".[dev]"
 
 CMD ["classifier", "--help"]

@@ -763,6 +763,8 @@ references or host paths here. Use hashes.
   - [x] TST-015.1.7 — the SSE read (API-001.2: one bounded status frame through the app's `events_max_ticks` seam), `repr=False` on every `Served` content field (round 2 on #230), and a test that a write on the gate's engine fails · .1.3 was e0bc1ce
   - [x] TST-015.1.8 — criterion 5 cross-checks `/api/files`' `blurred` flag (API-001.3, the 16th field): each ledger row's flag must be a bool equal to `is_adult(branch)` (`BLUR_FLAG`), checked even while the HTML is unavailable · .1.7 was cf81eb1
   - [x] TST-015.1.9 — criterion 6 on the real report: `render_report` over the whole ledger through API-001.1's views, in one read-only snapshot with the no-call probe; its body joins the no-leak scan; a build failure reads as `NOT_AVAILABLE` · .1.8 was 0fd904a, .1.9 was 6c91469
+  - [x] TST-015.1.10 — the runner tests build both UI scenarios explicitly: the UI routes taken out (criteria 3, 4 and 5 `NOT_AVAILABLE`), or a synthetic D8/D9 stand-in (every criterion ok), so they pass before and after API-001.4 merges (#214: they blocked #241's push); negatives for an unblurred adult thumbnail, a path on a fragment and a missing route · .1.11 was 43ee710
+  - [x] TST-015.1.11 — criterion 5 reads `/ui/latest` and every review and errors page, not the `/` shell (the `NO_ADULT_THUMB` miss on #214); criterion 4 scans every UI route's headers and body (`/`, `/ui/app.js`, banner, grid, latest, errors and review, paged), and a route not served fails it `NOT_AVAILABLE`; TST-015.D7 (lead on #216, provisional): the HTML half checks every adult thumbnail served, and the `/api/files` flag half covers every row
 
 ## TST-015 — Results
 
@@ -775,7 +777,7 @@ references or host paths here. Use hashes.
   - criterion 5's `blurred` flag (API-001.3);
   - criterion 6, the real `render_report`;
   - criterion 7, the repo's `docker-compose.yml`.
-- **Not wired yet:** criterion 3 (`/ui/review`, API-001.D9) and criterion 5's HTML half (`img.thumb` `data-blur`, API-001.D8) wait for API-001.4 (#214), which waits for htmx (RUN-021).
+- **Not wired yet:** criterion 3 (`/ui/review`, API-001.D9) and criterion 5's HTML half (`img.thumb` `data-blur`, API-001.D8) wait for API-001.4 (#214), now being reworked to plain JavaScript (DOC-016.D3; RUN-021 is cancelled).
   - Their checks are written and unit-tested against the D8 and D9 markup contract, on synthetic HTML.
   - Until #214 lands they fail as `NOT_AVAILABLE`, and so does criterion 4, which needs the UI bodies. So the gate cannot pass yet, by design.
 - **Tests:**
@@ -786,7 +788,20 @@ references or host paths here. Use hashes.
   - No `gpu` run: no models or prompts were touched. The real gate (`make gate-4`) is G1, the human's, and was not run.
 - **Privacy:** every plant is proved held (and served, where it applies) before its absence is asserted. `--detail` prints short hashes and fixed codes only (TST-015.D3). `repr=False` is on `LedgerRow`'s name and path fields and on every `Served` content field.
 - **Reviews:** rounds 1–3 on #230. Round 1: the reviewer approved, and the privacy auditor failed the plant-held rule, fixed in .1.6. Rounds 2 and 3: reviewer APPROVE, privacy PASS.
-- **Status:** BLOCKED on API-001.4 (#214) → RUN-021 (vendored htmx). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
+- **Status (at 6c91469):** waiting on API-001.4 (#214, its DOC-016.D3 rework). #230 merged at this interim state, and #216 was reopened for the rest (the human's session, 2026-11-12). Remaining: TST-015.1.4, wiring the UI into criteria 3 and 5, then the final rating.
 - **Self-rating (interim):** 8/10, proud: yes for what landed. Gaps:
   - criteria 3 and 5 haven't run against the real UI markup, only against synthetic HTML written to D8 and D9;
   - the report's own `blurred` cell isn't cross-checked, only the API's.
+
+### TST-015.1, continued (QA, #216; interim: .1.10 and .1.11)
+
+- **Why:** the runner tests assumed the UI was absent, so they failed the pre-push gate of API-001.4's rework (#241, diagnosis on #214). Criterion 5 also read only `/` (a shell) and the review queue, so an adult row that isn't queued was never seen (`NO_ADULT_THUMB`).
+- **.1.11:** criterion 5's HTML is `/ui/latest` plus every review and errors page. Criterion 4 scans the headers and body of every UI route, and a route not served fails it `NOT_AVAILABLE`.
+  - **TST-015.D7** (lead on #216, provisional): the dashboard shows only the newest rows (API-001.D1). So the HTML half checks every adult thumbnail that is served, plus at least one when adult rows exist. "Every adult row blurred" rests on the `/api/files` `blurred` flag, checked on every row.
+- **.1.10:** the runner tests build each UI scenario explicitly. A fixture gives `create_app` an empty router in place of API-001.4's `ui_router`, then either serves nothing there or mounts a synthetic stand-in serving the D8/D9 markup from API-001.1's views. FastAPI wraps an included router as one route entry, so filtering routes by path afterwards doesn't work.
+- **Tests:**
+  - `tests/unit/gate/test_gate_4_checks.py`: 114 passed;
+  - `tests/db/gate/test_gate_4_runner.py`: 19 passed.
+  - These are the same 133, passing both on `main` (no UI) and with #241's `classifier/` mounted over the test container's (local check only, nothing copied into the tree).
+  - With #241's real UI and no stand-in, the runner gives every criterion ok on the synthetic rows. This was a scratch check that isn't committed.
+- **TST-015.1.5, final Results:** after #241 merges, the runner gets a run against the real UI on `main`, and then the final self-rating. RUN-021 (htmx) is cancelled by DOC-016, so nothing here waits on it any more.

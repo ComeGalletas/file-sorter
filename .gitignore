@@ -32,6 +32,8 @@ build/
 dist/
 # RUN-018.D1: scratch files at the repo root (commit-message drafts, logs)
 /*.txt
+# RUN-020: the committed dependency pins
+!/constraints.txt
 /*.log
 # agent-office data for this floor: worker worktrees, office password, state (RUN-003)
 .agent-office/
