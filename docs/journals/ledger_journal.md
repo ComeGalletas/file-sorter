@@ -317,6 +317,25 @@ references or host paths here. Use hashes.
 
 ## DB-009 — Tasks
 
-- [ ] DB-009.1 — Migration `0008`, the ORM models, the seeded built-ins · #257 · Pipeline · acceptance: `tests/db/ledger/test_templates_migration.py`
+- [x] DB-009.1 — Migration `0008`, the ORM models, the seeded built-ins · #257 · Pipeline · acceptance: `tests/db/ledger/test_templates_migration.py`
 
 ## DB-009 — Results
+
+### DB-009.1 (Pipeline)
+
+- Migration `0008` (revises `0007`, the single head) adds the two tables:
+  - `naming_templates`: the name CHECK (`^[a-z][a-z0-9-]{0,31}$`), a unique name, and the template CHECK (1–200 characters, not blank, one line: no C0 control, DEL, NEL, LS or PS);
+  - `template_assignments`: the scope CHECK, `(scope = 'global') = (category_id is null)`, a unique `category_id`, and a partial unique index for at most one global row. Its FKs cascade from `categories` and restrict on `naming_templates`.
+- Seeds: the six built-ins (`builtin = true`), frozen in the file from NAME-001.D1/D2, plus one global assignment to `descriptive`, as the lead approved on #257 (DB-009.D1, provisional). Built-ins stay mutable in the schema; CLI-010 refuses changes to them (DB-009.D2, provisional).
+- The downgrade drops both tables.
+- ORM: `NamingTemplate` and `TemplateAssignment`. Neither `__repr__` shows a template's name or text.
+- `test_runs_migration.py` now checks for a single head, not head = `0007`.
+- Tests: the acceptance file passed 55, the whole `tests/db/ledger` 211, and `make test` 2967 (48 deselected). `make lint` was clean. No gpu or eval tier: no models or prompts were touched.
+- The acceptance file covers:
+  - a golden seed typed out in the test;
+  - every CHECK and unique refusal, asserted by constraint name;
+  - the FK cascade and restrict;
+  - the ORM's constraints and indexes, compared with the migration's in Postgres's own rendering;
+  - repr tests with planted synthetic values, each held first;
+  - the downgrade, then re-upgrade.
+- Completion: DONE. Self-rating: 9/10, proud: yes. The gap: the seed's templates aren't yet cross-checked against NAME-001.1's engine (it isn't merged). NAME-002.1 can assert that every seeded template renders.
