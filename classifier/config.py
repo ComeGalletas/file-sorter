@@ -133,6 +133,29 @@ class NamingConfig(_Section):
     nsfw_prefix: str
     max_len: int
 
+    @field_validator("max_len", mode="before")
+    @classmethod
+    def _not_a_bool(cls, value: object) -> object:
+        # A bool is an int to Python; a YAML `true` here is a mistake, not 1.
+        if isinstance(value, bool):
+            raise ValueError("must be a number")
+        return value
+
+    @field_validator("max_len")
+    @classmethod
+    def _positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be positive")
+        return value
+
+    @model_validator(mode="after")
+    def _prefix_fits(self) -> Self:
+        # R-NAME-8: the prefix sits inside the cap, so it must leave room for the name itself
+        # (MOD-004.1.2). Fixed text: never the prefix.
+        if len(self.nsfw_prefix) >= self.max_len:
+            raise ValueError("nsfw_prefix must be shorter than max_len (R-NAME-8)")
+        return self
+
 
 class SimilarityConfig(_Section):
     image: float

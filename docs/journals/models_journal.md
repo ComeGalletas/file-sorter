@@ -265,7 +265,22 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 ## MOD-004 — Tasks
 
-- [ ] MOD-004.1 — `models.vlm_nsfw` in the config, with its test, and the stale "never picked by an agent" comments in `classifier/config.py` updated · #256 · Pipeline (`classifier/config.py` is Pipeline's, DOC-004.D2) · acceptance: `tests/unit/config/test_config.py`
-  - [x] MOD-004.1.1 — `models.vlm_nsfw: qwen3-vl:8b-instruct`, required in `ModelsConfig`; tests pin it to `vlm_safe` and to the Makefile's `OLLAMA_MODELS`
+- [x] MOD-004.1 — `models.vlm_nsfw` in the config, with its test, and the stale "never picked by an agent" comments in `classifier/config.py` updated · #256 · Pipeline (`classifier/config.py` is Pipeline's, DOC-004.D2) · acceptance: `tests/unit/config/test_config.py`
+  - [x] MOD-004.1.1 — `models.vlm_nsfw: qwen3-vl:8b-instruct`, required in `ModelsConfig`; tests pin it to `vlm_safe` and to the Makefile's `OLLAMA_MODELS` · cf09729
+  - [x] MOD-004.1.2 — `naming.nsfw_prefix` must be shorter than `naming.max_len`, and `max_len` a positive int (not a bool); fixed, value-free errors (the lead's #267 note, approved on #256)
 
 ## MOD-004 — Results
+
+### MOD-004.1 (Pipeline)
+
+- `config.yaml`'s `models.vlm_nsfw` is `qwen3-vl:8b-instruct`, the human's Q-1 answer, the same model as `vlm_safe`: no swap, no new pull, no compose change. `ModelsConfig.vlm_nsfw` is now a required `str`, so an unset adult model fails at load (`models.vlm_nsfw: missing` or `string_type`). The stale "not decided" and "never picked by an agent" comments now cite Q-1.
+- The tests pin `vlm_nsfw == vlm_safe`, and check that both caption branches' tags are in the Makefile's `OLLAMA_MODELS` (what `make models` pulls).
+- `NamingConfig` (the lead's #267 note, approved on #256):
+  - it refuses `len(nsfw_prefix) >= max_len` with fixed text, so the prefix can never be cut by the cap (R-NAME-8);
+  - it refuses a `max_len` below 1, or a YAML bool;
+  - the load error is `naming: value_error`, and a planted prefix (held first by a passing config) is absent from it, with no `__cause__` or `__context__`;
+  - a numeric string still coerces, like every other int key in this config.
+- The real values (`nsfw_`, 120) are unchanged.
+- The Makefile's `OLLAMA_MODELS` comment still says the adult VLM waits for Q-1. It's RUN's file; the lead routes it.
+- Tests: `tests/unit/config` 118 passed (the acceptance file); `make test` 3052 passed, 48 deselected; `make lint` clean. No gpu or eval tier: nothing under `classifier/models/` or `prompts/` changed, and nothing reads `vlm_nsfw` until CAP-001.2.
+- Completion: DONE. Self-rating: 9/10, proud: yes. The gap: the pin against the Makefile parses one line by its `OLLAMA_MODELS :=` shape, so a reshaped Makefile fails the test loudly, rather than being followed.
