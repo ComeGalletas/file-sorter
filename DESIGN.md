@@ -57,7 +57,7 @@ ingest → sanitize → classify (embed + VLM format/topic + VLM NSFW level + Fa
 | `name` | 3 | rendered filename |
 | `fileops` | 5 | result file in `results_root`, final status |
 
-**Batching (R-PIPE-1).** Nodes run as **per-stage batches**, not per-file: embed and gate the whole batch, then caption the safe batch with the safe VLM, then the adult batch with the adult VLM, then judge with the text LLM. The ledger `status` after each node is the checkpoint, and a resumed run selects files by status. Only `fileops` is a per-file transaction.
+**Batching (R-PIPE-1).** Nodes run as **per-stage batches**, not per-file: embed and gate the whole batch, then caption the safe batch, then the adult batch (`vlm_safe` and `vlm_nsfw` are the same model since Q-1, so only the prompt changes and nothing reloads), then judge with the text LLM. The ledger `status` after each node is the checkpoint, and a resumed run selects files by status. Only `fileops` is a per-file transaction.
 
 **Dry run (R-PIPE-2).** `dry-run` runs every node except `fileops`. It ends at status `proposed` and writes `source → proposed output` to CSV and to the ledger, so the UI can review it. The CSV goes to `results_root/reports/`, on the box only, and carries `source_path` beside `sanitized_name` (ING-001.D2). **Milestones M3–M6 operate in dry-run only. Before M7, `results_root` holds only empty category folders from `sync-folders`, plus `.work/` and `reports/`; no image is written there.**
 
