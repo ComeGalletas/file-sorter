@@ -129,5 +129,6 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 ## CLI-010 — Tasks
 
 - [ ] CLI-010.1 — `templates list|add|set-default|assign|preview` (`list` extends DESIGN §7) · #261 · Pipeline · acceptance: `tests/db/cli/test_templates_cli.py`
+  - [x] CLI-010.1.1 — `list`, `add`, `set-default` and `assign` (with `--clear`), with fixed-text refusals and no driver message ever printed (#268's audit)
 
 ## CLI-010 — Results
