@@ -7,7 +7,7 @@ Every work ID, its journal and its state. The rules are in `CLAUDE.md` §1 (DOC-
 
 DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo existed. They were committed at bootstrap as one commit per work item, so their task lines read `pre-repo` instead of per-task hashes.
 
-**Next free:** ING-003 · SAN-005 · CLS-009 · CAP-002 · RAG-001 · NAME-003 · FOP-003 · API-003 · MOD-005 · PIPE-003 · CFG-005 · RUN-022 · DB-010 · CLI-011 · TST-017 · DOC-020
+**Next free:** ING-003 · SAN-005 · CLS-009 · CAP-002 · RAG-001 · NAME-003 · FOP-003 · API-003 · MOD-005 · PIPE-003 · CFG-005 · RUN-022 · DB-010 · CLI-011 · TST-017 · DOC-021
 
 ## Work items
 
@@ -98,8 +98,9 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | DOC-015 | DESIGN §13 C-30 to C-32: M4's G0 deviations (R-API-1 through the proxy, R-API-5, R-API-6) | DOC, API | process | done (human-side) | m4 | PR #223 | [process_standard_journal.md](process_standard_journal.md) | `doc-015-design-m4-deviations` | 2026-11-10 |
 | DOC-016 | The M4 UI uses plain JavaScript, no htmx: DESIGN R-API-5, C-31; RUN-021 cancelled | DOC, API, RUN | process | done (human-side) | m4 | PR #243 | [process_standard_journal.md](process_standard_journal.md) | `doc-016-ui-plain-js` | 2026-11-12 |
 | DOC-017 | Remove the handle from DESIGN.md's header (public repo) | DOC | process | done (human-side, PR #244) | m4 | PR #244 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-14 |
-| DOC-018 | CLAUDE.md "Current phase" after `m4-approved` | DOC | process | proposed (human-side, PR #251) | m5 | PR #251 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
-| DOC-019 | DESIGN §9, §10, §14: Q-1 answered (`vlm_nsfw` = the classifier model) | DOC, MOD | process | proposed (human-side) | m5 | — | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
+| DOC-018 | CLAUDE.md "Current phase" after `m4-approved` | DOC | process | done (human-side, PR #251) | m5 | PR #251 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
+| DOC-019 | DESIGN §9, §10, §14: Q-1 answered (`vlm_nsfw` = the classifier model) | DOC, MOD | process | done (human-side, PR #252) | m5 | PR #252 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
+| DOC-020 | M5 G0: `status: approved`; the real-names list for the name tests; the commit identity kept | DOC, TST | process | proposed (human-side, PR #265) | m5 | PR #265 | [process_standard_journal.md](process_standard_journal.md) | `doc-020-m5-g0-approved` | 2026-11-15 |
 | CAP-001 | The caption client, prompts and node (both branches; sanitized on write) | CAP, MOD, PIPE, SAN | feature | proposed | m5 | #254, #255 | [caption_journal.md](caption_journal.md) | — | 2026-11-15 |
 | MOD-004 | `models.vlm_nsfw` = `qwen3-vl:8b-instruct` (Q-1) | MOD, CFG | feature | proposed | m5 | #256 | [models_journal.md](models_journal.md) | — | 2026-11-15 |
 | NAME-001 | The template engine: tokens, filters, built-ins, normalization, prefix, collisions | NAME, SAN | feature | proposed | m5 | #258, #259 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
@@ -133,6 +134,6 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | [../plans/m2.md](../plans/m2.md) | M2 (approved 2026-10-07): SAN-001, FOP-001, DB-002, ING-002, MOD-001, CLI-003, TST-005, and from the backlog CFG-002, TST-003, TST-004; added mid-run TST-006, TST-007, SAN-002; rule changes DOC-007; follow-up SAN-003 |
 | [../plans/m3.md](../plans/m3.md) | M3 (approved 2026-10-12; re-plan approved by the human 2026-10-19): CLS-002, CLS-003, DB-003, MOD-002, FOP-002, CLI-004, CLI-005, TST-008 (the build of CLS-001), and SAN-003; the re-plan adds CLS-004, DB-004, CFG-003, TST-009, SAN-004, RUN-016 and DOC-009, then RUN-017, TST-010, DB-005, TST-011, and at the checkpoint DOC-011, RUN-018, CFG-004, CLI-006, CLS-006, TST-012 |
 | [../plans/m4.md](../plans/m4.md) | M4 (approved 2026-11-10; `m4-approved` 2026-11-14): DB-007, PIPE-002, MOD-003, API-001, CLI-008, TST-015; M3 hardening DB-008, CLI-009, CLS-004.7; human-side RUN-019, RUN-020 (done), DOC-016, DOC-017; RUN-021 cancelled; approved at G1 (`m4-approved`, 2026-11-14) |
-| [../plans/m5.md](../plans/m5.md) | M5 (G0 draft, 2026-11-15): CAP-001, MOD-004, NAME-001, NAME-002, DB-009, CLI-010, API-002, TST-016; human-side DOC-018, DOC-019 |
+| [../plans/m5.md](../plans/m5.md) | M5 (approved by the human 2026-11-15, DOC-020): CAP-001, MOD-004, NAME-001, NAME-002, DB-009, CLI-010, API-002, TST-016; human-side DOC-018, DOC-019 |
 | [../../.claude/roles/README.md](../../.claude/roles/README.md) | RUN-002 |
 | `../../fixtures/labels.csv` (git-ignored) | CLS-001, M3 gate |
