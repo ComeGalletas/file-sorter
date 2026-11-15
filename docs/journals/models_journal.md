@@ -265,6 +265,6 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 ## MOD-004 — Tasks
 
-- [ ] MOD-004.1 — `models.vlm_nsfw` in the config, with its test · ML · acceptance: `tests/unit/config/test_config.py`
+- [ ] MOD-004.1 — `models.vlm_nsfw` in the config, with its test, and the stale "never picked by an agent" comments in `classifier/config.py` updated · Pipeline (`classifier/config.py` is Pipeline's, DOC-004.D2) · acceptance: `tests/unit/config/test_config.py`
 
 ## MOD-004 — Results

@@ -847,7 +847,8 @@ references or host paths here. Use hashes.
   - the public output is a verdict plus the criterion's own synthetic count (TST-016.D1);
   - `--detail` stays on the box;
   - the readability spot-check at G1 is the human's, on a real dry run, box-only;
-  - the `make gate-5` rule is human-side.
+  - the `make gate-5` rule is human-side;
+  - the stub's criterion text, which still says the names come from real images, is reworded to answer 4.
 - **Implements:** §11 (M5 gate); the human's answer 4.
 
 ## TST-016 — Confirmed reading
