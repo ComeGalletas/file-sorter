@@ -36,7 +36,13 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 - [x] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · #258 · Pipeline · a test pins the `|or=` token fallback (NAME-001.D2) · acceptance: `tests/unit/naming/test_templates.py`
   - [x] NAME-001.1.1 — the parser, `Tokens` (`repr=False` text and date fields) and the six built-ins · 8a58362
   - [x] NAME-001.1.2 — `render()`: tokens, filters, dates, normalization, the injected sanitize re-run, the empty-stem fallback (NAME-001.D4), the prefix and the head-keeping cap (NAME-001.D5)
-- [ ] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
+- [x] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
+  - [x] NAME-001.2.1 — `unique(stem, ext, taken, *, has_seq, max_len=None)`: seq increment, `_NNN` from `_001` (NAME-001.D6), the optional head-keeping trim (NAME-001.D7) · 857924e
+  - [x] NAME-001.2.2 — #269 round 1:
+    - every error row carries the plant;
+    - `max_len` below 4 is refused;
+    - a free name comes back unchanged;
+    - the rendered separator before `{seq}` is kept.
 
 ## NAME-001 — Results
 
@@ -62,6 +68,24 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
   - normalization drops lone surrogates instead of raising.
 - **Status:** DONE.
 - **Self-rating:** 9/10, proud: yes. The one gap: `|or=` checks for an empty value before normalization, so a value made only of symbols doesn't trigger the fallback. It normalizes to nothing, and D4's `short_hash` fallback still applies when the whole stem comes out empty. It's a small, safe edge; changing it would be a new decision, not a bug fix.
+
+### NAME-001.2 (#259, Pipeline)
+
+- **Tests:**
+  - `tests/unit/naming/test_collisions.py`: 31 passed (unit), after round 1;
+  - `tests/unit/naming/` as a whole: 96 passed;
+  - ruff check and format are clean.
+- **Behaviour:**
+  - the comparison is casefolded over `stem + ext` (NAME-001.D3), and `taken` is never mutated: the caller adds each result;
+  - `has_seq` with a trailing digit run increments it, keeping the width and growing past it (`999` → `1000`);
+  - otherwise `_001`, `_002`, and so on are appended (NAME-001.D6), which includes a `{seq}` the cap cut;
+  - `max_len` trims the stem's tail so stem plus suffix fit, strips a dangling `_`, and re-checks the trimmed name (NAME-001.D7).
+- **Privacy:**
+  - pure, with no I/O and no logging (tested);
+  - `CollisionError` is fixed text, unchained, and never quotes the stem or the extension (planted-value tests);
+  - the extension is checked against `\.[A-Za-z0-9]{1,15}` or empty, so a surrogate is rejected without being quoted.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. The gap: in a stem whose seq has no `_` before it, trimming could expose digits in the body. It still never returns a taken name, and no built-in renders that shape.
 
 ---
 
