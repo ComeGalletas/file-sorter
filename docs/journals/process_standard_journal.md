@@ -449,3 +449,26 @@ Remove the handle from the two lines that carry it, and quote it nowhere.
 - **Self-rating:** 9/10, yes; a search of the current files finds the handle nowhere. Round 1 caught that this block first quoted it, which is now fixed.
 - **Triage:** small. Two lines.
 - **Privacy:** removes a personal handle; nothing added.
+
+---
+
+## DOC-019 — Requirement (human, 2026-11-15)
+
+**Objective:** DESIGN.md records the human's answer to Q-1, the adult caption model.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13). The config default (`config.yaml`, `classifier/config.py`) is MOD-004's, in M5.
+
+## DOC-019 — Confirmed reading
+
+- **DOC-019.D1:** Q-1 is answered: `models.vlm_nsfw` is the classifier model, `qwen3-vl:8b-instruct`, with its own adult caption prompt (R-CAP-2). The human chose it at M5 planning, after a box-only spike against the earlier candidate. DESIGN.md's §9 config block, §10 model table and §14 Q-1 row say so. (the human, 2026-11-15)
+
+## DOC-019 — Tasks
+
+- [x] DOC-019.1 — DESIGN.md §9, §10, §14
+
+## DOC-019 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; three spec lines, checked against `main`. The role files' "never pick Q-1" lines stay as they are: no agent picked it.
+- **Triage:** small. Spec text only.
+- **Privacy:** generic wording only; no spike result is published.

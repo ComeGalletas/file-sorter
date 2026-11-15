@@ -235,7 +235,7 @@ models:
   classifier: google/siglip-so400m-patch14-384
   nsfw: Falconsai/nsfw_image_detection
   vlm_safe: qwen3-vl:8b-instruct     # classify + NSFW level (CLS-004.D8); the instruct build: no thinking mode
-  vlm_nsfw: <OPEN Q-1>
+  vlm_nsfw: qwen3-vl:8b-instruct    # adult captions; the classifier model, with its own caption prompt (Q-1, the human, 2026-11-15)
   text_llm: qwen3-vl:8b              # sanitizer, judge; moves to qwen3-vl:8b-instruct once gate 2 passes on it (SAN-004)
   text_embed: bge-m3
 classify:                            # SigLIP-era scoring keys: ignored on the VLM path (CLS-004.D7)
@@ -301,9 +301,8 @@ db:
 | --- | --- | --- | --- |
 | Image vectors (`image_vec`) | SigLIP so400m-patch14-384 | ~1.5 GB | resident (PyTorch, app container) |
 | NSFW cross-check | Falconsai/nsfw_image_detection | ~0.4 GB | resident (CPU fallback) |
-| Classify + NSFW level, safe captions (`vlm_safe`) | `qwen3-vl:8b-instruct` | ~6 GB at `num_ctx` 4096 | Ollama, the one resident model |
+| Classify + NSFW level, safe and adult captions (`vlm_safe`, `vlm_nsfw`) | `qwen3-vl:8b-instruct` | ~6 GB at `num_ctx` 4096 | Ollama, the one resident model |
 | Judge, local sanitizer (`text_llm`) | `qwen3-vl:8b`, moving to `qwen3-vl:8b-instruct` once gate 2 passes on it (SAN-004) | 6–8 GB | Ollama, one at a time |
-| Adult VLM | candidate `huihui_ai/qwen3-vl-abliterated:8b-instruct` (Q-1, final at M5) | ~6.1 GB weights + KV cache | Ollama, one at a time |
 | Text embeddings | `bge-m3` | <1 GB | Ollama |
 | Remote sanitizer (opt-in) | Claude API, text-only | 0 | — |
 
@@ -487,7 +486,7 @@ Each gate is measured by `scripts/gate_N.py` via `make gate-N`. Nothing from N+1
 
 | # | Question | Default if unanswered |
 | --- | --- | --- |
-| Q-1 | Exact Ollama tag for the adult (uncensored) VLM | **Kept open until M5 planning** (human, 2026-10-05). The M5 G0 plan must ask for it, and no agent picks one. **Candidate checked 2026-10-05:** `huihui_ai/qwen3-vl-abliterated:8b-instruct`.<br>• It is in the Ollama library, so `ollama pull` works with no `hf.co/` path.<br>• It is a qwen3vl family model: 8.8B parameters, Q4_K_M, 6.1 GB of weights.<br>• It uses the stock `qwen3-vl-instruct` renderer and parser, so it is the same architecture and prompt format as `vlm_safe`, and one caption prompt serves both branches.<br>• It is an instruct build (no thinking tokens), so captions are fast.<br>• Its default temperature is 1.0, so caption calls must pass a low temperature.<br>• It needs an Ollama build with qwen3vl support; pin the `ollama/ollama` image version. |
+| Q-1 | ~~Exact Ollama tag for the adult (uncensored) VLM~~ | **Answered (the human, 2026-11-15, at M5 planning):** `models.vlm_nsfw` is the classifier model, `qwen3-vl:8b-instruct`, with its own adult caption prompt (R-CAP-2). The human chose it after a box-only spike against the earlier candidate `huihui_ai/qwen3-vl-abliterated:8b-instruct`. One model keeps R-MOD-1's single resident model, with no swap between the safe and adult batches. No agent picked it. |
 | Q-2 | ~~Git remote~~ | **Answered:** GitHub, **public** repo. agent-office is installed from source from the fork `ComeGalletas/agent-office` (see §12). |
 | Q-3 | ~~Results root~~ | **Answered:** a sibling folder on the same Windows drive as the source, set in the local `.env`. `.work/` lives on the same drive, so atomic renames hold. |
 | Q-4 | ~~Source root~~ | **Answered:** a Windows-drive folder, set in the local `.env` and bind-mounted `:ro` by Docker Desktop. `watch` uses polling. The path contains a space, so it is quoted in `.env` and compose. |
