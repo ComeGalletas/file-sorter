@@ -529,3 +529,30 @@ The status line in `docs/plans/m5.md`, one `.gitignore` line, and the example fi
 - **Self-rating:** 9/10, yes; checked with `git check-ignore` that the real list is ignored and the example isn't.
 - **Triage:** small. Plan status and ignore rules only.
 - **Privacy:** no real name is committed; the example is synthetic.
+
+---
+
+## DOC-021 — Requirement (human, 2026-11-15)
+
+**Objective:** two follow-ups to Q-1's answer (DOC-019): the Makefile's `OLLAMA_MODELS` comment and R-PIPE-1's batching sentence.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-021 — Confirmed reading
+
+- **DOC-021.D1:** the `OLLAMA_MODELS` comment no longer says the adult VLM waits for Q-1: the adult captions use the instruct build, so the model list is unchanged. R-PIPE-1 says the safe and adult caption batches run on the same model with different prompts, so nothing reloads between them. Gate 5 needs no Makefile rule of its own: the generic `gate-%` rule covers `scripts/gate_5.py` (TST-016's interface on #263). (the human's session, 2026-11-15)
+
+## DOC-021 — Plan
+
+One Makefile comment and one DESIGN.md sentence. No code.
+
+## DOC-021 — Tasks
+
+- [x] DOC-021.1 — the `OLLAMA_MODELS` comment and R-PIPE-1's wording
+
+## DOC-021 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; checked against `main` and #263's interface.
+- **Triage:** small. A comment and spec text.
+- **Privacy:** generic wording only.
