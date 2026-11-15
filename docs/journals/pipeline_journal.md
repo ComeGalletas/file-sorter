@@ -285,7 +285,7 @@ references or host paths here. Use hashes.
 
 ### PIPE-002.2 (#232, Pipeline)
 
-- **PIPE-002.D3, implemented** (confirmed by the human, 2026-11-14). Right after `run()` holds the lock, and before it inserts its own row, one update in the record connection marks every `running` row `failed`, with `error = 'interrupted'` and `finished_at = clock_timestamp()`. It commits together with the new run's row. A row's `counts` are kept as they were. The log line carries the count only (`marked <n> orphaned run(s) interrupted`). With the lock held elsewhere, `RunLockedError` is raised first, so nothing is written. (Confirmed by the human, 2026-11-14.)
+- **PIPE-002.D3, implemented** (confirmed by the human, 2026-11-14). Right after `run()` holds the lock, and before it inserts its own row, one update in the record connection marks every `running` row `failed`, with `error = 'interrupted'` and `finished_at = clock_timestamp()`. It commits together with the new run's row. A row's `counts` are kept as they were. The log line carries the count only (`marked <n> orphaned run(s) interrupted`). With the lock held elsewhere, `RunLockedError` is raised first, so nothing is written.
 - **PIPE-002.D4, confirmed** (lead, on #232): reason maps flatten to `errored_<reason>` (PIPE-002.1 above). (Confirmed by the human, 2026-11-14.)
 - **Tests:**
   - acceptance `tests/db/graph/test_run_record.py`: 12 passed (3 new):

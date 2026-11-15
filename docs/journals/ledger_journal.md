@@ -261,7 +261,7 @@ references or host paths here. Use hashes.
 ### DB-007.1 (#207, Pipeline)
 
 - **DB-007.D2 — the consistency CHECKs** (worker's plan, approved by the lead on #207, 2026-11-10). Beyond the per-column CHECKs, `runs` requires: `(state = 'running') = (finished_at is null)` (`runs_finished_iff_done`); `error is null or state = 'failed'` (`runs_error_only_failed`); `finished_at is null or finished_at >= started_at` (`runs_finished_after_start`). A failed run may have a null error. (D2 first also gave `error` a shape-only regex; D3 replaced that with a closed set, since a shape alone admits any well-formed word.) (Confirmed by the human, 2026-11-14.)
-- **DB-007.D3 — `counts` and `error` are closed** (lead, round 1 on PR #226, 2026-11-10; the error set amended to PIPE-002.1's map). `runs.counts` is `{node: {field: number}}`: (Confirmed by the human, 2026-11-14.)
+- **DB-007.D3 — `counts` and `error` are closed** (lead, round 1 on PR #226, 2026-11-10; the error set amended to PIPE-002.1's map). Confirmed by the human, 2026-11-14. `runs.counts` is `{node: {field: number}}`:
   - `runs_counts_object`: the top level is an object;
   - `runs_counts_nodes`: its keys are a subset of `ingest`, `sanitize`, `classify`, `caption`, `retrieve`, `name`, `fileops` (`RUN_NODES`);
   - `runs_counts_node_objects`: each node's value is an object;
