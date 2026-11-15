@@ -833,3 +833,30 @@ references or host paths here. Use hashes.
 - **Self-rating:** 9/10, proud: yes. A fresh read of the final diff and the runs against the real UI. Remaining gaps:
   - criterion 5's HTML half sees only the adult rows the dashboard shows (the newest 20, plus queued and error rows). Every row is covered through the `/api/files` `blurred` flag instead (TST-015.D7, provisional, for the human);
   - the report's own adult marking isn't cross-checked against `is_adult`; the report carries no thumbnail (criterion 6), so nothing there can be unblurred.
+
+---
+
+## TST-016 — Requirement (DESIGN.md m5, 2026-11-15)
+
+- **Objective:** Measure gate 5: "0 sensitive values in 500 names".
+- **Details:**
+  - **the 500 names are synthetic** (the human's answer 4): seeded sensitive values planted in synthetic source names and in recorded synthetic captions;
+  - they are rendered through the real templates and the real name node, as gate 2 did for sanitize;
+  - the check looks for every seeded value in every name.
+- **Constraint:**
+  - the public output is a verdict plus the criterion's own synthetic count (TST-016.D1);
+  - `--detail` stays on the box;
+  - the readability spot-check at G1 is the human's, on a real dry run, box-only;
+  - the `make gate-5` rule is human-side;
+  - the stub's criterion text, which still says the names come from real images, is reworded to answer 4.
+- **Implements:** §11 (M5 gate); the human's answer 4.
+
+## TST-016 — Confirmed reading
+
+- **TST-016.D1 — the public output** (lead, 2026-11-15, provisional): a verdict and the synthetic count, as gate 2's summary line (TST-005.D8).
+
+## TST-016 — Tasks
+
+- [ ] TST-016.1 — `scripts/gate_5.py` and its unit tests · QA · acceptance: `tests/unit/gate/test_gate_5_checks.py` (the real run is `make gate-5`)
+
+## TST-016 — Results

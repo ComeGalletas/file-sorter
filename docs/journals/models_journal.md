@@ -248,3 +248,23 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 - **Tests:** `tests/unit/models/test_ollama_ps.py`, 30 passed (unit, `httpx.MockTransport`, synthetic tags only). `make test`: 2449 passed, 48 deselected. `make lint`: clean.
 - **Reviewer / Privacy auditor:** pending (lead).
 - **Status:** DONE. **Self-rating:** 9/10, proud: yes. The one point is that the 5 s timeout is provisional (MOD-003.D1) and is checked only against the fake transport.
+
+---
+
+## MOD-004 — Requirement (the human, Q-1, 2026-11-15)
+
+- **Objective:** Set `models.vlm_nsfw` to the human's Q-1 answer, `qwen3-vl:8b-instruct`, the same model as `vlm_safe`.
+- **Details:**
+  - the value in `config.yaml`;
+  - `classifier/config.py` accepts it (it's unset today);
+  - a test pins that both caption branches resolve to a model `make models` already pulls.
+
+  No new pull, no model swap, and no compose change.
+- **Constraint:** the human chose it after a box-only spike, and the spike's results stay on the box. DESIGN §9, §10 and §14 follow in the human's DOC-019 PR.
+- **Implements:** R-CAP-1, R-MOD-1, Q-1.
+
+## MOD-004 — Tasks
+
+- [ ] MOD-004.1 — `models.vlm_nsfw` in the config, with its test, and the stale "never picked by an agent" comments in `classifier/config.py` updated · Pipeline (`classifier/config.py` is Pipeline's, DOC-004.D2) · acceptance: `tests/unit/config/test_config.py`
+
+## MOD-004 — Results
