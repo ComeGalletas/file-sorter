@@ -469,7 +469,7 @@ One paragraph and one bullet in `CLAUDE.md`, human-side; no code.
 
 ## DOC-018 — Tasks
 
-- [x] DOC-018.1 — `CLAUDE.md` "Current phase"
+- [x] DOC-018.1 — `CLAUDE.md` "Current phase" (`23c0f2e`; round 1 `011f488`)
 
 ## DOC-018 — Results
 
