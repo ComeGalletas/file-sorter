@@ -460,7 +460,12 @@ Remove the handle from the two lines that carry it, and quote it nowhere.
 
 ## DOC-018 — Confirmed reading
 
-- **DOC-018.D1:** "Current phase" says M5 (Name) is being planned (DESIGN §4.4, §4.6, §11), M1 to M4 are approved, the human's local prompt wording and category descriptions stay on the box (R-CLS-7, R-CLS-8, TST-013), the read-only UI is served through the localhost-only proxy (RUN-019), Q-1 is the human's decision, and nothing is assigned before the human approves the plan, in full or in the parts the human names in it (the human pre-approved the parts of M5 that don't depend on Q-1, 2026-11-15). (the human's session, 2026-11-15)
+- **DOC-018.D1:** "Current phase" says M5 (Name) is being planned (DESIGN §4.4, §4.6, §11), M1 to M4 are approved, the human's local prompt wording and category descriptions stay on the box (R-CLS-7, R-CLS-8, TST-013), the read-only UI is served through the localhost-only proxy (RUN-019), Q-1 is answered (DOC-019), and nothing is assigned before the human sets `status: approved`, matching the hard rule and the G0 row. (the human's session, 2026-11-15; round 1 dropped a "parts the human names" wording that the hard rule doesn't allow)
+- **DOC-018.D2:** the "Before M5" line on `models.vlm_nsfw` now records Q-1's answer; agents still never pick or change a model tag. (round 1)
+
+## DOC-018 — Plan
+
+One paragraph and one bullet in `CLAUDE.md`, human-side; no code.
 
 ## DOC-018 — Tasks
 

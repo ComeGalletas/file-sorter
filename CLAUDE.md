@@ -10,7 +10,7 @@ A local bot on an RTX 5080 box that sanitizes, classifies, names and files image
 4. Only the human changes the decisions in DESIGN.md or this file. If you think a decision is wrong, open an issue labelled `design-question`. Do not work around it.
 5. **The human's changes come as PRs from the human's own session** (RUN-002.D16). That is the human, or Claude working in the human's session, from any branch or worktree. They may touch DESIGN.md, CLAUDE.md, `.claude/` and the hooks. The role guard doesn't apply to them, because it only acts on agent-office desks. Like every PR, they get the reviewer and the privacy auditor, and the lead merges them. They never edit `docs/journals/INDEX.md`: the lead reconciles the index (RUN-002.D13).
 
-**Current phase:** M5 (Name) is being planned: captions from both VLMs, built-in and user templates, collisions; the dry run reaches `proposed` (DESIGN §4.4, §4.6, §11). M1 to M4 are approved (`m1-approved` to `m4-approved`). M3 classifies with a local VLM (CLS-004, CLS-007, CLS-008; DESIGN §4.3); the human's own prompt wording and category descriptions stay on the box, in `prompts/local/` and the local app database (R-CLS-7, R-CLS-8), and `make gate-3` measures them (TST-013). M4's read-only UI is served on 127.0.0.1:8000 through the localhost-only proxy (RUN-019). The adult caption model (Q-1) is the human's decision. The plan is `docs/plans/m5.md` once written; nothing is assigned before the human approves it, in full (`status: approved`) or in the parts the human names in the plan. DESIGN.md §14 lists the open questions; ask the human, don't assume.
+**Current phase:** M5 (Name) is being planned: captions from both VLMs, built-in and user templates, collisions; the dry run reaches `proposed` (DESIGN §4.4, §4.6, §11). M1 to M4 are approved (`m1-approved` to `m4-approved`). M3 classifies with a local VLM (CLS-004, CLS-007, CLS-008; DESIGN §4.3); the human's own prompt wording and category descriptions stay on the box, in `prompts/local/` and the local app database (R-CLS-7, R-CLS-8), and `make gate-3` measures them (TST-013). M4's read-only UI is served on 127.0.0.1:8000 through the localhost-only proxy (RUN-019). Q-1 is answered: the adult caption model is the classifier model (DESIGN §14). The plan is `docs/plans/m5.md` once written; nothing is assigned before the human sets `status: approved`. DESIGN.md §14 lists the open questions; ask the human, don't assume.
 
 ## Hard rules — never
 
@@ -326,7 +326,7 @@ Milestones M3–M6 run in **dry-run only**. Before M7, `results_root` gets empty
 - agent-office comes from the fork `https://github.com/ComeGalletas/agent-office`, built from source in `file-sorter-full\agent-office` and linked globally (`npm install -g .`). Its `install.sh` and `install.ps1` download upstream releases, so never use them.
   - Start it with this repo as its `[dir]`, so this checkout becomes the floor (RUN-003.D1).
   - It keeps its data and the workers' worktrees in `.agent-office/`, which is git-ignored, and names worker branches `office/*`.
-- The adult VLM tag (`models.vlm_nsfw`) is intentionally unset until M5. Never pick one; the M5 G0 plan asks the human.
+- The adult VLM tag (`models.vlm_nsfw`) is the human's choice (Q-1, answered 2026-11-15: `qwen3-vl:8b-instruct`, DESIGN §14). Never pick or change a model tag; ask the human.
 
 ## Keeping this file honest
 
