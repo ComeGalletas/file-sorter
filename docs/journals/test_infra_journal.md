@@ -865,3 +865,11 @@ references or host paths here. Use hashes.
   - [ ] TST-016.1.3 — the runner: the real caption node (replayed captions) and name node on a fresh `db-test` schema (after #255 and #260; follow-up PR)
 
 ## TST-016 — Results
+
+### TST-016.1.1 and .1.2 (QA, 2026-11-15; first PR of #263)
+
+- **Tests:** `tests/unit/gate/test_gate_5_checks.py` 44 passed; `tests/unit/gate` + `tests/devtools` 820 passed; pre-push default tiers 3076 passed, 48 deselected. No gpu tier (nothing in `models/` or `prompts/`). The real `make gate-5` was not run (G1 is the human's).
+- **Decisions applied:** TST-016.D3 (the real-name line never changes the exit code), D4 (the entity rule runs in the real-name section), D5 (normalized matcher, every seed against every name). Local `literal` values are held in memory only, with a test that the draw writes nothing and that the committed replay data holds no planted value (the lead's approval).
+- **Found while building:** a regex match taken on the whole raw name runs into the extension, so its probe could never match a rendering. Probes are now taken on the name with its image extension split off, as `sanitize_name` does, and a per-kind test pins it.
+- **Status:** DONE for .1.1 and .1.2. `main()` fails with fixed text until .1.3 wires the runner.
+- **Self-rating:** 8/10, proud: yes. Gaps: (1) the synthetic section is measured in unit tests only through a stand-in for the caption and name nodes, and the real nodes come in .1.3; (2) the matcher allows a separator to vanish, so a very short local `literal` value can false-FAIL a run (it fails safe, and `--detail` shows which seed); (3) the real-name rendering's R-SAN-7 re-run uses literal, regex and entity, and .1.3 aligns it with the callable NAME-002.1's node actually injects.
