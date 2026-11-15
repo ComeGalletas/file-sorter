@@ -266,5 +266,6 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 ## MOD-004 — Tasks
 
 - [ ] MOD-004.1 — `models.vlm_nsfw` in the config, with its test, and the stale "never picked by an agent" comments in `classifier/config.py` updated · #256 · Pipeline (`classifier/config.py` is Pipeline's, DOC-004.D2) · acceptance: `tests/unit/config/test_config.py`
+  - [x] MOD-004.1.1 — `models.vlm_nsfw: qwen3-vl:8b-instruct`, required in `ModelsConfig`; tests pin it to `vlm_safe` and to the Makefile's `OLLAMA_MODELS`
 
 ## MOD-004 — Results

@@ -14,7 +14,7 @@ models:
   classifier: google/siglip-so400m-patch14-384
   nsfw: Falconsai/nsfw_image_detection
   vlm_safe: qwen3-vl:8b-instruct     # classify model (CLS-004.D8, CFG-003.1)
-  vlm_nsfw: null                     # Q-1: kept open until M5 planning; never picked by an agent
+  vlm_nsfw: qwen3-vl:8b-instruct     # the human's Q-1 answer (2026-11-15): the classifier model, no swap
   text_llm: qwen3-vl:8b              # MVP: one model for caption, judge and local sanitizer (C-1)
   text_embed: bge-m3
 

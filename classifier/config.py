@@ -1,9 +1,9 @@
 """Typed configuration (DESIGN.md §6, CFG-001, R-CFG-1).
 
 `config.yaml` holds container paths only. Every section is a strict model: an unknown key
-is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1). The
-SigLIP-era keys `classify.*.default_min_score` and `margin` are kept but unread on the VLM
-path (CLS-004.D7, DOC-009.D3).
+is an error. `models.vlm_nsfw` is the human's Q-1 answer (MOD-004.1); agents never pick or
+change a model tag. The SigLIP-era keys `classify.*.default_min_score` and `margin` are
+kept but unread on the VLM path (CLS-004.D7, DOC-009.D3).
 
 No error raised by `load_config` repeats a value from the file or the environment: messages
 name the file, the key location and the error type only (CFG-002).
@@ -47,7 +47,7 @@ class ModelsConfig(_Section):
     classifier: str
     nsfw: str
     vlm_safe: str
-    vlm_nsfw: str | None = None  # Q-1: never picked by an agent
+    vlm_nsfw: str  # the adult caption model: the human's Q-1 answer, required (MOD-004.1)
     text_llm: str
     text_embed: str
 

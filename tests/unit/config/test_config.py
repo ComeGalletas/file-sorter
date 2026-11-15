@@ -25,7 +25,6 @@ def test_real_config_validates() -> None:
 
 def test_undecided_values_stay_none() -> None:
     config = Config.model_validate(real_data())
-    assert config.models.vlm_nsfw is None
     assert config.classify.format.default_min_score is None
     assert config.classify.topic.default_min_score is None
     assert config.db.dsn is None
@@ -39,6 +38,45 @@ def test_real_config_holds_the_vlm_values() -> None:
     assert config.nsfw.conservative_traces is True  # the human's value (CLS-007.D3)
     assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
     assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
+
+
+# MOD-004.1.1: the adult caption model is the human's Q-1 answer, the classifier model.
+
+
+def _pulled_models() -> set[str]:
+    """The tags `make models` pulls: the Makefile's `OLLAMA_MODELS` line, comment stripped."""
+    for line in (REPO / "Makefile").read_text(encoding="utf-8").splitlines():
+        if line.startswith("OLLAMA_MODELS"):
+            return set(line.split(":=", 1)[1].split("#", 1)[0].split())
+    raise AssertionError("no OLLAMA_MODELS line in the Makefile")
+
+
+def test_vlm_nsfw_is_the_q1_answer() -> None:
+    models = Config.model_validate(real_data()).models
+    assert models.vlm_nsfw == "qwen3-vl:8b-instruct"  # the human, Q-1 (2026-11-15)
+    assert models.vlm_nsfw == models.vlm_safe  # one resident model, no swap
+
+
+def test_both_caption_branches_use_a_pulled_model() -> None:
+    models = Config.model_validate(real_data()).models
+    pulled = _pulled_models()
+    assert "qwen3-vl:8b-instruct" in pulled  # the parse found the real line
+    assert {models.vlm_safe, models.vlm_nsfw} <= pulled
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_vlm_nsfw_is_required_and_not_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, present: bool
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    del data["models"]["vlm_nsfw"]
+    if present:
+        data["models"]["vlm_nsfw"] = None
+    error = load_error(write_config(tmp_path, data))
+    expected = "models.vlm_nsfw: string_type" if present else "models.vlm_nsfw: missing"
+    assert expected in str(error)
+    assert error.__cause__ is None and error.__context__ is None
 
 
 def test_deletion_defaults_to_disabled() -> None:
