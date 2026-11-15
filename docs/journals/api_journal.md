@@ -263,3 +263,24 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
       A bare `http` matches the CSP's `<meta http-equiv>` from API-001.5, which is no URL, so the URL forms are checked instead, and the CSP meta is asserted present.
   - On the round-1 code, the planted-path, no-DSN and broad-catch tests fail (5 tests, checked).
   - Results: acceptance 27 passed; `make test` 2738 passed, 48 deselected; `make lint` clean.
+
+---
+
+## API-002 — Requirement (the human's answer 10, M5, 2026-11-15)
+
+- **Objective:** Show each row's proposed name, read-only, in the dashboard, the review queue and the report, for the G1 readability check.
+- **Details:**
+  - `FileRow` gains `proposed_name` (the proposed file name) and `proposed_folder` (its folder, relative to `results_root`);
+  - both are escaped wherever rendered.
+- **Constraint:** no caption is shown (API-002.D1), and no write action is added (M8).
+- **Implements:** R-API-5, R-API-7.
+
+## API-002 — Confirmed reading
+
+- **API-002.D1 — what is shown** (lead, 2026-11-15, provisional): the proposed name and its relative folder, not the caption.
+
+## API-002 — Tasks
+
+- [ ] API-002.1 — The proposed name and folder in `FileRow`, the latest rows, the review queue and the report · API/UI · acceptance: `tests/db/api/test_proposed_name.py`
+
+## API-002 — Results

@@ -301,3 +301,22 @@ references or host paths here. Use hashes.
 - The DB-006.1 Results' raw control bytes were already fixed in #206; nothing further needed.
 - Tests: acceptance file 20 passed (db tier). `make lint`: clean. No gpu or eval tier (no models or prompts touched).
 - Completion: DONE. Self-rating: 10/10, proud: yes. This closes DB-006.1's stated gap (seeds only spot-checked).
+
+---
+
+## DB-009 — Requirement (DESIGN.md m5, 2026-11-15)
+
+- **Objective:** Store user templates and their assignments (§5's `naming_templates`, `template_assignments`).
+- **Details:**
+  - migration `0008`;
+  - `naming_templates`: `id`, `name` (unique, `^[a-z][a-z0-9-]{0,31}$`), `template` (one line, at most 200 characters), `builtin`;
+  - `template_assignments`: `scope` (`global` or `category`), `category_id` (null for `global`), `template_id`, with at most one global assignment and at most one per category;
+  - the six built-ins seeded from NAME-001.D2.
+- **Constraint:** CHECKs enforce the shapes, and the downgrade drops both tables.
+- **Implements:** §5, R-NAME-1.
+
+## DB-009 — Tasks
+
+- [ ] DB-009.1 — Migration `0008`, the ORM models, the seeded built-ins · Pipeline · acceptance: `tests/db/ledger/test_templates_migration.py`
+
+## DB-009 — Results
