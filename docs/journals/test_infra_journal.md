@@ -860,5 +860,8 @@ references or host paths here. Use hashes.
 ## TST-016 — Tasks
 
 - [ ] TST-016.1 — `scripts/gate_5.py` and its unit tests · #263 · QA · acceptance: `tests/unit/gate/test_gate_5_checks.py` (the real run is `make gate-5`)
+  - [x] TST-016.1.1 — the 500-row draw (seeds in the synthetic path and the recorded synthetic caption, built in memory only), held-before-absent, the normalized matcher against every name (TST-016.D5), the public line (TST-016.D1), the verdict (TST-016.D3), the criterion reworded to answer 4
+  - [ ] TST-016.1.2 — the box-only real-name section over `fixtures/names_local.txt` (DOC-020.D2, TST-016.D2, D4)
+  - [ ] TST-016.1.3 — the runner: the real caption node (replayed captions) and name node on a fresh `db-test` schema (after #255 and #260; follow-up PR)
 
 ## TST-016 — Results
