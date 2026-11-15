@@ -449,3 +449,26 @@ Remove the handle from the two lines that carry it, and quote it nowhere.
 - **Self-rating:** 9/10, yes; a search of the current files finds the handle nowhere. Round 1 caught that this block first quoted it, which is now fixed.
 - **Triage:** small. Two lines.
 - **Privacy:** removes a personal handle; nothing added.
+
+---
+
+## DOC-018 — Requirement (human, 2026-11-15)
+
+**Objective:** `CLAUDE.md`'s "Current phase" describes the project after `m4-approved`.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-018 — Confirmed reading
+
+- **DOC-018.D1:** "Current phase" says M5 (Name) is being planned (DESIGN §4.4, §4.6, §11), M1 to M4 are approved, the human's local prompt wording and category descriptions stay on the box (R-CLS-7, R-CLS-8, TST-013), the read-only UI is served through the localhost-only proxy (RUN-019), Q-1 is the human's decision, and nothing is assigned before the human approves the plan, in full or in the parts the human names in it (the human pre-approved the parts of M5 that don't depend on Q-1, 2026-11-15). (the human's session, 2026-11-15)
+
+## DOC-018 — Tasks
+
+- [x] DOC-018.1 — `CLAUDE.md` "Current phase"
+
+## DOC-018 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 10/10, yes; one paragraph, checked against `main`.
+- **Triage:** small. Rule text only.
+- **Privacy:** generic wording only.
