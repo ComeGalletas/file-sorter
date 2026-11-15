@@ -452,6 +452,34 @@ Remove the handle from the two lines that carry it, and quote it nowhere.
 
 ---
 
+## DOC-018 — Requirement (human, 2026-11-15)
+
+**Objective:** `CLAUDE.md`'s "Current phase" describes the project after `m4-approved`.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row is the lead's (RUN-002.D13).
+
+## DOC-018 — Confirmed reading
+
+- **DOC-018.D1:** "Current phase" says M5 (Name) is being planned (DESIGN §4.4, §4.6, §11), M1 to M4 are approved, the human's local prompt wording and category descriptions stay on the box (R-CLS-7, R-CLS-8, TST-013), the read-only UI is served through the localhost-only proxy (RUN-019), Q-1 is answered (DOC-019), and nothing is assigned before the human sets `status: approved`, matching the hard rule and the G0 row. (the human's session, 2026-11-15; round 1 dropped a "parts the human names" wording that the hard rule doesn't allow)
+- **DOC-018.D2:** the "Before M5" line on `models.vlm_nsfw` now records Q-1's answer; agents still never pick or change a model tag. (round 1)
+
+## DOC-018 — Plan
+
+One paragraph and one bullet in `CLAUDE.md`, human-side; no code.
+
+## DOC-018 — Tasks
+
+- [x] DOC-018.1 — `CLAUDE.md` "Current phase" (`23c0f2e`; round 1 `011f488`)
+
+## DOC-018 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 10/10, yes; one paragraph, checked against `main`.
+- **Triage:** small. Rule text only.
+- **Privacy:** generic wording only.
+
+---
+
 ## DOC-019 — Requirement (human, 2026-11-15)
 
 **Objective:** DESIGN.md records the human's answer to Q-1, the adult caption model.
@@ -464,7 +492,7 @@ Remove the handle from the two lines that carry it, and quote it nowhere.
 
 ## DOC-019 — Tasks
 
-- [x] DOC-019.1 — DESIGN.md §9, §10, §14
+- [x] DOC-019.1 — DESIGN.md §9, §10, §14 (`b862b1b`)
 
 ## DOC-019 — Results
 
