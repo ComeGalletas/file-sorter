@@ -500,3 +500,32 @@ One paragraph and one bullet in `CLAUDE.md`, human-side; no code.
 - **Self-rating:** 9/10, yes; three spec lines, checked against `main`. The role files' "never pick Q-1" lines stay as they are: no agent picked it.
 - **Triage:** small. Spec text only.
 - **Privacy:** generic wording only; no spike result is published.
+
+---
+
+## DOC-020 — Requirement (human, 2026-11-15)
+
+**Objective:** record the human's M5 G0 approval, and give M5's name tests a box-only list of the human's real file names.
+
+**Constraint:** human-side PR (RUN-002.D16); the index row and m5.md's answers section are the lead's (RUN-002.D13).
+
+## DOC-020 — Confirmed reading
+
+- **DOC-020.D1:** `docs/plans/m5.md` is `status: approved`. The human's words (2026-11-15): "proceed with all recommended decisions", which also confirms the lead's provisional defaults (NAME-001.D1–D3, NAME-002.D1/D2, CAP-001.D1–D4, CLI-010.D1, API-002.D1, TST-016.D1). (the human)
+- **DOC-020.D2:** the human asked for their real file names, extension included, to be added to the names M5 tests. They live in `fixtures/names_local.txt` (one name per line, git-ignored, box only, read from the file names alone with no file opened); `fixtures/names_local.example.txt` holds synthetic placeholders. Like `fixtures/labels.csv`, the real list is never committed, printed or described in public, counts included. How the tests and gate 5 use it is TST-016's, and a box-only part publishes a verdict only. (the human, 2026-11-15)
+- **DOC-020.D3:** the repo-local commit identity stays as it is, since the program is for the human's own use for now. (the human, 2026-11-15)
+
+## DOC-020 — Plan
+
+The status line in `docs/plans/m5.md`, one `.gitignore` line, and the example file. No code.
+
+## DOC-020 — Tasks
+
+- [x] DOC-020.1 — m5.md `status: approved`, the local name list's ignore line and example
+
+## DOC-020 — Results
+
+- **Status:** DONE.
+- **Self-rating:** 9/10, yes; checked with `git check-ignore` that the real list is ignored and the example isn't.
+- **Triage:** small. Plan status and ignore rules only.
+- **Privacy:** no real name is committed; the example is synthetic.

@@ -7,6 +7,8 @@ prompts/local/*.md
 # Image data never leaves the box
 fixtures/images/
 fixtures/labels.csv
+# DOC-020.D2: the human's real file names for M5's name tests, box only; only the example is committed
+fixtures/names_local.txt
 # RUN-018.D1: no image file is committed anywhere, so a stray copy can't be pushed by mistake
 *.[pP][nN][gG]
 *.[jJ][pP][gG]

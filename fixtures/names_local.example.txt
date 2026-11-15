@@ -1,0 +1,7 @@
+# One file name per line, extension included (box only: the real list is fixtures/names_local.txt, git-ignored).
+# These are synthetic placeholders.
+IMG_0001.jpg
+Screenshot 2026-01-01 120000.png
+holiday photo (2).jpeg
+0f4c1e2a-1b2c-4d5e-8f90-123456789abc.webp
+clip_final_v2.gif
