@@ -234,7 +234,7 @@ references, host paths or the human's sanitize.yaml values here. Use hashes.
 
 ## MOD-003 — Confirmed reading
 
-- **MOD-003.D1** — **A short timeout for the status read** (lead, 2026-11-10, provisional). The client's default timeout is 300 s, sized for a model load (MOD-001.D4), which would hang a status page. `loaded_models()` passes a per-request `PS_TIMEOUT = 5.0` s, a module constant in `classifier/models/ollama.py` beside `DEFAULT_TIMEOUT`, so every caller gets it.
+- **MOD-003.D1** — **A short timeout for the status read** (lead, 2026-11-10, confirmed by the human, 2026-11-14). The client's default timeout is 300 s, sized for a model load (MOD-001.D4), which would hang a status page. `loaded_models()` passes a per-request `PS_TIMEOUT = 5.0` s, a module constant in `classifier/models/ollama.py` beside `DEFAULT_TIMEOUT`, so every caller gets it.
 
 ## MOD-003 — Tasks
 

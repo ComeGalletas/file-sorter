@@ -122,6 +122,6 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | [../plans/m1.md](../plans/m1.md) | M1: CFG-001, DB-001, ING-001 (incl. ING-001.3, #34), PIPE-001, CLI-002, TST-002 |
 | [../plans/m2.md](../plans/m2.md) | M2 (approved 2026-10-07): SAN-001, FOP-001, DB-002, ING-002, MOD-001, CLI-003, TST-005, and from the backlog CFG-002, TST-003, TST-004; added mid-run TST-006, TST-007, SAN-002; rule changes DOC-007; follow-up SAN-003 |
 | [../plans/m3.md](../plans/m3.md) | M3 (approved 2026-10-12; re-plan approved by the human 2026-10-19): CLS-002, CLS-003, DB-003, MOD-002, FOP-002, CLI-004, CLI-005, TST-008 (the build of CLS-001), and SAN-003; the re-plan adds CLS-004, DB-004, CFG-003, TST-009, SAN-004, RUN-016 and DOC-009, then RUN-017, TST-010, DB-005, TST-011, and at the checkpoint DOC-011, RUN-018, CFG-004, CLI-006, CLS-006, TST-012 |
-| [../plans/m4.md](../plans/m4.md) | M4 (G0 draft, 2026-11-10): DB-007, PIPE-002, MOD-003, API-001, CLI-008, TST-015; M3 hardening DB-008, CLI-009, CLS-004.7; human-side RUN-019, RUN-021; proposed RUN-020 |
+| [../plans/m4.md](../plans/m4.md) | M4 (approved 2026-11-10; `m4-approved` 2026-11-14): DB-007, PIPE-002, MOD-003, API-001, CLI-008, TST-015; M3 hardening DB-008, CLI-009, CLS-004.7; human-side RUN-019, RUN-020 (done), DOC-016, DOC-017; RUN-021 cancelled; approved at G1 (`m4-approved`, 2026-11-14) |
 | [../../.claude/roles/README.md](../../.claude/roles/README.md) | RUN-002 |
 | `../../fixtures/labels.csv` (git-ignored) | CLS-001, M3 gate |

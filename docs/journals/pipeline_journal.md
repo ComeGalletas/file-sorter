@@ -230,7 +230,7 @@ references or host paths here. Use hashes.
 
 ## PIPE-002 — Confirmed reading
 
-- **PIPE-002.D1 — `dry-run` records a run and takes the lock** (lead, 2026-11-10, provisional; `docs/plans/m4.md`). R-API-6 names `sort`, `watch` and `reclassify`, but `dry-run` writes the ledger too, and the run banner needs a run.
+- **PIPE-002.D1 — `dry-run` records a run and takes the lock** (lead, 2026-11-10, confirmed by the human, 2026-11-14; `docs/plans/m4.md`). R-API-6 names `sort`, `watch` and `reclassify`, but `dry-run` writes the ledger too, and the run banner needs a run.
 
 ## PIPE-002 — Tasks
 
@@ -243,7 +243,7 @@ references or host paths here. Use hashes.
 
 ### PIPE-002.1 (#208, Pipeline)
 
-- **PIPE-002.D2 — exit 3 on a held lock** (lead, on #208, 2026-11-10). `dry-run` prints `error: another run holds the run lock; wait for it to finish` and exits 3, distinct from config (2) and database (1) errors. Nothing runs and no `runs` row is written.
+- **PIPE-002.D2 — exit 3 on a held lock** (lead, on #208, 2026-11-10). `dry-run` prints `error: another run holds the run lock; wait for it to finish` and exits 3, distinct from config (2) and database (1) errors. Nothing runs and no `runs` row is written. (Confirmed by the human, 2026-11-14.)
 - **The record connection.** `run()` opens its own SQLAlchemy connection (NullPool) for the lock and the `runs` row, held for the whole run. The nodes keep their psycopg connection and per-node commits (PIPE-001.D3). The order is:
   1. take the lock, or raise `RunLockedError`;
   2. insert the `running` row (`dry_run`, or `sort` when not a dry run);
@@ -285,8 +285,8 @@ references or host paths here. Use hashes.
 
 ### PIPE-002.2 (#232, Pipeline)
 
-- **PIPE-002.D3, implemented.** Right after `run()` holds the lock, and before it inserts its own row, one update in the record connection marks every `running` row `failed`, with `error = 'interrupted'` and `finished_at = clock_timestamp()`. It commits together with the new run's row. A row's `counts` are kept as they were. The log line carries the count only (`marked <n> orphaned run(s) interrupted`). With the lock held elsewhere, `RunLockedError` is raised first, so nothing is written.
-- **PIPE-002.D4, confirmed** (lead, on #232): reason maps flatten to `errored_<reason>` (PIPE-002.1 above).
+- **PIPE-002.D3, implemented** (confirmed by the human, 2026-11-14). Right after `run()` holds the lock, and before it inserts its own row, one update in the record connection marks every `running` row `failed`, with `error = 'interrupted'` and `finished_at = clock_timestamp()`. It commits together with the new run's row. A row's `counts` are kept as they were. The log line carries the count only (`marked <n> orphaned run(s) interrupted`). With the lock held elsewhere, `RunLockedError` is raised first, so nothing is written. (Confirmed by the human, 2026-11-14.)
+- **PIPE-002.D4, confirmed** (lead, on #232): reason maps flatten to `errored_<reason>` (PIPE-002.1 above). (Confirmed by the human, 2026-11-14.)
 - **Tests:**
   - acceptance `tests/db/graph/test_run_record.py`: 12 passed (3 new):
     - two orphans both end `failed`/`interrupted`, with their counts kept, `finished_at >= started_at`, and the count-only log line;

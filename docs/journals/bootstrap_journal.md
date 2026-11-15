@@ -950,7 +950,7 @@ and then (PR #43 review round 2):
 
 ## RUN-019 — Confirmed reading
 
-- **RUN-019.D1 (lead's shape, m4.md; built by the human's session):** **a pinned `nginx:1.30.5-alpine` service, `ui-proxy`.**
+- **RUN-019.D1 (lead's shape, m4.md; built by the human's session):** **a pinned `nginx:1.30.5-alpine` service, `ui-proxy`.** (Confirmed by the human, 2026-11-14.)
   - **Networks:** `internal`, plus a new bridge network `ui` that no other service joins.
   - **Port:** `127.0.0.1:8000:8000` only.
   - **Container:** `read_only: true`, with tmpfs for nginx's cache, pid and temp.
@@ -961,8 +961,8 @@ and then (PR #43 review round 2):
     - `server_tokens off`, no access log, and the error log at `crit`, because nginx's `error` lines quote the request line, with its filters and hashes.
 
   `CLAUDE.md`'s hard rule lists the `ui` network as a designed runtime exception that makes no outbound call. DESIGN R-API-1 now says "reachable from the host only on `127.0.0.1:8000`", and §9 describes the proxy. (human, 2026-11-10)
-- **RUN-019.D2:** `app` serves with `classifier serve --host 0.0.0.0` on the internal network only. That needs CLI-008.1's `serve`, so it's RUN-019.2, after CLI-008.1 merges. Until then the proxy answers 502. (lead, provisional, m4.md)
-- **RUN-019.D3:** **`make gate-4` is a main-checkout rule, like TST-013's `gate-3`.** It starts the app `db` and hands `APP_DB_DSN` to the container by name, from an `@`-silenced line, so make never echoes it. In a worktree it fails with a fixed message. (lead, provisional, m4.md)
+- **RUN-019.D2:** `app` serves with `classifier serve --host 0.0.0.0` on the internal network only. That needs CLI-008.1's `serve`, so it's RUN-019.2, after CLI-008.1 merges. Until then the proxy answers 502. (lead, confirmed by the human, 2026-11-14, m4.md)
+- **RUN-019.D3:** **`make gate-4` is a main-checkout rule, like TST-013's `gate-3`.** It starts the app `db` and hands `APP_DB_DSN` to the container by name, from an `@`-silenced line, so make never echoes it. In a worktree it fails with a fixed message. (lead, confirmed by the human, 2026-11-14, m4.md)
 - `make up` also starts `ui-proxy`.
 
 ## RUN-019 — Tasks
