@@ -105,7 +105,7 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | NAME-001 | The template engine: tokens, filters, built-ins, normalization, prefix, collisions | NAME, SAN | feature | proposed | m5 | #258, #259 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
 | NAME-002 | The name node; the dry run reaches `proposed` | NAME, PIPE, CLI | feature | proposed | m5 | #260 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
 | DB-009 | Migration `0008`: `naming_templates`, `template_assignments` | DB, NAME | feature | proposed | m5 | #257 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-15 |
-| CLI-010 | `classifier templates list\|add\|set-default\|assign\|preview` | #261 | feature | proposed | m5 | — | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
+| CLI-010 | `classifier templates list\|add\|set-default\|assign\|preview` | CLI, NAME | feature | proposed | m5 | #261 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
 | API-002 | The proposed name in the dashboard, the review queue and the report | API, UI | feature | proposed | m5 | #262 | [api_journal.md](api_journal.md) | — | 2026-11-15 |
 | TST-016 | Gate 5: 500 synthetic names with seeded sensitive values | TST, NAME | feature | proposed | m5 | #263 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-15 |
 | DB-007 | Migration `0007`: the `runs` table and the run advisory lock | DB, PIPE, API | feature | done (PR #226) | m4 | #207 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
