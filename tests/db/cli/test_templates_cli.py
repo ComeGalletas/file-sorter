@@ -7,6 +7,7 @@ category name and token value is a synthetic coinage.
 """
 
 import logging
+import re
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -198,7 +199,7 @@ def test_add_refuses_a_bad_name(cli: None, schema_dsn: str, name: str) -> None:
         ("qorvex", "template has no token"),
         ("{subject" + "x" * 200 + "}", "template is longer than 200 characters"),
         ("{subject}\tqorvex", "the template must be one line"),
-        ("{subject} qorvex", "the template must be one line"),
+        ("{subject}" + chr(0x2028) + "qorvex", "the template must be one line"),
         ("{subject}\udcffqorvex", "the template must be one line"),
     ],
 )
@@ -362,3 +363,123 @@ def test_assigned_template_is_listed_once_per_scope(cli: None, schema_dsn: str) 
     listed = run("list").output
     assert "descriptive\tyes\t{subject}_{detail|max=40}_{seq:3}\tglobal,format:Glorpic," in listed
     assert listed.count("topic:Vexmoor") == 1
+
+
+# --- preview (CLI-010.D1) -----------------------------------------------------------------
+
+NAME_LINE = re.compile(r"[a-z0-9_]+\.(png|gif|webp)")
+
+
+def _names(result) -> list[str]:
+    lines = result.output.splitlines()
+    assert lines[0].startswith("preview of template ")
+    return lines[1:]
+
+
+def test_preview_is_pinned_by_the_seed(cli: None) -> None:
+    first = run("preview", "descriptive", "--sample", "20", "--seed", "7")
+    again = run("preview", "descriptive", "--sample", "20", "--seed", "7")
+    other = run("preview", "descriptive", "--sample", "20", "--seed", "8")
+    assert first.exit_code == 0, first.output
+    assert first.output == again.output
+    assert _names(first) != _names(other)
+    assert first.output.splitlines()[0] == (
+        "preview of template descriptive: 20 synthetic rows, seed 7"
+    )
+
+
+def test_preview_default_seed_and_sample(cli: None) -> None:
+    result = run("preview", "hash")
+    assert result.exit_code == 0, result.output
+    assert len(_names(result)) == 10
+    assert result.output == run("preview", "hash", "--seed", "0", "--sample", "10").output
+
+
+@pytest.mark.parametrize("name", ["descriptive", "reference", "dated", "category-seq",
+                                  "keep-original", "hash"])  # fmt: skip
+def test_preview_every_builtin(cli: None, name: str) -> None:
+    result = run("preview", name, "--sample", "100", "--seed", "3")
+    assert result.exit_code == 0, result.output
+    names = _names(result)
+    assert len(names) == 100
+    for proposed in names:
+        assert NAME_LINE.fullmatch(proposed), "a name is not normalized"
+        assert len(proposed.rsplit(".", 1)[0]) <= 120
+    # R-NAME-6 / NAME-001.D3: unique, compared casefolded.
+    assert len({n.casefold() for n in names}) == len(names)
+
+
+def test_preview_shows_the_adult_prefix_and_collisions(cli: None) -> None:
+    names = _names(run("preview", "category-seq", "--sample", "40", "--seed", "1"))
+    adult = [n for n in names if n.startswith("nsfw_")]
+    assert adult and len(adult) < len(names)  # R-NAME-8 on adult rows only
+    stems = [n.rsplit(".", 1)[0] for n in names]
+    seqs = {s.rsplit("_", 1)[1] for s in stems}
+    assert "0002" in seqs  # a collision incremented {seq}
+
+
+def test_preview_uses_only_coined_text(cli: None) -> None:
+    from classifier.cli.templates import (
+        _DETAILS,
+        _FORMATS,
+        _ORIGINALS,
+        _SUBJECTS,
+        _TAGS,
+        _TOPICS,
+    )
+
+    vocabulary = set()
+    for text in (*_SUBJECTS, *_DETAILS, *_TAGS, *_FORMATS, *_ORIGINALS, *filter(None, _TOPICS)):
+        vocabulary.update(text.lower().replace(".", "").split())
+    names = _names(run("preview", "keep-original", "--sample", "30", "--seed", "5"))
+    for proposed in names:
+        stem = proposed.rsplit(".", 1)[0].removeprefix("nsfw_")
+        words = [w for w in stem.split("_") if not w.isdigit()]
+        assert set(words) <= vocabulary
+
+
+def test_preview_of_a_user_template(cli: None) -> None:
+    assert run("add", "zhyndel-flat", "{subject|max=4}").exit_code == 0
+    names = _names(run("preview", "zhyndel-flat", "--sample", "12"))
+    assert len(names) == 12
+    # No {seq}: a collision appends _NNN (R-NAME-6, NAME-001.D6).
+    assert any(n.rsplit(".", 1)[0].endswith("_001") for n in names)
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (("descriptive", "--sample", "0"), "--sample must be from 1 to 100"),
+        (("descriptive", "--sample", "101"), "--sample must be from 1 to 100"),
+        (("descriptive", "--seed", "-1"), "--seed must be from 0"),
+        (("descriptive", "--seed", str(2**32)), "--seed must be from 0"),
+        (("Qorvex",), "a template name is 1 to 32"),
+        (("qorvexmissing",), "no such template"),
+    ],
+)
+def test_preview_refusals(cli: None, args: tuple[str, ...], message: str) -> None:
+    result = run("preview", *args)
+    assert result.exit_code == 2
+    assert result.output.startswith(f"error: {message}")
+    assert "qorvex" not in result.output.lower().replace("--", "")
+
+
+def test_preview_of_a_template_edited_outside_the_cli(cli: None, schema_dsn: str) -> None:
+    # A stored template the parser now refuses: fixed text, never the template.
+    with psycopg.connect(schema_dsn) as conn:
+        conn.execute(
+            "insert into naming_templates (name, template) values ('zhyndel-raw', '{qorvex}')"
+        )
+    result = run("preview", "zhyndel-raw")
+    assert result.exit_code == 2
+    assert result.output.strip() == "error: unknown template token"
+
+
+def test_preview_writes_and_logs_nothing(
+    cli: None, schema_dsn: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    before = _snapshot(schema_dsn)
+    assert run("preview", "descriptive", "--sample", "5").exit_code == 0
+    assert _snapshot(schema_dsn) == before
+    assert caplog.records == []

@@ -9,8 +9,10 @@ stay None. A driver message is never printed: Postgres's DETAIL echoes the key
 Built-ins can't be changed (DB-009.D2); assigning one is allowed.
 """
 
+import random
 import re
 import unicodedata
+from datetime import datetime
 from typing import Annotated
 
 import psycopg
@@ -18,7 +20,8 @@ import typer
 
 from classifier.config import Config, ConfigError, load_config
 from classifier.models.classify_rules import AXES
-from classifier.naming.templates import TemplateError, parse
+from classifier.naming.collisions import unique
+from classifier.naming.templates import TemplateError, Tokens, parse, render
 
 templates_app = typer.Typer(
     no_args_is_help=True, add_completion=False, help="Manage the naming templates."
@@ -36,7 +39,7 @@ _ERR_CATEGORY_TEXT = "the category name is empty, has a control character or is 
 _ERR_ASSIGN = "pass a template name, or --clear, but not both"
 
 _NAME = re.compile(r"[a-z][a-z0-9-]{0,31}")  # DB-009.1's naming_templates_name CHECK
-_LINE_BREAKS = frozenset("\u0085  ")  # beyond Cc, as DB-009.1's template CHECK
+_LINE_BREAKS = frozenset(map(chr, (0x85, 0x2028, 0x2029)))  # NEL, LS, PS: beyond Cc, as the CHECK
 
 ConfigOption = Annotated[
     str | None, typer.Option("--config", help="Config file; default $CLASSIFIER_CONFIG.")
@@ -253,3 +256,112 @@ def assign_template(
         typer.echo(f"cleared the template of {axis} category {category_name}")
     else:
         typer.echo(f"assigned template {name} to {axis} category {category_name}")
+
+
+# --- preview (CLI-010.D1) -----------------------------------------------------------------
+
+_ERR_SAMPLE = "--sample must be from 1 to 100"
+_ERR_SEED = "--seed must be from 0 to 2**32 - 1"
+MAX_SAMPLE = 100
+
+# Synthetic coinages only: the preview never reads a real row, so the console never prints a
+# real image's name (CLI-010.D1, privacy item 19). Repeats are deliberate, so collisions show.
+_SUBJECTS = ("Zhyndel", "Qorvex", "Plimmer Vorp", "Thexil", "Krandle")
+_DETAILS = (
+    "beside a quarbish",
+    "under the glorm arch",
+    "holding a snarvel lamp",
+    "on a drubble field at dusk",
+)
+_TAGS = ("plimmer", "glorm", "snarvel", "quarbish", "vexmoor")
+_FORMATS = ("Glorpic", "Snarvel Art", "Drubbleshot")
+_TOPICS = (None, "Vexmoor", "Krandle Saga")
+_ORIGINALS = ("qorvex holiday 0042", "zhyndel draft", "plim vorp final")
+_EXTS = (".png", ".gif", ".webp")
+_ADULT_SHARE = 0.25  # so the nsfw_ prefix shows in a sample
+
+
+def _synthetic_rows(sample: int, seed: int) -> list[Tokens]:
+    """`sample` coined rows, the same for the same seed (CLAUDE.md §3: pinned randomness)."""
+    rng = random.Random(seed)
+    rows = []
+    for _ in range(sample):
+        ext = rng.choice(_EXTS)
+        when = datetime(2030 + rng.randrange(5), rng.randint(1, 12), rng.randint(1, 28),
+                        rng.randrange(24), rng.randrange(60), rng.randrange(60))  # fmt: skip
+        rows.append(
+            Tokens(
+                short_hash=f"{rng.getrandbits(32):08x}",
+                branch="nsfw" if rng.random() < _ADULT_SHARE else "safe",
+                animated=ext == ".gif" and rng.random() < 0.5,
+                subject=rng.choice(_SUBJECTS),
+                detail=rng.choice(_DETAILS),
+                caption=f"{rng.choice(_SUBJECTS)} {rng.choice(_DETAILS)}.",
+                tags=tuple(rng.sample(_TAGS, rng.randint(1, 3))),
+                format=rng.choice(_FORMATS),
+                topic=rng.choice(_TOPICS),
+                original_sanitized=rng.choice(_ORIGINALS),
+                ext=ext,
+                taken_at=when if rng.random() < 0.5 else None,
+                mtime=when,
+            )
+        )
+    return rows
+
+
+def _keep(text: str) -> str:
+    # The rows are coinages, so the R-SAN-7 re-run is the identity here; on real rows it is
+    # the name node's (NAME-002).
+    return text
+
+
+@templates_app.command("preview")
+def preview_template(
+    name: Annotated[str, typer.Argument(help="The template to preview.")],
+    sample: Annotated[
+        int, typer.Option("--sample", help="How many synthetic rows, 1 to 100.")
+    ] = 10,
+    seed: Annotated[int, typer.Option("--seed", help="The pinned seed for the rows.")] = 0,
+    config_path: ConfigOption = None,
+) -> None:
+    """Render a template on synthetic rows only (CLI-010.D1): never a real image's name."""
+    problem = _check_name(name)
+    if problem is None and not 1 <= sample <= MAX_SAMPLE:
+        problem = _ERR_SAMPLE
+    if problem is None and not 0 <= seed < 2**32:
+        problem = _ERR_SEED
+    if problem is not None:
+        raise _fail(problem)
+    config, conn = _open(config_path)
+    code = 2
+    row = None
+    try:
+        with conn:
+            row = conn.execute(
+                "select template from naming_templates where name = %s", (name,)
+            ).fetchone()
+    except psycopg.Error:
+        problem, code = _ERR_DB, 1
+    finally:
+        conn.close()
+    if problem is None and row is None:
+        problem = _ERR_MISSING
+    template = None
+    if problem is None:
+        assert row is not None
+        try:
+            template = parse(row[0])
+        except TemplateError as error:  # fixed text; a stored template was edited outside
+            problem = str(error)
+    if problem is not None:
+        raise _fail(problem, code)
+    assert template is not None
+    typer.echo(f"preview of template {name}: {sample} synthetic rows, seed {seed}")
+    taken: set[str] = set()
+    for tokens in _synthetic_rows(sample, seed):
+        stem = render(template, tokens, config=config.naming, sanitize=_keep)
+        proposed = unique(
+            stem, tokens.ext, taken, has_seq=template.has_seq, max_len=config.naming.max_len
+        )
+        taken.add(proposed)
+        typer.echo(proposed)
