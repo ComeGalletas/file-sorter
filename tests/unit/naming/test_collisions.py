@@ -132,6 +132,9 @@ def test_without_max_len_nothing_is_trimmed() -> None:
 PLANT = "Zhyndel"
 
 
+TAKEN_PLANT = {PLANT + ".png"}  # every error row carries the plant in its inputs
+
+
 @pytest.mark.parametrize(
     ("stem", "ext", "max_len"),
     [
@@ -141,14 +144,42 @@ PLANT = "Zhyndel"
         pytest.param(PLANT, ".p/ng", None, id="ext-with-slash"),
         pytest.param(PLANT, "." + PLANT + "\udcff", None, id="ext-surrogate"),
         pytest.param(PLANT, ".png", 0, id="max-len-zero"),
+        pytest.param(PLANT, ".png", 3, id="max-len-below-suffix"),
     ],
 )
 def test_bad_input_raises_fixed_text_unchained(stem: str, ext: str, max_len: int | None) -> None:
+    # Prove the plant is in the inputs before asserting it never reaches the error.
+    assert PLANT in stem + ext + "".join(TAKEN_PLANT)
     with pytest.raises(CollisionError) as caught:
-        unique(stem, ext, set(), has_seq=False, max_len=max_len)
+        unique(stem, ext, TAKEN_PLANT, has_seq=False, max_len=max_len)
     error = caught.value
     assert error.__cause__ is None and error.__context__ is None
     assert PLANT not in str(error) and PLANT not in repr(error)
+
+
+def test_smallest_cap_holds_the_suffix() -> None:
+    # #269 review: max_len below len("_001") is refused (above); at 4 the suffix fits.
+    out = unique("qorvex", ".png", {"qorvex.png", "qorv.png"}, has_seq=False, max_len=4)
+    assert out == "001.png"
+    assert len(out) - len(".png") <= 4
+
+
+# --- free names and separators (#269 review) ----------------------------------------------
+
+
+def test_free_name_with_a_trailing_underscore_is_unchanged() -> None:
+    assert unique("qorvex_", ".png", [], has_seq=False) == "qorvex_.png"
+    assert unique("qorvex_", ".png", [], has_seq=False, max_len=120) == "qorvex_.png"
+
+
+def test_suffix_after_a_trailing_underscore_has_one_separator() -> None:
+    assert unique("qorvex_", ".png", {"qorvex_.png"}, has_seq=False) == "qorvex_001.png"
+
+
+def test_seq_keeps_its_rendered_separator() -> None:
+    # Pinned: a double separator before {seq} is kept as rendered, only the digits change.
+    out = unique("qorvex__007", ".png", {"qorvex__007.png"}, has_seq=True)
+    assert out == "qorvex__008.png"
 
 
 def test_unique_prints_and_logs_nothing(

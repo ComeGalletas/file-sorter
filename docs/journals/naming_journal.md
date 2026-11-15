@@ -37,7 +37,12 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
   - [x] NAME-001.1.1 — the parser, `Tokens` (`repr=False` text and date fields) and the six built-ins · 8a58362
   - [x] NAME-001.1.2 — `render()`: tokens, filters, dates, normalization, the injected sanitize re-run, the empty-stem fallback (NAME-001.D4), the prefix and the head-keeping cap (NAME-001.D5)
 - [x] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
-  - [x] NAME-001.2.1 — `unique(stem, ext, taken, *, has_seq, max_len=None)`: seq increment, `_NNN` from `_001` (NAME-001.D6), the optional head-keeping trim (NAME-001.D7)
+  - [x] NAME-001.2.1 — `unique(stem, ext, taken, *, has_seq, max_len=None)`: seq increment, `_NNN` from `_001` (NAME-001.D6), the optional head-keeping trim (NAME-001.D7) · 857924e
+  - [x] NAME-001.2.2 — #269 round 1:
+    - every error row carries the plant;
+    - `max_len` below 4 is refused;
+    - a free name comes back unchanged;
+    - the rendered separator before `{seq}` is kept.
 
 ## NAME-001 — Results
 
@@ -67,8 +72,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 ### NAME-001.2 (#259, Pipeline)
 
 - **Tests:**
-  - `tests/unit/naming/test_collisions.py`: 26 passed (unit);
-  - `tests/unit/naming/` as a whole: 91 passed;
+  - `tests/unit/naming/test_collisions.py`: 31 passed (unit), after round 1;
+  - `tests/unit/naming/` as a whole: 96 passed;
   - ruff check and format are clean.
 - **Behaviour:**
   - the comparison is casefolded over `stem + ext` (NAME-001.D3), and `taken` is never mutated: the caller adds each result;

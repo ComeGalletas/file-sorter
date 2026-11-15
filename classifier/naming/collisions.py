@@ -13,6 +13,7 @@ from collections.abc import Iterable
 
 _EXT = re.compile(r"(\.[A-Za-z0-9]{1,15})?")  # files.ext is String(16)
 _TRAILING_SEQ = re.compile(r"(.*?)(_*)([0-9]+)")
+_MIN_LEN = len("_001")  # a shorter cap couldn't hold the suffix (#269 review)
 
 
 class CollisionError(ValueError):
@@ -20,11 +21,13 @@ class CollisionError(ValueError):
 
 
 def _fit(body: str, rest: str, max_len: int | None) -> str:
-    # NAME-001.D7: trim the stem's tail so body + rest fit, keeping the head (NAME-001.D5),
-    # with no dangling "_" before the suffix.
-    if max_len is not None:
-        body = body[: max(max_len - len(rest), 0)]
-    body = body.rstrip("_")
+    # NAME-001.D7: trim the stem's tail so body + rest fit, keeping the head (NAME-001.D5).
+    # A dangling "_" is stripped only after a trim or before a suffix: a free name that
+    # fits comes back unchanged.
+    if max_len is not None and len(body) + len(rest) > max_len:
+        body = body[: max(max_len - len(rest), 0)].rstrip("_")
+    elif rest:
+        body = body.rstrip("_")
     return (body + rest) if body else rest.lstrip("_")
 
 
@@ -49,8 +52,8 @@ def unique(
         raise CollisionError("stem is empty")
     if not isinstance(ext, str) or _EXT.fullmatch(ext) is None:
         raise CollisionError("extension must be empty or a dot and 1 to 15 letters or digits")
-    if max_len is not None and max_len < 1:
-        raise CollisionError("max_len must be at least 1")
+    if max_len is not None and max_len < _MIN_LEN:
+        raise CollisionError("max_len must be at least 4, the length of a _NNN suffix")
     seen = {name.casefold() for name in taken}
 
     def free(candidate: str) -> bool:
@@ -62,9 +65,8 @@ def unique(
 
     found = _TRAILING_SEQ.fullmatch(stem) if has_seq else None
     if found is not None:
-        body, sep, digits = found.groups()
+        body, sep, digits = found.groups()  # the separator is kept as rendered
         width, number = len(digits), int(digits) + 1
-        sep = "_" if sep else ""
     else:
         body, sep, width, number = stem, "_", 3, 1
 
