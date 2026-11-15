@@ -281,6 +281,6 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## API-002 — Tasks
 
-- [ ] API-002.1 — The proposed name and folder in `FileRow`, the latest rows, the review queue and the report · API/UI · acceptance: `tests/db/api/test_proposed_name.py`
+- [ ] API-002.1 — The proposed name and folder in `FileRow`, the latest rows, the review queue and the report · #262 · API/UI · acceptance: `tests/db/api/test_proposed_name.py`
 
 ## API-002 — Results

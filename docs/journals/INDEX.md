@@ -100,14 +100,14 @@ DOC-001 to DOC-003 and CLS-001's design were done on 2026-10-05, before the repo
 | DOC-017 | Remove the handle from DESIGN.md's header (public repo) | DOC | process | done (human-side, PR #244) | m4 | PR #244 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-14 |
 | DOC-018 | CLAUDE.md "Current phase" after `m4-approved` | DOC | process | proposed (human-side, PR #251) | m5 | PR #251 | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
 | DOC-019 | DESIGN §9, §10, §14: Q-1 answered (`vlm_nsfw` = the classifier model) | DOC, MOD | process | proposed (human-side) | m5 | — | [process_standard_journal.md](process_standard_journal.md) | — | 2026-11-15 |
-| CAP-001 | The caption client, prompts and node (both branches; sanitized on write) | CAP, MOD, PIPE, SAN | feature | proposed | m5 | — | [caption_journal.md](caption_journal.md) | — | 2026-11-15 |
-| MOD-004 | `models.vlm_nsfw` = `qwen3-vl:8b-instruct` (Q-1) | MOD, CFG | feature | proposed | m5 | — | [models_journal.md](models_journal.md) | — | 2026-11-15 |
-| NAME-001 | The template engine: tokens, filters, built-ins, normalization, prefix, collisions | NAME, SAN | feature | proposed | m5 | — | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
-| NAME-002 | The name node; the dry run reaches `proposed` | NAME, PIPE, CLI | feature | proposed | m5 | — | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
-| DB-009 | Migration `0008`: `naming_templates`, `template_assignments` | DB, NAME | feature | proposed | m5 | — | [ledger_journal.md](ledger_journal.md) | — | 2026-11-15 |
-| CLI-010 | `classifier templates list\|add\|set-default\|assign\|preview` | CLI, NAME | feature | proposed | m5 | — | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
-| API-002 | The proposed name in the dashboard, the review queue and the report | API, UI | feature | proposed | m5 | — | [api_journal.md](api_journal.md) | — | 2026-11-15 |
-| TST-016 | Gate 5: 500 synthetic names with seeded sensitive values | TST, NAME | feature | proposed | m5 | — | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-15 |
+| CAP-001 | The caption client, prompts and node (both branches; sanitized on write) | CAP, MOD, PIPE, SAN | feature | proposed | m5 | #254, #255 | [caption_journal.md](caption_journal.md) | — | 2026-11-15 |
+| MOD-004 | `models.vlm_nsfw` = `qwen3-vl:8b-instruct` (Q-1) | MOD, CFG | feature | proposed | m5 | #256 | [models_journal.md](models_journal.md) | — | 2026-11-15 |
+| NAME-001 | The template engine: tokens, filters, built-ins, normalization, prefix, collisions | NAME, SAN | feature | proposed | m5 | #258, #259 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
+| NAME-002 | The name node; the dry run reaches `proposed` | NAME, PIPE, CLI | feature | proposed | m5 | #260 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
+| DB-009 | Migration `0008`: `naming_templates`, `template_assignments` | DB, NAME | feature | proposed | m5 | #257 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-15 |
+| CLI-010 | `classifier templates list\|add\|set-default\|assign\|preview` | CLI, NAME | feature | proposed | m5 | #261 | [naming_journal.md](naming_journal.md) | — | 2026-11-15 |
+| API-002 | The proposed name in the dashboard, the review queue and the report | API, UI | feature | proposed | m5 | #262 | [api_journal.md](api_journal.md) | — | 2026-11-15 |
+| TST-016 | Gate 5: 500 synthetic names with seeded sensitive values | TST, NAME | feature | proposed | m5 | #263 | [test_infra_journal.md](test_infra_journal.md) | — | 2026-11-15 |
 | DB-007 | Migration `0007`: the `runs` table and the run advisory lock | DB, PIPE, API | feature | done (PR #226) | m4 | #207 | [ledger_journal.md](ledger_journal.md) | — | 2026-11-10 |
 | PIPE-002 | `dry-run` records its run and holds the run lock | PIPE, DB | feature | done (PRs #231, #239) | m4 | #208, #232 | [pipeline_journal.md](pipeline_journal.md) | — | 2026-11-10 |
 | MOD-003 | The Ollama client reads `/api/ps` (loaded model, VRAM) | MOD, API | feature | done (PR #228) | m4 | #209 | [models_journal.md](models_journal.md) | — | 2026-11-10 |

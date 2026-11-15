@@ -55,7 +55,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## CAP-001 — Tasks
 
-- [ ] CAP-001.1 — The caption client and both prompts (safe and adult), the local examples, recordings · ML · acceptance: `tests/unit/models/test_vlm_caption.py`
-- [ ] CAP-001.2 — The caption node: batches by branch, sanitize on write, `captioned` · Pipeline · acceptance: `tests/db/graph/test_caption_node.py`
+- [ ] CAP-001.1 — The caption client and both prompts (safe and adult), the local examples, recordings · #254 · ML · acceptance: `tests/unit/models/test_vlm_caption.py`
+- [ ] CAP-001.2 — The caption node: batches by branch, sanitize on write, `captioned` · #255 · Pipeline · acceptance: `tests/db/graph/test_caption_node.py`
 
 ## CAP-001 — Results
