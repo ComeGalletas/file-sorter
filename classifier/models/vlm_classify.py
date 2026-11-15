@@ -150,7 +150,7 @@ def render_definitions(
     return "\n".join(lines)
 
 
-def _usable_hint(hint: str | None) -> str | None:
+def usable_hint(hint: str | None) -> str | None:
     """The hint if it is non-blank text that encodes cleanly; otherwise None (fail closed)."""
     if not hint or not hint.strip():
         return None
@@ -161,7 +161,7 @@ def _usable_hint(hint: str | None) -> str | None:
     return hint
 
 
-def _ask[T](
+def run_vlm_call[T](
     client: OllamaClient,
     model: str,
     prompt: Prompt,
@@ -171,8 +171,13 @@ def _ask[T](
     schema: dict[str, Any],
     images: list[str],
     check: Callable[[dict[str, Any]], T | None],
+    reason: str = UNANSWERED_REASON,
 ) -> T:
-    """Run the call; one retry at `retry_temperature`; `VlmUnanswered` after two failures."""
+    """Run the call; one retry at `retry_temperature`; `VlmUnanswered(reason)` after two failures.
+
+    `check` turns the JSON answer into a result, or None for a failed answer. `OllamaUnavailable`
+    propagates at once. Shared by the classify and caption clients (CAP-001.1.2).
+    """
     for options in (prompt.options, prompt.retry_options):
         result: T | None = None
         try:
@@ -193,7 +198,7 @@ def _ask[T](
             result = None
         if result is not None:
             return result
-    raise VlmUnanswered(UNANSWERED_REASON)
+    raise VlmUnanswered(reason)
 
 
 def _check_classify(
@@ -242,7 +247,7 @@ def classify_image(
         ),
     )
     schema = prompt.schema_with_enums(format=format_names, topic=topic_names)
-    name = _usable_hint(hint)
+    name = usable_hint(hint)
     user = prompt.render_user() if name is None else prompt.render_user(alt=True, name=name)
     images = encode_frames(
         image,
@@ -250,7 +255,7 @@ def classify_image(
         max_side=prompt.max_side or DEFAULT_MAX_SIDE,
         quality=prompt.jpeg_quality or DEFAULT_JPEG_QUALITY,
     )
-    return _ask(
+    return run_vlm_call(
         client,
         model,
         prompt,
@@ -299,7 +304,7 @@ def rate_nsfw(
         max_side=prompt.max_side or DEFAULT_MAX_SIDE,
         quality=prompt.jpeg_quality or DEFAULT_JPEG_QUALITY,
     )
-    return _ask(
+    return run_vlm_call(
         client,
         model,
         prompt,

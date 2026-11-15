@@ -56,8 +56,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 ## CAP-001 — Tasks
 
 - [ ] CAP-001.1 — The caption client and both prompts (safe and adult), the local examples, recordings · #254 · ML · acceptance: `tests/unit/models/test_vlm_caption.py`
-  - [x] CAP-001.1.1 — `prompts/caption_safe_v1.md`, `prompts/caption_nsfw_v1.md` (generic; awaiting the human's approval of the texts) and their `prompts/local/*.example.md`; load tests
-  - [ ] CAP-001.1.2 — `run_vlm_call`: `_ask` in `vlm_classify.py` under a public name, no behaviour change
+  - [x] CAP-001.1.1 — `prompts/caption_safe_v1.md`, `prompts/caption_nsfw_v1.md` (generic; awaiting the human's approval of the texts) and their `prompts/local/*.example.md`; load tests· 8b2fa5d
+  - [x] CAP-001.1.2 — `run_vlm_call` and `usable_hint`: `_ask` and `_usable_hint` in `vlm_classify.py` under public names, no behaviour change
   - [ ] CAP-001.1.3 — `classifier/models/vlm_caption.py` and its unit tests
   - [ ] CAP-001.1.4 — the `gpu` test (CAP-001.D5: the visible-text check is measured, never asserted), recordings and their replay
 - [ ] CAP-001.2 — The caption node: batches by branch, sanitize on write, `captioned` · #255 · Pipeline · acceptance: `tests/db/graph/test_caption_node.py`
