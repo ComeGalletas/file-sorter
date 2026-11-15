@@ -34,6 +34,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 ## NAME-001 — Tasks
 
 - [ ] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · #258 · Pipeline · a test pins the `|or=` token fallback (NAME-001.D2) · acceptance: `tests/unit/naming/test_templates.py`
+  - [x] NAME-001.1.1 — the parser, `Tokens` (`repr=False` text and date fields) and the six built-ins
 - [ ] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
 
 ## NAME-001 — Results
