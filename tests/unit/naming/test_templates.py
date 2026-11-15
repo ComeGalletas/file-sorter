@@ -4,10 +4,12 @@ R-SAN-7).
 Synthetic coinages only (privacy item 8). Nothing here reads a file or calls a model.
 """
 
+import logging
 from datetime import datetime
 
 import pytest
 
+from classifier.config import NamingConfig
 from classifier.naming.templates import (
     BUILTINS,
     MAX_TEMPLATE_LEN,
@@ -16,7 +18,9 @@ from classifier.naming.templates import (
     Ref,
     TemplateError,
     Tokens,
+    normalize,
     parse,
+    render,
 )
 
 # --- parse --------------------------------------------------------------------------------
@@ -172,3 +176,225 @@ def test_tokens_repr_hides_text_and_dates() -> None:
             assert value not in text
         assert "1903" not in text and "13, 57" not in text
         assert "0badc0de" in text  # the hash is what logs carry
+
+
+# --- render -------------------------------------------------------------------------------
+
+WHEN_EXIF = datetime(2031, 4, 5, 6, 7, 8)
+WHEN_MTIME = datetime(2032, 9, 10, 11, 12, 13)
+
+
+def naming(**overrides: object) -> NamingConfig:
+    values: dict[str, object] = {
+        "default_template": "descriptive",
+        "nsfw_template": None,
+        "nsfw_prefix": "nsfw_",
+        "max_len": 120,
+    }
+    values.update(overrides)
+    return NamingConfig(**values)
+
+
+def keep(text: str) -> str:
+    return text
+
+
+def tokens(**overrides: object) -> Tokens:
+    values: dict[str, object] = {
+        "short_hash": "0badc0de",
+        "subject": "Zhyndel Vorp",
+        "detail": "a plimmer beside the krandle",
+        "caption": "Zhyndel stands near a quarbish.",
+        "tags": ("plimmer", "krandle"),
+        "format": "Glorpic",
+        "topic": "Vexmoor",
+        "original_sanitized": "qorvex holiday 0042",
+        "ext": ".png",
+        "mtime": WHEN_MTIME,
+    }
+    values.update(overrides)
+    return Tokens(**values)  # type: ignore[arg-type]
+
+
+def go(template: str, row: Tokens | None = None, **config: object) -> str:
+    return render(template, row or tokens(), config=naming(**config), sanitize=keep)
+
+
+def test_descriptive() -> None:
+    assert go(BUILTINS["descriptive"]) == "zhyndel_vorp_a_plimmer_beside_the_krandle_001"
+
+
+def test_descriptive_caps_detail_at_40() -> None:
+    row = tokens(detail="x" * 39 + "yz", seq=12)
+    assert go(BUILTINS["descriptive"], row) == "zhyndel_vorp_" + "x" * 39 + "y_012"
+
+
+def test_reference_falls_back_to_subject_while_empty() -> None:
+    # NAME-001.D2 / R-NAME-7: {reference} is empty until M6, so `|or={subject}` renders.
+    assert go(BUILTINS["reference"], tokens(seq=3)) == "zhyndel_vorp_003"
+
+
+def test_reference_used_when_set() -> None:
+    assert go(BUILTINS["reference"], tokens(reference="Thexil Saga")) == "thexil_saga_001"
+
+
+def test_or_falls_back_on_whitespace_only() -> None:
+    assert go("{reference|or={subject}}", tokens(reference="  ")) == "zhyndel_vorp"
+
+
+def test_or_literal_fallback() -> None:
+    assert go("{topic|or=general}_{seq}", tokens(topic=None)) == "general_1"
+
+
+def test_or_token_fallback_keeps_its_width() -> None:
+    assert go("{reference|or={seq:3}}", tokens(seq=4)) == "004"
+
+
+def test_dated_prefers_the_kept_exif_date() -> None:
+    # R-NAME-3
+    row = tokens(taken_at=WHEN_EXIF)
+    assert go(BUILTINS["dated"], row) == "2031_04_05_zhyndel_vorp_001"
+
+
+def test_dated_falls_back_to_mtime() -> None:
+    assert go(BUILTINS["dated"]) == "2032_09_10_zhyndel_vorp_001"
+
+
+def test_time_and_year() -> None:
+    row = tokens(taken_at=WHEN_EXIF)
+    assert go("{year}_{time}", row) == "2031_060708"
+
+
+def test_no_date_renders_empty() -> None:
+    assert go("{date}_{subject}", tokens(mtime=None)) == "zhyndel_vorp"
+
+
+def test_category_seq_with_topic() -> None:
+    assert go(BUILTINS["category-seq"], tokens(seq=5)) == "vexmoor_glorpic_0005"
+
+
+def test_category_without_topic_is_the_format() -> None:
+    assert go("{category}", tokens(topic=None)) == "glorpic"
+
+
+def test_keep_original_and_hash() -> None:
+    assert go(BUILTINS["keep-original"]) == "qorvex_holiday_0042"
+    assert go(BUILTINS["hash"]) == "0badc0de"
+
+
+def test_animated_renders_word_or_nothing() -> None:
+    assert go("{subject}_{animated}", tokens(animated=True)) == "zhyndel_vorp_animated"
+    assert go("{subject}_{animated}", tokens(animated=False)) == "zhyndel_vorp"
+
+
+def test_remaining_tokens() -> None:
+    row = tokens(branch="safe")
+    assert go("{caption}", row) == "zhyndel_stands_near_a_quarbish"
+    assert go("{tags}", row) == "plimmer_krandle"
+    assert go("{format}_{topic}_{branch}_{ext}", row) == "glorpic_vexmoor_safe_png"
+    assert go("{short_hash}_{seq}", tokens(seq=27)) == "0badc0de_27"
+
+
+def test_filters_apply_left_to_right() -> None:
+    row = tokens(reference="")
+    assert go("{reference|max=3|or=plonk}", row) == "plonk"
+    assert go("{subject|max=3|title}", row) == "zhy"
+    assert go("{subject|title}", row) == "zhyndel_vorp"  # normalization lowercases it
+
+
+@pytest.mark.parametrize(
+    ("subject", "stem"),
+    [
+        ("Zhýndél", "zhyndel"),  # ASCII-fold
+        ("Qor!!vex  --  Plim", "qor_vex_plim"),  # symbols and repeats collapse
+        ("__Qorvex__", "qorvex"),  # no edge underscores
+        ("Qor\udcffvex", "qorvex"),  # a lone surrogate is dropped, not quoted
+        ("ＱＯＲＶＥＸ", "qorvex"),  # NFKD compatibility forms
+    ],
+)
+def test_normalization(subject: str, stem: str) -> None:
+    assert normalize(subject) == stem
+    assert go("{subject}", tokens(subject=subject)) == stem
+
+
+def test_sanitize_sees_the_normalized_stem_and_is_renormalized() -> None:
+    # R-SAN-7: the rendered name is re-run through the rules; a replacement such as
+    # "[REDACTED]" is normalized again.
+    seen: list[str] = []
+
+    def rules(text: str) -> str:
+        seen.append(text)
+        return text.replace("qorvex", "[REDACTED]")
+
+    row = tokens(original_sanitized="Qorvex Plim")
+    out = render(BUILTINS["keep-original"], row, config=naming(), sanitize=rules)
+    assert seen == ["qorvex_plim"]
+    assert out == "redacted_plim"
+
+
+def test_empty_stem_falls_back_to_short_hash() -> None:
+    # NAME-001.D4
+    def wipe(text: str) -> str:
+        return ""
+
+    row = tokens(original_sanitized="Qorvex")
+    assert render("{original_sanitized}", row, config=naming(), sanitize=wipe) == "0badc0de"
+    adult = tokens(original_sanitized="Qorvex", branch="nsfw")
+    out = render("{original_sanitized}", adult, config=naming(), sanitize=wipe)
+    assert out == "nsfw_0badc0de"
+
+
+def test_empty_render_falls_back_to_short_hash() -> None:
+    assert go("{reference}", tokens(reference="")) == "0badc0de"
+
+
+def test_prefix_only_on_adult_rows() -> None:
+    # R-NAME-8
+    assert go("{subject}", tokens(branch="nsfw")) == "nsfw_zhyndel_vorp"
+    assert go("{subject}", tokens(branch="safe")) == "zhyndel_vorp"
+
+
+def test_empty_prefix_disables_it() -> None:
+    assert go("{subject}", tokens(branch="nsfw"), nsfw_prefix="") == "zhyndel_vorp"
+
+
+def test_prefix_counts_toward_the_cap() -> None:
+    row = tokens(branch="nsfw", subject="q" * 200)
+    out = go("{subject}", row, max_len=120)
+    assert len(out) == 120
+    assert out == "nsfw_" + "q" * 115
+
+
+def test_default_cap_is_120() -> None:
+    assert len(go("{subject}", tokens(subject="q" * 300))) == 120
+
+
+def test_cap_that_cuts_seq_keeps_the_head() -> None:
+    # NAME-001.D5: the cap keeps the head, so a long name can lose its trailing {seq};
+    # NAME-001.2's unique() still guarantees no overwrite. No trailing "_" survives the cut.
+    row = tokens(subject="plimmerkrandle", detail="quarbish", seq=7)
+    out = go(BUILTINS["descriptive"], row, max_len=24)
+    assert out == "plimmerkrandle_quarbish"  # "_007" cut, and the dangling "_" stripped
+    assert "007" not in out
+
+
+def test_render_accepts_a_parsed_template() -> None:
+    assert go("{subject}") == render(parse("{subject}"), tokens(), config=naming(), sanitize=keep)
+
+
+def test_render_rejects_a_bad_template_unchained() -> None:
+    with pytest.raises(TemplateError) as caught:
+        go("{qorvex}")
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert "qorvex" not in str(caught.value)
+
+
+def test_render_prints_and_logs_nothing(
+    capsys: pytest.CaptureFixture[str], caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    out = go(BUILTINS["descriptive"], tokens(branch="nsfw"))
+    assert out.startswith("nsfw_zhyndel")  # the name was made...
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""  # ...and nothing printed it
+    assert caplog.records == []

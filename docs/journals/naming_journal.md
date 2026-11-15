@@ -33,11 +33,35 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## NAME-001 — Tasks
 
-- [ ] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · #258 · Pipeline · a test pins the `|or=` token fallback (NAME-001.D2) · acceptance: `tests/unit/naming/test_templates.py`
-  - [x] NAME-001.1.1 — the parser, `Tokens` (`repr=False` text and date fields) and the six built-ins
+- [x] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · #258 · Pipeline · a test pins the `|or=` token fallback (NAME-001.D2) · acceptance: `tests/unit/naming/test_templates.py`
+  - [x] NAME-001.1.1 — the parser, `Tokens` (`repr=False` text and date fields) and the six built-ins · 8a58362
+  - [x] NAME-001.1.2 — `render()`: tokens, filters, dates, normalization, the injected sanitize re-run, the empty-stem fallback (NAME-001.D4), the prefix and the head-keeping cap (NAME-001.D5)
 - [ ] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
 
 ## NAME-001 — Results
+
+### NAME-001.1 (#258, Pipeline)
+
+- **Tests:**
+  - `tests/unit/naming/test_templates.py`: 65 passed (unit). Synthetic coinages only; no file read and no model call.
+  - The pre-push default tiers passed on NAME-001.1.1.
+  - ruff check and format are clean.
+- **Approved on the issue:** NAME-001.D4 (an empty stem falls back to `short_hash`, and the prefix still applies) and NAME-001.D5 (the cap keeps the head). A test pins a cap that cuts `{seq}`.
+- **Order inside `render`:**
+  1. substitute;
+  2. normalize;
+  3. sanitize, injected (R-SAN-7);
+  4. normalize again;
+  5. the D4 fallback;
+  6. the prefix (R-NAME-8);
+  7. the cap, prefix included, with any dangling `_` stripped.
+- **Privacy:**
+  - no I/O and no logging, with a test showing nothing printed or logged;
+  - `TemplateError` is fixed text, with `__cause__` and `__context__` both None, and never echoes the template;
+  - `Tokens` shows only `short_hash`, `branch`, `animated` and `seq` in repr, with planted-secret tests that prove each plant is held first;
+  - normalization drops lone surrogates instead of raising.
+- **Status:** DONE.
+- **Self-rating:** 9/10, proud: yes. The one gap: `|or=` checks for an empty value before normalization, so a value made only of symbols doesn't trigger the fallback. It normalizes to nothing, and D4's `short_hash` fallback still applies when the whole stem comes out empty. It's a small, safe edge; changing it would be a new decision, not a bug fix.
 
 ---
 

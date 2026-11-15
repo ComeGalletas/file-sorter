@@ -1,4 +1,5 @@
-"""NAME-001.1: the template engine (R-NAME-1, R-NAME-2, R-NAME-3, R-NAME-7).
+"""NAME-001.1: the template engine (R-NAME-1, R-NAME-2, R-NAME-3, R-NAME-5, R-NAME-7, R-NAME-8,
+R-SAN-7).
 
 Pure: no I/O, no logging, no model calls. Errors are fixed text and never quote the
 template, a token value or a name (privacy items 2 and 19).
@@ -11,9 +12,13 @@ Grammar: literal text and fields `{name[:width]|filter|filter...}`. Filters are 
 from __future__ import annotations
 
 import re
+import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import MappingProxyType
+
+from classifier.config import NamingConfig
 
 # R-NAME-2's tokens.
 TOKENS = frozenset(
@@ -215,3 +220,85 @@ def parse(template: str) -> Template:
     if "\n" in template or "\r" in template:
         raise TemplateError("template must be one line")
     return _Parser(template).template()
+
+
+# --- render (R-NAME-2, R-NAME-3, R-NAME-5, R-NAME-8, R-SAN-7) ------------------------------
+
+_NON_NAME = re.compile(r"[^a-z0-9]+")
+
+
+def normalize(text: str) -> str:
+    """R-NAME-5: ASCII-fold, lowercase, non-`[a-z0-9]` runs to one `_`, no edge `_`.
+
+    `encode(..., "ignore")` drops what doesn't fold (a lone surrogate included), so no
+    UnicodeError can quote a character (privacy item 7).
+    """
+    folded = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return _NON_NAME.sub("_", folded.lower()).strip("_")
+
+
+def _when(tokens: Tokens) -> datetime | None:
+    # R-NAME-3: the kept EXIF DateTimeOriginal, else the source mtime from ingest.
+    return tokens.taken_at if tokens.taken_at is not None else tokens.mtime
+
+
+def _value(ref: Ref, tokens: Tokens) -> str:
+    name = ref.name
+    if name == "seq":
+        return str(tokens.seq).zfill(ref.width or 1)
+    if name == "tags":
+        return "_".join(tokens.tags)
+    if name == "topic":
+        return tokens.topic or ""
+    if name == "category":  # R-NAME-2: {topic}_{format}, or {format} without a topic
+        return f"{tokens.topic}_{tokens.format}" if tokens.topic else tokens.format
+    if name == "animated":
+        return "animated" if tokens.animated else ""
+    if name == "ext":
+        return tokens.ext.lstrip(".")
+    if name in ("date", "time", "year"):
+        when = _when(tokens)
+        if when is None:
+            return ""
+        return when.strftime({"date": "%Y-%m-%d", "time": "%H%M%S", "year": "%Y"}[name])
+    value = getattr(tokens, name)
+    return value if isinstance(value, str) else ""
+
+
+def _field(part: Field, tokens: Tokens) -> str:
+    value = _value(part.ref, tokens)
+    for f in part.filters:  # left to right
+        if f.kind == "or":
+            if not value.strip():
+                value = _value(f.arg, tokens) if isinstance(f.arg, Ref) else str(f.arg)
+        elif f.kind == "max":
+            value = value[: int(f.arg)]  # type: ignore[arg-type]
+        else:  # title
+            value = value.title()
+    return value
+
+
+def render(
+    template: str | Template,
+    tokens: Tokens,
+    *,
+    config: NamingConfig,
+    sanitize: Callable[[str], str],
+) -> str:
+    """The normalized stem: prefix and cap applied, before collisions (NAME-001.2).
+
+    1. substitute the tokens and filters;
+    2. normalize (R-NAME-5);
+    3. re-run the sanitize rules (R-SAN-7), injected so the engine stays pure, and
+       normalize again, since a rule's replacement may hold `[` or capitals;
+    4. an empty stem falls back to `short_hash` (NAME-001.D4);
+    5. adult rows get `nsfw_prefix` (R-NAME-8; `""` disables it);
+    6. cap at `max_len`, prefix included, keeping the head (NAME-001.D5).
+    """
+    parsed = template if isinstance(template, Template) else parse(template)
+    raw = "".join(part if isinstance(part, str) else _field(part, tokens) for part in parsed.parts)
+    stem = normalize(sanitize(normalize(raw)))
+    if not stem:
+        stem = normalize(tokens.short_hash)  # NAME-001.D4
+    prefix = config.nsfw_prefix if tokens.branch == "nsfw" else ""
+    return (prefix + stem)[: config.max_len].rstrip("_")  # NAME-001.D5
