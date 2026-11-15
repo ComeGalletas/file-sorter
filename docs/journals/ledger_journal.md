@@ -329,7 +329,7 @@ references or host paths here. Use hashes.
 - Seeds: the six built-ins (`builtin = true`), frozen in the file from NAME-001.D1/D2, plus one global assignment to `descriptive`, as the lead approved on #257 (DB-009.D1, provisional). Built-ins stay mutable in the schema; CLI-010 refuses changes to them (DB-009.D2, provisional).
 - The downgrade drops both tables.
 - ORM: `NamingTemplate` and `TemplateAssignment`. Neither `__repr__` shows a template's name or text.
-- `test_runs_migration.py` now checks for a single head, not head = `0007`.
+- `test_runs_migration.py` now checks for a single head, not head = `0007`. It also dropped its `alembic_version` row check at head (it pinned `0007`). That check now lives in `test_templates_migration.py` (`0008`). Its downgrade test still checks the row at `0006` (#268 review).
 - Tests: the acceptance file passed 55, the whole `tests/db/ledger` 211, and `make test` 2967 (48 deselected). `make lint` was clean. No gpu or eval tier: no models or prompts were touched.
 - The acceptance file covers:
   - a golden seed typed out in the test;
