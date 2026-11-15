@@ -411,6 +411,152 @@ def test_local_values_stay_in_memory_and_out_of_the_committed_replay_data(
                 assert value.split()[0].casefold() not in text, path.name
 
 
+# --- the box-only real-name section (DOC-020.D2, TST-016.D2, D4) ------------------------
+# names_local.example.txt-style placeholders only: coined values in a tmp file, never the
+# real fixtures/names_local.txt.
+
+HEAD = "real names (box-only, informational)"
+PLANTED_NAMES = (
+    "IMG_0001.jpg",
+    "Screenshot 2026-01-01 120000.png",
+    f"{SECRET} at the quay (2).jpeg",  # a literal value
+    f"{SECRET.upper().replace(' ', '_')}_v2.gif",  # the same, respelled
+    "vorpq.zinth@qlarvex.invalid.png",  # a regex value (email)
+    "call +44 123 456 7890 later.webp",  # a regex value (phone)
+    "Quorbel Vantrex birthday.jpg",  # an entity the fake detector finds
+)
+
+
+def names_file(tmp_path: Path, lines: Sequence[str] = PLANTED_NAMES) -> Path:
+    path = tmp_path / "names_local.txt"
+    body = "# synthetic placeholders\n\n" + "\n".join(lines) + "\n"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def real_entity_fake(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+    return [("Quorbel Vantrex", "PERSON")] if "Quorbel Vantrex" in text else []
+
+
+def never_shows_a_name(text: str) -> None:
+    lowered = text.casefold()
+    for name in PLANTED_NAMES:
+        assert name.casefold() not in lowered
+        assert Path(name).stem.casefold() not in lowered
+    for word in ("zyxwq", "plonkravel", "vorpq", "qlarvex", "7890", "quorbel"):
+        assert word not in lowered
+
+
+def measure(path: Path, entity=real_entity_fake) -> str:
+    return gate_5.measure_real_names(path, make_rules(), entity, NAMING)
+
+
+def test_the_planted_names_are_held_and_none_survives(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = names_file(tmp_path)
+    held_names = gate_5.read_names_local(path).names
+    assert held_names == PLANTED_NAMES  # held: comments and blanks skipped
+    rules = make_rules()
+    assert gate_5.literal_values(rules.rules) == [SECRET]
+    assert gate_5.regex_values(PLANTED_NAMES[4], rules.rules)
+    assert gate_5.regex_values(PLANTED_NAMES[5], rules.rules)
+    assert measure(path) == f"{HEAD}: ok"
+    out = capsys.readouterr()
+    assert out.out == "" and out.err == ""
+
+
+def test_an_unsanitized_rendering_fails_and_shows_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import classifier.sanitize.rules as rules_module
+
+    monkeypatch.setattr(rules_module, "sanitize_text", lambda text, *a, **k: (text, []))
+    line = measure(names_file(tmp_path))
+    assert line == f"{HEAD}: FAIL"
+    out = capsys.readouterr()
+    assert out.out == "" and out.err == ""
+
+
+@pytest.mark.parametrize("planted", [PLANTED_NAMES[2], PLANTED_NAMES[4], PLANTED_NAMES[5]])
+def test_each_kind_of_value_is_caught_on_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, planted: str
+) -> None:
+    import classifier.sanitize.rules as rules_module
+
+    monkeypatch.setattr(rules_module, "sanitize_text", lambda text, *a, **k: (text, []))
+    assert measure(names_file(tmp_path, ["IMG_0001.jpg", planted])) == f"{HEAD}: FAIL"
+    assert measure(names_file(tmp_path, ["IMG_0001.jpg"])) == f"{HEAD}: ok"
+
+
+@pytest.mark.parametrize(
+    ("setup", "reason"),
+    [
+        ("missing", "fixtures/names_local.txt is missing (DOC-020.D2)"),
+        ("empty", "fixtures/names_local.txt holds no name (DOC-020.D2)"),
+        ("latin1", "fixtures/names_local.txt is not UTF-8 text (DOC-020.D2)"),
+        ("directory", "fixtures/names_local.txt is not a regular file (DOC-020.D2)"),
+        ("symlink", "fixtures/names_local.txt is not a regular file (DOC-020.D2)"),
+    ],
+)
+def test_a_file_problem_fails_the_section_with_fixed_text(
+    tmp_path: Path, setup: str, reason: str
+) -> None:
+    path = tmp_path / "names_local.txt"
+    if setup == "empty":
+        path.write_text("# only a comment\n\n", encoding="utf-8")
+    elif setup == "latin1":
+        path.write_bytes(f"{SECRET} \xe9t\xe9.jpg\n".encode("latin-1"))
+    elif setup == "directory":
+        path.mkdir()
+    elif setup == "symlink":
+        path.symlink_to(names_file(tmp_path / "..", ["IMG_0001.jpg"]))
+    with pytest.raises(gate_5.RealNamesError) as caught:
+        gate_5.read_names_local(path)
+    assert str(caught.value) == reason
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert measure(path) == f"{HEAD}: FAIL: {reason}"
+
+
+def test_a_failing_entity_rule_fails_with_fixed_text(tmp_path: Path) -> None:
+    def down(text: str, labels: Sequence[str]) -> list[tuple[str, str]]:
+        raise RuntimeError(f"sanitize_entity_unavailable for {text}")  # quotes the name
+
+    line = measure(names_file(tmp_path), entity=down)
+    assert line.startswith(f"{HEAD}: FAIL: a name could not be sanitized")
+    never_shows_a_name(line)
+
+
+def test_the_name_list_repr_hides_the_names(tmp_path: Path) -> None:
+    held_list = gate_5.read_names_local(names_file(tmp_path))
+    assert held_list.names == PLANTED_NAMES
+    never_shows_a_name(repr(held_list) + str(held_list))
+
+
+def test_every_section_line_is_free_of_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import classifier.sanitize.rules as rules_module
+
+    lines = [measure(names_file(tmp_path)), measure(tmp_path / "absent.txt")]
+    monkeypatch.setattr(rules_module, "sanitize_text", lambda text, *a, **k: (text, []))
+    lines.append(measure(names_file(tmp_path)))
+    for line in lines:
+        never_shows_a_name(line)
+        assert re.fullmatch(rf"{re.escape(HEAD)}: (ok|FAIL(: .*)?)", line)
+    assert not re.search(r"\d", "".join(line.split("DOC-020.D2")[0] for line in lines))
+
+
+def test_the_example_file_holds_placeholders_and_is_read_like_the_real_one() -> None:
+    example = gate_5.read_names_local(REPO / "fixtures" / "names_local.example.txt").names
+    assert example and all(not name.startswith("#") for name in example)
+
+
+def test_the_real_file_is_read_only_from_the_gate_path() -> None:
+    """The section's path is fixtures/names_local.txt, and nothing at import reads it."""
+    assert gate_5.NAMES_LOCAL == REPO / "fixtures" / "names_local.txt"
+
+
 # --- main --------------------------------------------------------------------------------
 
 

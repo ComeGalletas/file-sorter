@@ -30,7 +30,7 @@ import re
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
@@ -405,6 +405,140 @@ def verdict(synthetic: tuple[bool, str], real: str | None = None) -> Verdict:
     ok, line = synthetic
     lines = (line, *((real,) if real is not None else ()))
     return Verdict(ok, (*lines, f"gate 5 {'PASS' if ok else 'FAIL'}: {CRITERION}"))
+
+
+# --- The box-only real-name section (DOC-020.D2, TST-016.D2, D4) ------------------------
+# fixtures/names_local.txt holds the human's raw file names. No name, nor anything made from
+# one (a stem, a rendered name, a matched value), is ever printed, logged, repr'd or put in
+# an exception: the section returns one fixed line, and every failure is fixed text.
+
+REAL_HEAD = "real names (box-only, informational)"
+REAL_TEMPLATES = ("keep-original", "descriptive")
+# The synthetic caption every real name is rendered with: coined, never about an image.
+REAL_CAPTION = Caption("qorvex lantern", "zhyndel kite with plimbo", "A quillow beside a drabnet.",
+                       ("yskel", "frondak"))  # fmt: skip
+
+
+class RealNamesError(Exception):
+    """The real-name section can't run; fixed text only, never a name or a path."""
+
+
+@dataclass(frozen=True)
+class NameList:
+    """The human's file names, held in memory for the section only."""
+
+    names: tuple[str, ...] = field(repr=False)
+
+
+def read_names_local(path: Path) -> NameList:
+    """One name per line, extension included; blank lines and `#` comments skipped.
+
+    A missing file is a failure of the section, never a skip (CLAUDE.md §3). A symlink or a
+    non-regular file is refused (privacy item 6), and every read error becomes fixed text,
+    raised outside its `except` block, so no OS or codec message (which quotes the path or
+    the bytes) is chained.
+    """
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise RealNamesError("fixtures/names_local.txt is not a regular file (DOC-020.D2)")
+    if not path.exists():
+        raise RealNamesError("fixtures/names_local.txt is missing (DOC-020.D2)")
+    problem = None
+    text = ""
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError:
+        problem = "fixtures/names_local.txt is not UTF-8 text (DOC-020.D2)"
+    except OSError:
+        problem = "fixtures/names_local.txt can't be read (DOC-020.D2)"
+    if problem is not None:
+        raise RealNamesError(problem)
+    lines = (line.strip() for line in text.removeprefix("﻿").splitlines())
+    names = tuple(line for line in lines if line and not line.startswith("#"))
+    if not names:
+        raise RealNamesError("fixtures/names_local.txt holds no name (DOC-020.D2)")
+    return NameList(names)
+
+
+def regex_values(name: str, rules: Iterable[object]) -> list[str]:
+    """What each `regex` rule matches in the raw `name`: in memory only, never shown."""
+    found = []
+    for rule in rules:
+        if getattr(rule, "type", None) == "regex":
+            found += [m[0] for m in re.finditer(rule.pattern, name) if m[0]]  # type: ignore[attr-defined]
+    return found
+
+
+def real_name_survives(
+    name: str, rules: Any, entity: Any, naming: Any, tokens: Sequence[str]
+) -> bool:
+    """True when a `literal` value, or a `regex` match from the raw name, survives in the
+    name's `keep-original` or `descriptive` rendering, or when a `regex` rule still matches a
+    rendering. The renderings run as the name node does: the sanitize rules on the name
+    (literal, regex and entity, as ingest), then the templates with the R-SAN-7 re-run."""
+    from classifier.naming.templates import Tokens, render
+    from classifier.sanitize.rules import (
+        FILENAME,
+        IMAGE_EXTENSIONS,
+        sanitize_name,
+        sanitize_text,
+    )
+
+    def resanitize(text: str) -> str:
+        return sanitize_text(text, FILENAME, rules, entity)[0]
+
+    clean = sanitize_name(name.replace("\\", "/").rsplit("/", 1)[-1], rules, entity)
+    caption = REAL_CAPTION
+    values = Tokens(
+        short_hash=hashlib.sha256(name.encode("utf-8", "surrogatepass")).hexdigest()[:8],
+        subject=caption.subject,
+        detail=caption.detail,
+        caption=caption.caption,
+        tags=caption.tags,
+        original_sanitized=clean.stem,
+        ext=clean.suffix,
+    )
+    rendered = [
+        render(BUILTINS[template], values, config=naming, sanitize=resanitize)
+        for template in REAL_TEMPLATES
+    ]
+    # The regex values as the rules see the name: its image extension split off, as
+    # sanitize_name does. Taken on the whole name, an email match would run into `.png`,
+    # and that probe could never match a rendering, which drops the extension.
+    base = PurePosixPath(name.replace("\\", "/")).name
+    if PurePosixPath(base).suffix.lower() in IMAGE_EXTENSIONS:
+        base = PurePosixPath(base).stem
+    probes = [*literal_values(rules.rules), *regex_values(base, rules.rules)]
+    seeds = [Seed(LITERAL, "", "path", probe) for probe in probes]
+    if any(residues(seeds, rendered, tokens)):
+        return True
+    patterns = [rule.pattern for rule in rules.rules if getattr(rule, "type", None) == "regex"]
+    return any(re.search(pattern, text) for pattern in patterns for text in rendered)
+
+
+def measure_real_names(path: Path, rules: Any, entity: Any, naming: Any) -> str:
+    """The section's one line (TST-016.D2): `ok`, `FAIL`, or `FAIL: <fixed reason>`. Never
+    a count, a name, a hash or an example. It never changes the exit code (TST-016.D3)."""
+    reason = None
+    names: tuple[str, ...] = ()
+    try:
+        names = read_names_local(path).names
+    except RealNamesError as exc:  # fixed text by construction
+        reason = str(exc)
+    if reason is not None:
+        return f"{REAL_HEAD}: FAIL: {reason}"
+    tokens = replacement_tokens(rules.rules)
+    survived = False
+    failed = False
+    try:
+        survived = any(real_name_survives(n, rules, entity, naming, tokens) for n in names)
+    except Exception:  # an error may quote the name: the type isn't shown either
+        failed = True
+    if failed:
+        return (
+            f"{REAL_HEAD}: FAIL: a name could not be sanitized or rendered (the entity rule "
+            "fails closed: check Ollama and models.text_llm)"
+        )
+    return f"{REAL_HEAD}: {'FAIL' if survived else 'ok'}"
 
 
 # --- The run (inside the `test` container) ----------------------------------------------
