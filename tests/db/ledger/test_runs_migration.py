@@ -112,7 +112,7 @@ def _columns(c: psycopg.Connection, schema: str) -> dict[str, tuple[str, bool]]:
 
 def test_0007_extends_0006_and_is_the_single_head(alembic_cfg: Config) -> None:
     script = ScriptDirectory.from_config(alembic_cfg)
-    assert script.get_heads() == ["0007"]
+    assert len(script.get_heads()) == 1  # later migrations extend the chain (DB-009.1)
     assert script.get_revision("0007").down_revision == "0006"
 
 
@@ -128,7 +128,6 @@ def test_upgrade_adds_the_table(conn: psycopg.Connection, schema: str) -> None:
         "select conname from pg_constraint where conrelid = 'runs'::regclass and contype = 'c'"
     ).fetchall()
     assert {name for (name,) in checks} == CHECKS
-    assert conn.execute("select version_num from alembic_version").fetchall() == [("0007",)]
 
 
 def _db_checks(conn: psycopg.Connection) -> dict[str, str]:

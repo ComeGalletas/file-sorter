@@ -287,3 +287,84 @@ class Run(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+# DB-009.1: the template-assignment scopes, in the order the migration's CHECK lists them.
+TEMPLATE_SCOPES = ("global", "category")
+
+
+class NamingTemplate(Base):
+    """One naming template, built-in or user-added (DESIGN §5, R-NAME-1).
+
+    Built-ins are mutable in the schema; CLI-010 refuses changes to them (DB-009.D2).
+    """
+
+    __tablename__ = "naming_templates"
+    __table_args__ = (
+        CheckConstraint("name ~ '^[a-z][a-z0-9-]{0,31}$'", name="naming_templates_name"),
+        # One line of 1-200 characters, not blank; no C0 control, DEL, NEL, LS or PS.
+        CheckConstraint(
+            "char_length(template) between 1 and 200 and template ~ '[^[:space:]]' "
+            "and template !~ '[\\x01-\\x1f\\x7f\\u0085\\u2028\\u2029]'",
+            name="naming_templates_template",
+        ),
+        UniqueConstraint("name", name="uq_naming_templates_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text)
+    template: Mapped[str] = mapped_column(Text)
+    builtin: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        # A user's name and template are user text: out of logs and tracebacks (privacy item 19).
+        return f"NamingTemplate(id={self.id!r}, builtin={self.builtin!r})"
+
+
+class TemplateAssignment(Base):
+    """The template used globally, or for one category (R-NAME-1; DB-009.D1 seeds the global).
+
+    At most one global row and at most one per category. NAME-002.D3 resolves topic, then
+    format, then global, then `naming.default_template`.
+    """
+
+    __tablename__ = "template_assignments"
+    __table_args__ = (
+        CheckConstraint("scope in ('global', 'category')", name="template_assignments_scope"),
+        CheckConstraint(
+            "(scope = 'global') = (category_id is null)",
+            name="template_assignments_scope_category",
+        ),
+        UniqueConstraint("category_id", name="uq_template_assignments_category_id"),
+        Index(
+            "uq_template_assignments_global",
+            "scope",
+            unique=True,
+            postgresql_where=text("scope = 'global'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scope: Mapped[str] = mapped_column(Text)
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "categories.id",
+            name="fk_template_assignments_category_id_categories",
+            ondelete="CASCADE",
+        )
+    )
+    template_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "naming_templates.id",
+            name="fk_template_assignments_template_id_naming_templates",
+            ondelete="RESTRICT",
+        )
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    def __repr__(self) -> str:
+        return (
+            f"TemplateAssignment(id={self.id!r}, scope={self.scope!r}, "
+            f"category_id={self.category_id!r}, template_id={self.template_id!r})"
+        )
