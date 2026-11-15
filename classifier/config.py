@@ -1,9 +1,9 @@
 """Typed configuration (DESIGN.md §6, CFG-001, R-CFG-1).
 
 `config.yaml` holds container paths only. Every section is a strict model: an unknown key
-is an error. Values that are not decided yet stay `None`: `models.vlm_nsfw` (Q-1). The
-SigLIP-era keys `classify.*.default_min_score` and `margin` are kept but unread on the VLM
-path (CLS-004.D7, DOC-009.D3).
+is an error. `models.vlm_nsfw` is the human's Q-1 answer (MOD-004.1); agents never pick or
+change a model tag. The SigLIP-era keys `classify.*.default_min_score` and `margin` are
+kept but unread on the VLM path (CLS-004.D7, DOC-009.D3).
 
 No error raised by `load_config` repeats a value from the file or the environment: messages
 name the file, the key location and the error type only (CFG-002).
@@ -47,7 +47,7 @@ class ModelsConfig(_Section):
     classifier: str
     nsfw: str
     vlm_safe: str
-    vlm_nsfw: str | None = None  # Q-1: never picked by an agent
+    vlm_nsfw: str  # the adult caption model: the human's Q-1 answer, required (MOD-004.1)
     text_llm: str
     text_embed: str
 
@@ -132,6 +132,29 @@ class NamingConfig(_Section):
     nsfw_template: str | None = None
     nsfw_prefix: str
     max_len: int
+
+    @field_validator("max_len", mode="before")
+    @classmethod
+    def _not_a_bool(cls, value: object) -> object:
+        # A bool is an int to Python; a YAML `true` here is a mistake, not 1.
+        if isinstance(value, bool):
+            raise ValueError("must be a number")
+        return value
+
+    @field_validator("max_len")
+    @classmethod
+    def _positive(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("must be positive")
+        return value
+
+    @model_validator(mode="after")
+    def _prefix_fits(self) -> Self:
+        # R-NAME-8: the prefix sits inside the cap, so it must leave room for the name itself
+        # (MOD-004.1.2). Fixed text: never the prefix.
+        if len(self.nsfw_prefix) >= self.max_len:
+            raise ValueError("nsfw_prefix must be shorter than max_len (R-NAME-8)")
+        return self
 
 
 class SimilarityConfig(_Section):

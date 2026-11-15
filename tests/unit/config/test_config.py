@@ -25,7 +25,6 @@ def test_real_config_validates() -> None:
 
 def test_undecided_values_stay_none() -> None:
     config = Config.model_validate(real_data())
-    assert config.models.vlm_nsfw is None
     assert config.classify.format.default_min_score is None
     assert config.classify.topic.default_min_score is None
     assert config.db.dsn is None
@@ -39,6 +38,45 @@ def test_real_config_holds_the_vlm_values() -> None:
     assert config.nsfw.conservative_traces is True  # the human's value (CLS-007.D3)
     assert config.models.vlm_safe == "qwen3-vl:8b-instruct"  # CLS-004.D8
     assert config.models.text_llm == "qwen3-vl:8b"  # SAN-004.2, after gate 2
+
+
+# MOD-004.1.1: the adult caption model is the human's Q-1 answer, the classifier model.
+
+
+def _pulled_models() -> set[str]:
+    """The tags `make models` pulls: the Makefile's `OLLAMA_MODELS` line, comment stripped."""
+    for line in (REPO / "Makefile").read_text(encoding="utf-8").splitlines():
+        if line.startswith("OLLAMA_MODELS"):
+            return set(line.split(":=", 1)[1].split("#", 1)[0].split())
+    raise AssertionError("no OLLAMA_MODELS line in the Makefile")
+
+
+def test_vlm_nsfw_is_the_q1_answer() -> None:
+    models = Config.model_validate(real_data()).models
+    assert models.vlm_nsfw == "qwen3-vl:8b-instruct"  # the human, Q-1 (2026-11-15)
+    assert models.vlm_nsfw == models.vlm_safe  # one resident model, no swap
+
+
+def test_both_caption_branches_use_a_pulled_model() -> None:
+    models = Config.model_validate(real_data()).models
+    pulled = _pulled_models()
+    assert "qwen3-vl:8b-instruct" in pulled  # the parse found the real line
+    assert {models.vlm_safe, models.vlm_nsfw} <= pulled
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_vlm_nsfw_is_required_and_not_null(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, present: bool
+) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    data = real_data()
+    del data["models"]["vlm_nsfw"]
+    if present:
+        data["models"]["vlm_nsfw"] = None
+    error = load_error(write_config(tmp_path, data))
+    expected = "models.vlm_nsfw: string_type" if present else "models.vlm_nsfw: missing"
+    assert expected in str(error)
+    assert error.__cause__ is None and error.__context__ is None
 
 
 def test_deletion_defaults_to_disabled() -> None:
@@ -495,3 +533,53 @@ def test_real_config_turns_the_cross_check_on() -> None:
     assert nsfw_cross_check(NsfwLevel.explicit, min_level, 0.05, check)  # VLM adult, score low
     assert not nsfw_cross_check(NsfwLevel.safe, min_level, 0.50, check)
     assert not nsfw_cross_check(NsfwLevel.explicit, min_level, 0.50, check)
+
+
+# MOD-004.1.2: the nsfw_ prefix must fit inside the name cap (R-NAME-8; #267's review).
+
+PLANTED_PREFIX = "Qorvexzhyndel_PLANTED_prefix_"
+
+
+def with_naming(**changes: object) -> dict:
+    data = real_data()
+    data["naming"].update(changes)
+    return data
+
+
+@pytest.mark.parametrize(("prefix", "max_len"), [("x" * 119, 120), ("", 120), ("", 1), ("q", 2)])
+def test_a_prefix_shorter_than_the_cap_is_accepted(prefix: str, max_len: int) -> None:
+    naming = Config.model_validate(with_naming(nsfw_prefix=prefix, max_len=max_len)).naming
+    assert (naming.nsfw_prefix, naming.max_len) == (prefix, max_len)
+
+
+@pytest.mark.parametrize(("prefix", "max_len"), [("x" * 120, 120), ("x" * 121, 120), ("q", 1)])
+def test_a_prefix_as_long_as_the_cap_is_refused(prefix: str, max_len: int) -> None:
+    with pytest.raises(ValidationError, match="nsfw_prefix must be shorter than max_len"):
+        Config.model_validate(with_naming(nsfw_prefix=prefix, max_len=max_len))
+
+
+# A numeric string is coerced like every other int key in this config (pydantic's lax mode).
+@pytest.mark.parametrize("max_len", [0, -1, True, False, "zero", 1.5, None])
+def test_max_len_must_be_a_positive_int(max_len: object) -> None:
+    with pytest.raises(ValidationError):
+        Config.model_validate(with_naming(nsfw_prefix="", max_len=max_len))
+
+
+def test_the_real_naming_values_pass() -> None:
+    naming = Config.model_validate(real_data()).naming
+    assert (naming.nsfw_prefix, naming.max_len) == ("nsfw_", 120)
+
+
+def test_a_long_prefix_error_is_value_free(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DB_DSN", FAKE_DSN)
+    # Held first: the plant passes when the cap leaves room, so its absence below means something.
+    held = load_config(write_config(tmp_path, with_naming(nsfw_prefix=PLANTED_PREFIX)))
+    assert held.naming.nsfw_prefix == PLANTED_PREFIX
+    data = with_naming(nsfw_prefix=PLANTED_PREFIX, max_len=len(PLANTED_PREFIX))
+    error = load_error(write_config(tmp_path, data))
+    assert "naming: value_error" in str(error)
+    for text in (str(error), repr(error)):
+        assert PLANTED_PREFIX not in text
+        assert "Qorvexzhyndel" not in text
+        assert str(len(PLANTED_PREFIX)) not in text
+    assert error.__cause__ is None and error.__context__ is None
