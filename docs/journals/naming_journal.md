@@ -33,8 +33,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## NAME-001 — Tasks
 
-- [ ] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · Pipeline · acceptance: `tests/unit/naming/test_templates.py`
-- [ ] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
+- [ ] NAME-001.1 — `render()`: tokens, filters, built-ins, dates, normalization, the injected sanitize re-run, the prefix and the cap · #258 · Pipeline · a test pins the `|or=` token fallback (NAME-001.D2) · acceptance: `tests/unit/naming/test_templates.py`
+- [ ] NAME-001.2 — `unique()`: R-NAME-6 collisions, casefolded · #259 · Pipeline · acceptance: `tests/unit/naming/test_collisions.py`
 
 ## NAME-001 — Results
 
@@ -58,7 +58,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## NAME-002 — Tasks
 
-- [ ] NAME-002.1 — The name node, the template resolution, `proposed`, and the dry-run CSV's proposed name · Pipeline · acceptance: `tests/db/graph/test_name_node.py`
+- [ ] NAME-002.1 — The name node, the template resolution, `proposed`, and the dry-run CSV's proposed name · #260 · Pipeline · acceptance: `tests/db/graph/test_name_node.py`
 
 ## NAME-002 — Results
 
@@ -66,7 +66,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## CLI-010 — Requirement (DESIGN.md m5, 2026-11-15)
 
-- **Objective:** Manage templates from the CLI: `classifier templates list|add|set-default|assign|preview --sample N`.
+- **Objective:** Manage templates from the CLI: `classifier templates list|add|set-default|assign|preview --sample N` (`list` extends DESIGN §7's set).
 - **Constraint:**
   - a template is validated by NAME-001's parser before it's stored;
   - errors are fixed text, unchained;
@@ -79,6 +79,6 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## CLI-010 — Tasks
 
-- [ ] CLI-010.1 — `templates list|add|set-default|assign|preview` · Pipeline · acceptance: `tests/db/cli/test_templates_cli.py`
+- [ ] CLI-010.1 — `templates list|add|set-default|assign|preview` (`list` extends DESIGN §7) · #261 · Pipeline · acceptance: `tests/db/cli/test_templates_cli.py`
 
 ## CLI-010 — Results

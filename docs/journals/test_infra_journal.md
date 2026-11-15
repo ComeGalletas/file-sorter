@@ -857,6 +857,6 @@ references or host paths here. Use hashes.
 
 ## TST-016 — Tasks
 
-- [ ] TST-016.1 — `scripts/gate_5.py` and its unit tests · QA · acceptance: `tests/unit/gate/test_gate_5_checks.py` (the real run is `make gate-5`)
+- [ ] TST-016.1 — `scripts/gate_5.py` and its unit tests · #263 · QA · acceptance: `tests/unit/gate/test_gate_5_checks.py` (the real run is `make gate-5`)
 
 ## TST-016 — Results

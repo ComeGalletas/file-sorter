@@ -317,6 +317,6 @@ references or host paths here. Use hashes.
 
 ## DB-009 — Tasks
 
-- [ ] DB-009.1 — Migration `0008`, the ORM models, the seeded built-ins · Pipeline · acceptance: `tests/db/ledger/test_templates_migration.py`
+- [ ] DB-009.1 — Migration `0008`, the ORM models, the seeded built-ins · #257 · Pipeline · acceptance: `tests/db/ledger/test_templates_migration.py`
 
 ## DB-009 — Results
