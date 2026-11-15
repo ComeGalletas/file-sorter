@@ -843,7 +843,7 @@ references or host paths here. Use hashes.
   - **the 500 names are synthetic** (the human's answer 4): seeded sensitive values planted in synthetic source names and in recorded synthetic captions;
   - they are rendered through the real templates and the real name node, as gate 2 did for sanitize;
   - the check looks for every seeded value in every name;
-  - **A second, box-only section** (DOC-020.D2): every name in the git-ignored `fixtures/names_local.txt` (the human's own file names, extension included; `names_local.example.txt` holds synthetic placeholders) is rendered through the sanitize rules plus the `keep-original` and `descriptive` templates, with a synthetic caption, and the check is that no `sanitize.yaml` literal or regex value survives. It runs only in the gate tier (`make gate-5` from the main checkout), so the default tiers and worktrees never read it. A missing file fails that section with a fixed message naming it, as `labels.csv` does (CLAUDE.md §3: never skip). It adds one verdict line and nothing else: no count, no name, no example. No name is ever printed, logged or repr'd. The line is **informational** until the human says whether it is a G1 pass criterion (TST-016.D2); §11's criterion is unchanged.
+  - **A second, box-only section** (DOC-020.D2): every name in the git-ignored `fixtures/names_local.txt` (the human's own file names, extension included; `names_local.example.txt` holds synthetic placeholders) is rendered through the sanitize rules plus the `keep-original` and `descriptive` templates, with a synthetic caption, and the check is that no `sanitize.yaml` literal or regex value survives. It runs only in the gate tier (`make gate-5` from the main checkout), so the default tiers and worktrees never read it. A missing file fails that section with a fixed message naming it, as `labels.csv` does (CLAUDE.md §3: never skip). It adds one verdict line and nothing else: no count, no name, no example. No name is ever printed, logged or repr'd. The line is **informational** (the human, TST-016.D2), read at G1 next to the readability spot-check; §11's criterion is unchanged.
 - **Constraint:**
   - the public output is a verdict plus the criterion's own synthetic count (TST-016.D1);
   - `--detail` stays on the box;
@@ -854,7 +854,7 @@ references or host paths here. Use hashes.
 
 ## TST-016 — Confirmed reading
 
-- **TST-016.D2 — the box-only real-name section is informational** (the human's session, 2026-11-15, pending the human's word on whether it is a G1 pass criterion): one more verdict line in `make gate-5`'s output; the published §11 criterion stays the 500 synthetic names.
+- **TST-016.D2 — the box-only real-name section is informational** (the human, 2026-11-15): one more verdict line in `make gate-5`'s output, read at G1 next to the readability spot-check. The published §11 criterion stays 0 sensitive values in 500 synthetic names, and DESIGN doesn't change.
 - **TST-016.D1 — the public output** (lead, 2026-11-15, confirmed by the human, 2026-11-15): a verdict and the synthetic count, as gate 2's summary line (TST-005.D8).
 
 ## TST-016 — Tasks
