@@ -32,13 +32,13 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
   - `files.caption` is jsonb, and `captioned` is in the status enum;
   - the sanitize rules live in `classifier/sanitize/` (Pipeline).
 - **From the human's spike** (public form): the visible-text prompt rule alone isn't enough, so sanitize-on-write is a needed net. And more frames than `pick_frames` gives can overflow `num_ctx` 4096 on an animated image.
-- **CAP-001.D1 — sanitizing on write** (lead, 2026-11-15, provisional): the same rules as names (literal, regex, entity), run as a batch after the caption batch inside the same node, so the text model loads once per run. Raw answers are held in memory only, never in the graph state, the ledger or a log.
-- **CAP-001.D2 — the answer** (lead, provisional):
+- **CAP-001.D1 — sanitizing on write** (lead, 2026-11-15, confirmed by the human, 2026-11-15): the same rules as names (literal, regex, entity), run as a batch after the caption batch inside the same node, so the text model loads once per run. Raw answers are held in memory only, never in the graph state, the ledger or a log.
+- **CAP-001.D2 — the answer** (lead, confirmed by the human, 2026-11-15):
   - JSON with `subject` (1–3 words), `detail`, `caption` (one sentence) and `tags` (at most 8);
   - validated, with one retry;
   - low temperature, `num_ctx` 4096, and classify's image settings.
-- **CAP-001.D3 — the caption prompt's version** (lead, provisional): stored inside `files.caption` (a `prompt_version` key). `files.prompt_version` keeps classify's version (CLS-004.7).
-- **CAP-001.D4 — the hint** (lead, provisional): the sanitized name only, as classify does.
+- **CAP-001.D3 — the caption prompt's version** (lead, confirmed by the human, 2026-11-15): stored inside `files.caption` (a `prompt_version` key). `files.prompt_version` keeps classify's version (CLS-004.7).
+- **CAP-001.D4 — the hint** (lead, confirmed by the human, 2026-11-15): the sanitized name only, as classify does.
 
 ## CAP-001 — Plan
 

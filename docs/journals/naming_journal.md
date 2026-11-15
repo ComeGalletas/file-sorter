@@ -27,9 +27,9 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 ## NAME-001 — Confirmed reading
 
 - `classifier/naming/` is empty. `config.yaml` has `naming.default_template`, `nsfw_template` (null, R-NAME-4), `nsfw_prefix` and `max_len`.
-- **NAME-001.D1 — the `descriptive` template** (lead, 2026-11-15, provisional; answer 9): `{subject}_{detail|max=40}_{seq:3}`.
-- **NAME-001.D2 — the other built-ins** (lead, provisional): `reference` = `{reference|or={subject}}_{seq:3}` (`|or=` takes a token as its fallback; the tests pin it), `dated` = `{date}_{subject}_{seq:3}`, `category-seq` = `{category}_{seq:4}`, `keep-original` = `{original_sanitized}`, `hash` = `{short_hash}`.
-- **NAME-001.D3 — collisions** (lead, provisional; answer 13): casefolded, across the run's proposed set plus the existing names under the target folder in `results/`. In a dry run nothing is written.
+- **NAME-001.D1 — the `descriptive` template** (lead, 2026-11-15, confirmed by the human, 2026-11-15; answer 9): `{subject}_{detail|max=40}_{seq:3}`.
+- **NAME-001.D2 — the other built-ins** (lead, confirmed by the human, 2026-11-15): `reference` = `{reference|or={subject}}_{seq:3}` (`|or=` takes a token as its fallback; the tests pin it), `dated` = `{date}_{subject}_{seq:3}`, `category-seq` = `{category}_{seq:4}`, `keep-original` = `{original_sanitized}`, `hash` = `{short_hash}`.
+- **NAME-001.D3 — collisions** (lead, confirmed by the human, 2026-11-15; answer 13): casefolded, across the run's proposed set plus the existing names under the target folder in `results/`. In a dry run nothing is written.
 
 ## NAME-001 — Tasks
 
@@ -53,8 +53,8 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## NAME-002 — Confirmed reading
 
-- **NAME-002.D1 — the input status** (lead, 2026-11-15, provisional): `captioned`. M6 inserts `resolved` between them.
-- **NAME-002.D2 — `proposed_path`** (lead, provisional): relative to `results_root`, `[Adult/]<Topic|General>/<Format>[/Animated]/<name>` or `[Adult/]Unsorted/<name>`, with nested topics, built by FOP-002's `result_folder`.
+- **NAME-002.D1 — the input status** (lead, 2026-11-15, confirmed by the human, 2026-11-15): `captioned`. M6 inserts `resolved` between them.
+- **NAME-002.D2 — `proposed_path`** (lead, confirmed by the human, 2026-11-15): relative to `results_root`, `[Adult/]<Topic|General>/<Format>[/Animated]/<name>` or `[Adult/]Unsorted/<name>`, with nested topics, built by FOP-002's `result_folder`.
 
 ## NAME-002 — Tasks
 
@@ -75,7 +75,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, real 
 
 ## CLI-010 — Confirmed reading
 
-- **CLI-010.D1 — the preview's rows** (lead, 2026-11-15, provisional): synthetic sample rows with a pinned seed, so the console never prints a real image's name (privacy item 2). Real names are reviewed in the dashboard (API-002).
+- **CLI-010.D1 — the preview's rows** (lead, 2026-11-15, confirmed by the human, 2026-11-15): synthetic sample rows with a pinned seed, so the console never prints a real image's name (privacy item 2). Real names are reviewed in the dashboard (API-002).
 
 ## CLI-010 — Tasks
 

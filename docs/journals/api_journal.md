@@ -277,7 +277,7 @@ Rules: CLAUDE.md §1 (DOC-001). Public repo: never write image file names, capti
 
 ## API-002 — Confirmed reading
 
-- **API-002.D1 — what is shown** (lead, 2026-11-15, provisional): the proposed name and its relative folder, not the caption.
+- **API-002.D1 — what is shown** (lead, 2026-11-15, confirmed by the human, 2026-11-15): the proposed name and its relative folder, not the caption.
 
 ## API-002 — Tasks
 
